@@ -5,54 +5,76 @@
 <title>Planning service</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <style>
+  :root {
+    --ink: #1a1a1a;
+    --muted: #8a8a8a;
+    --line: #ece9e4;
+    --line-strong: #d8d5cf;
+    --surface-alt: #faf9f7;
+    --accent: #1d5fae;
+    --accent-soft: #eaf2fb;
+    --warn: #a8500f;
+    --warn-soft: #fbf1e6;
+    --period-off: #eeeeec;
+  }
   * { box-sizing: border-box; }
-  html, body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; color: #1a1a1a; }
-  body { padding: 12px; }
-  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-  .controls label { font-size: 12px; font-weight: 600; color: #444; }
-  select, input[type="date"] { padding: 5px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
-  button { padding: 6px 12px; background: #1565C0; color: #fff; border: none; border-radius: 6px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
-  button:hover { background: #0D47A1; }
-  button.secondary { background: #eee; color: #333; }
-  button.secondary:hover { background: #ddd; }
-  h2 { font-size: 16px; margin: 0 0 10px 0; }
-  #status { font-size: 12px; color: #777; margin-bottom: 8px; }
-  .tablewrap { overflow-x: auto; border: 1px solid #ccc; border-radius: 6px; }
-  table { border-collapse: collapse; font-size: 10.5px; white-space: nowrap; }
-  th, td { border: 1px solid #ddd; padding: 3px 5px; text-align: center; }
-  th.student, td.student { position: sticky; left: 0; background: #fafafa; text-align: left; z-index: 2; min-width: 190px; max-width: 220px; white-space: normal; font-weight: 600; }
-  .student-name { font-weight: 600; }
-  .student-info { font-size: 8.5px; color: #666; font-weight: 400; white-space: normal; line-height: 1.35; margin-top: 1px; }
-  thead th { background: #f0f0f0; position: sticky; top: 0; z-index: 1; }
+  html, body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; color: var(--ink); }
+  body { padding: 14px; }
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .controls label { font-size: 12px; font-weight: 600; color: #555; }
+  select, input[type="date"] { padding: 5px 9px; border: 1px solid #d7d5d0; border-radius: 6px; font-size: 13px; background: #fff; }
+  button { padding: 6px 13px; background: var(--accent); color: #fff; border: none; border-radius: 6px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  button:hover { background: #154a89; }
+  button.secondary { background: #f1efec; color: #333; }
+  button.secondary:hover { background: #e5e2dc; }
+  h2 { font-size: 16px; margin: 0 0 10px 0; letter-spacing: -.01em; }
+  #status { font-size: 12px; color: #999; margin-bottom: 8px; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line-strong); border-radius: 8px; }
+  table { border-collapse: collapse; font-size: 10.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  th, td { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); padding: 5px 6px; text-align: center; }
+  th:last-child, td:last-child { border-right: none; }
+  th.student, td.student { position: sticky; left: 0; background: #fff; text-align: left; z-index: 2; min-width: 190px; max-width: 220px; white-space: normal; font-weight: 600; border-right: 1px solid var(--line-strong); }
+  .student-name { font-weight: 600; letter-spacing: -.005em; }
+  .student-info { font-size: 8.5px; color: var(--muted); font-weight: 500; white-space: normal; line-height: 1.4; margin-top: 2px; }
+  thead th { background: var(--surface-alt); position: sticky; top: 0; z-index: 1; border-bottom: 1.5px solid var(--line-strong); font-weight: 700; color: #3a3a38; }
   thead th.student { z-index: 3; }
-  th.weekend, td.weekend { background: #f6f6f6; }
-  td.repos { color: #999; }
-  td.sortie-oui { background: #eafbea; }
-  td.sortie-non { background: #fdeaea; }
+  th.weekend { background: #f3f1ec; }
+  td.repos { color: #a8a6a0; font-weight: 600; }
   td.editable { cursor: pointer; }
-  td.editable:hover { outline: 2px solid #1565C0; outline-offset: -2px; }
+  td.editable:hover { outline: 1.5px solid var(--accent); outline-offset: -1.5px; border-radius: 3px; }
   td.saving { opacity: .5; }
-  td.hors-periode { background: #eee; }
-  .cell-edit-select { width: 100%; font-size: 10.5px; border: none; background: #fff8dc; }
+  td.hors-periode { background: var(--period-off); }
+  .badge { display: inline-block; padding: 1px 5px; border-radius: 4px; font-weight: 700; font-size: 10px; }
+  .badge-oui { background: var(--accent-soft); color: var(--accent); }
+  .badge-non { background: var(--warn-soft); color: var(--warn); }
+  .cell-edit-select { width: 100%; font-size: 10.5px; border: none; background: #fdf6e3; }
   .print-header { display: none; }
   .print-footer { display: none; }
+  .daynum { font-weight: 700; }
+  .dayname { font-size: 8.5px; color: var(--muted); display: block; margin-top: 1px; }
+  .legend { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; font-size: 10px; color: #555; }
+  .legend .chip { display: inline-flex; align-items: center; gap: 5px; }
+  .legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .empty { padding: 20px; text-align: center; color: #999; font-size: 13px; }
   @media print {
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
     body { padding: 0; }
     .controls, #status, .no-print { display: none !important; }
     .print-header { display: block !important; margin-bottom: 8px; }
     .print-header h2 { margin: 0 0 2px 0; font-size: 15px; }
-    .print-header .meta { font-size: 10.5px; color: #444; }
+    .print-header .meta { font-size: 10.5px; color: #555; }
     .tablewrap { border: none; overflow: visible; }
     table { font-size: 10px; }
-    th, td { padding: 2px 1px; }
+    th, td { padding: 2px 3px; }
     th.student, td.student { position: static; min-width: 160px; max-width: 180px; }
     .student-name { font-size: 10.5px; }
     .student-info { font-size: 8px; }
     thead th { position: static; }
     thead tr { height: 66px; }
     td.hors-periode { background: #ccc !important; }
-    th.weekend, td.weekend { background: #eee !important; }
+    th.weekend { background: #eee !important; }
+    .badge-oui { background: #e6e6e6 !important; color: #111 !important; border: 1px solid #888; }
+    .badge-non { background: #e6e6e6 !important; color: #111 !important; border: 1px dashed #888; }
     th:not(.student) {
       writing-mode: vertical-rl;
       transform: rotate(180deg);
@@ -73,14 +95,10 @@
     }
     @page { size: landscape; margin: 8mm; }
   }
-  .daynum { font-weight: 700; }
-  .dayname { font-size: 8.5px; color: #777; display: block; }
-  .legend { margin-top: 12px; font-size: 10.5px; color: #444; line-height: 1.6; }
-  .empty { padding: 20px; text-align: center; color: #888; font-size: 13px; }
 </style>
 </head>
 <body>
-<h2>📋 Planning de service</h2>
+<h2 class="no-print">📋 Planning de service</h2>
 <div class="controls">
   <label>Service</label>
   <select id="service"></select>
@@ -272,11 +290,11 @@ function render() {
       if (sortie) {
         if (sortie.Compte) {
           cls = 'sortie-oui';
-          text = (code ? code.Code + '+' : '') + 'S';
+          text = '<span class="badge badge-oui">' + (code ? code.Code + '+' : '') + 'S</span>';
           title = (sortie.Motif || 'Sortie comptée') + ' (' + sortie.Duree + 'h)';
         } else {
           cls = 'sortie-non';
-          text = (code ? code.Code : '') + ' ✕';
+          text = '<span class="badge badge-non">' + (code ? code.Code : '') + ' ✕</span>';
           title = sortie.Motif || 'Absence non comptée';
         }
       } else if (code) {
@@ -298,7 +316,6 @@ function render() {
   }
   html += '</tbody></table></div>';
 
-  html += '<div class="legend"><strong>Légende :</strong> ';
   const legendParts = [];
   const seen = {};
   for (let i = 0; i < CODES.id.length; i++) {
@@ -306,10 +323,12 @@ function render() {
     if (seen[c]) continue;
     seen[c] = true;
     const lib = CODES.Libelle[i] || '';
-    legendParts.push('<strong>' + c + '</strong>=' + lib);
+    legendParts.push('<span class="chip"><strong>' + c + '</strong>&nbsp;' + lib + '</span>');
   }
-  html += legendParts.join(' &nbsp; ');
-  html += ' &nbsp; <strong>Code+S</strong> (fond vert) = sortie comptée &nbsp; <strong>✕</strong> (fond rose) = absence non comptée &nbsp; <span style="background:#ccc;padding:1px 4px;">gris</span> = hors période de stage</div>';
+  legendParts.push('<span class="chip"><span class="badge badge-oui">Code+S</span> sortie comptée</span>');
+  legendParts.push('<span class="chip"><span class="badge badge-non">✕</span> absence non comptée</span>');
+  legendParts.push('<span class="chip"><span class="swatch" style="background:var(--period-off);"></span> hors période de stage</span>');
+  html += '<div class="legend">' + legendParts.join('') + '</div>';
 
   content.innerHTML = html;
 
