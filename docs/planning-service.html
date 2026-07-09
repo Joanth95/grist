@@ -259,4 +259,27 @@ async function init() {
 }
 
 document.getElementById('service').addEventListener('change', render);
-document.getElementById('startDate').add
+document.getElementById('startDate').addEventListener('change', render);
+document.getElementById('today').addEventListener('click', () => {
+  document.getElementById('startDate').value = todayKey();
+  render();
+});
+document.getElementById('prev').addEventListener('click', () => {
+  const cur = document.getElementById('startDate').value;
+  document.getElementById('startDate').value = addDaysKey(cur, -WINDOW_LEN);
+  render();
+});
+document.getElementById('next').addEventListener('click', () => {
+  const cur = document.getElementById('startDate').value;
+  document.getElementById('startDate').value = addDaysKey(cur, WINDOW_LEN);
+  render();
+});
+document.getElementById('refresh').addEventListener('click', async () => {
+  await loadData();
+  render();
+});
+
+init();
+</script>
+</body>
+</html>
