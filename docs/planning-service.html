@@ -30,7 +30,29 @@
   td.editable { cursor: pointer; }
   td.editable:hover { outline: 2px solid #1565C0; outline-offset: -2px; }
   td.saving { opacity: .5; }
+  td.hors-periode { background: #eee; }
   .cell-edit-select { width: 100%; font-size: 10.5px; border: none; background: #fff8dc; }
+  .print-header { display: none; }
+  .print-footer { display: none; }
+  @media print {
+    body { padding: 0; }
+    .controls, #status, .no-print { display: none !important; }
+    .print-header { display: block !important; margin-bottom: 10px; }
+    .print-header h2 { margin: 0 0 2px 0; }
+    .print-header .meta { font-size: 11px; color: #444; }
+    .tablewrap { border: none; overflow: visible; }
+    table { font-size: 8.5px; }
+    th.student, td.student { position: static; }
+    thead th { position: static; }
+    td.editable:hover { outline: none; }
+    .print-footer {
+      display: block !important;
+      position: fixed; bottom: 0; left: 0; right: 0;
+      text-align: center; font-size: 8px; color: #999;
+      border-top: 1px solid #ccc; padding-top: 4px;
+    }
+    @page { size: landscape; margin: 10mm; }
+  }
   .daynum { font-weight: 700; }
   .dayname { font-size: 8.5px; color: #777; display: block; }
   .legend { margin-top: 12px; font-size: 10.5px; color: #444; line-height: 1.6; }
@@ -48,9 +70,12 @@
   <button id="prev" class="secondary">◀ 31j</button>
   <button id="next" class="secondary">31j ▶</button>
   <button id="refresh">Actualiser</button>
+  <button id="printBtn" class="secondary">🖨️ Imprimer</button>
 </div>
 <div id="status"></div>
+<div class="print-header" id="printHeader"></div>
 <div id="content"></div>
+<div class="print-footer">Document généré automatiquement par l'application <strong>GESTION ÉTUDIANT</strong> — Conçu et développé par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant — Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville</div>
 
 <script>
 grist.ready({requiredAccess: 'full'});
@@ -207,7 +232,7 @@ function render() {
     const nom = etudiantsMap[m.etudiantId] || '—';
     html += '<tr><td class="student">' + nom.replace(/</g,'&lt;') + '</td>';
     for (const dk of days) {
-      if (dk < m.du || dk > m.au) { html += '<td></td>'; continue; }
+      if (dk < m.du || dk > m.au) { html += '<td class="hors-periode"></td>'; continue; }
       const cellInfo = (periodeDayMap[m.periodeId] || {})[dk];
       const coderef = cellInfo ? cellInfo.coderef : null;
       const code = coderef ? codesMap[coderef] : null;
@@ -256,6 +281,16 @@ function render() {
   html += ' &nbsp; <span style="background:#eafbea;padding:1px 4px;">vert</span>=sortie comptée &nbsp; <span style="background:#fdeaea;padding:1px 4px;">rose</span>=absence non comptée</div>';
 
   content.innerHTML = html;
+
+  const serviceLabel = document.getElementById('service').selectedOptions[0]
+    ? document.getElementById('service').selectedOptions[0].textContent
+    : '';
+  const now = new Date();
+  const genDate = String(now.getDate()).padStart(2,'0') + '/' + String(now.getMonth()+1).padStart(2,'0') + '/' + now.getFullYear()
+    + ' à ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+  document.getElementById('printHeader').innerHTML =
+    '<h2>📋 Planning de service — ' + serviceLabel.replace(/</g,'&lt;') + '</h2>' +
+    '<div class="meta">Du ' + fmtDayLabel(windowStart).num + ' au ' + fmtDayLabel(windowEnd).num + ' &nbsp;·&nbsp; Généré le ' + genDate + '</div>';
 }
 
 async function init() {
@@ -365,6 +400,9 @@ document.getElementById('next').addEventListener('click', () => {
 document.getElementById('refresh').addEventListener('click', async () => {
   await loadData();
   render();
+});
+document.getElementById('printBtn').addEventListener('click', () => {
+  window.print();
 });
 
 init();
