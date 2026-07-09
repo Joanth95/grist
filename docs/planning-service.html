@@ -37,6 +37,7 @@
   .print-header { display: none; }
   .print-footer { display: none; }
   @media print {
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
     body { padding: 0; }
     .controls, #status, .no-print { display: none !important; }
     .print-header { display: block !important; margin-bottom: 8px; }
@@ -50,6 +51,8 @@
     .student-info { font-size: 8px; }
     thead th { position: static; }
     thead tr { height: 66px; }
+    td.hors-periode { background: #ccc !important; }
+    th.weekend, td.weekend { background: #eee !important; }
     th:not(.student) {
       writing-mode: vertical-rl;
       transform: rotate(180deg);
@@ -273,7 +276,7 @@ function render() {
           title = (sortie.Motif || 'Sortie comptée') + ' (' + sortie.Duree + 'h)';
         } else {
           cls = 'sortie-non';
-          text = code ? code.Code : '·';
+          text = (code ? code.Code : '') + ' ✕';
           title = sortie.Motif || 'Absence non comptée';
         }
       } else if (code) {
@@ -306,7 +309,7 @@ function render() {
     legendParts.push('<strong>' + c + '</strong>=' + lib);
   }
   html += legendParts.join(' &nbsp; ');
-  html += ' &nbsp; <span style="background:#eafbea;padding:1px 4px;">vert</span>=sortie comptée &nbsp; <span style="background:#fdeaea;padding:1px 4px;">rose</span>=absence non comptée</div>';
+  html += ' &nbsp; <strong>Code+S</strong> (fond vert) = sortie comptée &nbsp; <strong>✕</strong> (fond rose) = absence non comptée &nbsp; <span style="background:#ccc;padding:1px 4px;">gris</span> = hors période de stage</div>';
 
   content.innerHTML = html;
 
