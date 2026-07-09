@@ -181,6 +181,7 @@ function populateServiceSelect() {
   const sel = document.getElementById('service');
   const items = [];
   for (let i = 0; i < SERVICES.id.length; i++) {
+    if (!SERVICES.Recoit_des_etudiant[i]) continue;
     items.push({ id: SERVICES.id[i], nom: SERVICES.Nom[i] || ('Service ' + SERVICES.id[i]) });
   }
   items.sort((a,b) => a.nom.localeCompare(b.nom));
