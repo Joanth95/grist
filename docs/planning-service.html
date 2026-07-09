@@ -27,6 +27,10 @@
   td.repos { color: #999; }
   td.sortie-oui { background: #eafbea; }
   td.sortie-non { background: #fdeaea; }
+  td.editable { cursor: pointer; }
+  td.editable:hover { outline: 2px solid #1565C0; outline-offset: -2px; }
+  td.saving { opacity: .5; }
+  .cell-edit-select { width: 100%; font-size: 10.5px; border: none; background: #fff8dc; }
   .daynum { font-weight: 700; }
   .dayname { font-size: 8.5px; color: #777; display: block; }
   .legend { margin-top: 12px; font-size: 10.5px; color: #444; line-height: 1.6; }
@@ -188,7 +192,7 @@ function render() {
     if (!periodeDayMap[pid]) periodeDayMap[pid] = {};
     for (let off = 0; off < 7; off++) {
       const dk = addDaysKey(semStart, off);
-      periodeDayMap[pid][dk] = PLANNING[dayCodeCols[off]][i];
+      periodeDayMap[pid][dk] = { rowId: PLANNING.id[i], col: dayCodeCols[off], coderef: PLANNING[dayCodeCols[off]][i] };
     }
   }
 
@@ -204,7 +208,8 @@ function render() {
     html += '<tr><td class="student">' + nom.replace(/</g,'&lt;') + '</td>';
     for (const dk of days) {
       if (dk < m.du || dk > m.au) { html += '<td></td>'; continue; }
-      const coderef = (periodeDayMap[m.periodeId] || {})[dk];
+      const cellInfo = (periodeDayMap[m.periodeId] || {})[dk];
+      const coderef = cellInfo ? cellInfo.coderef : null;
       const code = coderef ? codesMap[coderef] : null;
       const sortie = sortieIdx[m.periodeId + '_' + dk];
       let cls = '', text = '', title = '';
@@ -225,7 +230,13 @@ function render() {
       } else {
         text = '';
       }
-      html += '<td class="' + cls + '" title="' + title.replace(/"/g,'&quot;') + '">' + text + '</td>';
+      let dataAttrs = '';
+      if (cellInfo) {
+        cls += (cls ? ' ' : '') + 'editable';
+        dataAttrs = ' data-row-id="' + cellInfo.rowId + '" data-col="' + cellInfo.col + '" data-coderef="' + (coderef || '') + '"';
+        if (!title) title = 'Cliquer pour modifier';
+      }
+      html += '<td class="' + cls + '"' + dataAttrs + ' title="' + title.replace(/"/g,'&quot;') + '">' + text + '</td>';
     }
     html += '</tr>';
   }
@@ -257,6 +268,83 @@ async function init() {
   if (defaultService) document.getElementById('service').value = defaultService;
   render();
 }
+
+function codesListSorted() {
+  const list = [];
+  for (let i = 0; i < CODES.id.length; i++) {
+    list.push({ id: CODES.id[i], code: CODES.Code[i] || '?', libelle: CODES.Libelle[i] || '' });
+  }
+  list.sort((a, b) => a.code.localeCompare(b.code));
+  return list;
+}
+
+function startEditCell(td) {
+  const rowId = parseInt(td.dataset.rowId, 10);
+  const col = td.dataset.col;
+  const currentCoderef = td.dataset.coderef ? parseInt(td.dataset.coderef, 10) : null;
+  const originalHTML = td.innerHTML;
+
+  const select = document.createElement('select');
+  select.className = 'cell-edit-select';
+
+  const optEmpty = document.createElement('option');
+  optEmpty.value = '';
+  optEmpty.textContent = '(vide)';
+  if (!currentCoderef) optEmpty.selected = true;
+  select.appendChild(optEmpty);
+
+  for (const c of codesListSorted()) {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.code + (c.libelle ? ' — ' + c.libelle : '');
+    if (currentCoderef === c.id) opt.selected = true;
+    select.appendChild(opt);
+  }
+
+  td.innerHTML = '';
+  td.appendChild(select);
+  select.focus();
+  if (select.showPicker) { try { select.showPicker(); } catch (e) {} }
+
+  let done = false;
+  function commit() {
+    if (done) return;
+    done = true;
+    const val = select.value;
+    const newCoderef = val ? parseInt(val, 10) : null;
+    if (newCoderef === currentCoderef) { td.innerHTML = originalHTML; return; }
+    saveCode(rowId, col, newCoderef, td);
+  }
+  function cancel() {
+    if (done) return;
+    done = true;
+    td.innerHTML = originalHTML;
+  }
+  select.addEventListener('change', commit);
+  select.addEventListener('blur', () => setTimeout(cancel, 0));
+}
+
+async function saveCode(rowId, col, newCoderef, td) {
+  td.className += ' saving';
+  td.innerHTML = '';
+  try {
+    await grist.docApi.applyUserActions([
+      ['UpdateRecord', 'PLANNING_HEBDO', rowId, { [col]: newCoderef }]
+    ]);
+    await loadData();
+    render();
+  } catch (err) {
+    alert('Erreur lors de la mise à jour : ' + err.message);
+    await loadData();
+    render();
+  }
+}
+
+document.getElementById('content').addEventListener('click', function (e) {
+  const td = e.target.closest('td.editable');
+  if (!td || td.querySelector('select')) return;
+  startEditCell(td);
+});
 
 document.getElementById('service').addEventListener('change', render);
 document.getElementById('startDate').addEventListener('change', render);
