@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="referrer" content="no-referrer">
+<title>Envoyer évaluation</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<style>
+  :root {
+    --accent: #1d5fae;
+    --accent-dark: #164a8a;
+    --grey: #ccc;
+    --text-muted: #666;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 10px;
+    gap: 8px;
+    text-align: center;
+  }
+  a.btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.15s;
+  }
+  a.btn:hover {
+    background: var(--accent-dark);
+  }
+  a.btn.disabled {
+    background: var(--grey);
+    color: #888;
+    pointer-events: none;
+    cursor: not-allowed;
+  }
+  #status {
+    font-size: 12px;
+    color: var(--text-muted);
+    max-width: 260px;
+    line-height: 1.4;
+  }
+</style>
+</head>
+<body>
+
+  <a id="btn" class="btn disabled" target="_top">📧 Envoyer l'évaluation</a>
+  <div id="status">Sélectionnez une période de stage...</div>
+
+<script>
+  const EMAIL_FROM_NAME = "Cadre de santé - MG1/MG2/SMR Gériatrique - CHR Metz-Thionville";
+
+  let studentsById = null;
+  let servicesById = null;
+
+  grist.ready({ requiredAccess: 'read table' });
+
+  function fmtDate(ts) {
+    if (!ts) return '?';
+    const d = new Date(ts * 1000);
+    return d.toLocaleDateString('fr-FR', { timeZone: 'UTC' });
+  }
+
+  async function loadLookup(tableId, cols) {
+    const table = await grist.docApi.fetchTable(tableId);
+    const rows = {};
+    table.id.forEach((id, i) => {
+      const row = {};
+      cols.forEach(c => { row[c] = table[c] ? table[c][i] : undefined; });
+      rows[id] = row;
+    });
+    return rows;
+  }
+
+  function setStatus(msg) {
+    document.getElementById('status').textContent = msg;
+  }
+
+  function disableButton() {
+    const btn = document.getElementById('btn');
+    btn.classList.add('disabled');
+    btn.removeAttribute('href');
+  }
+
+  grist.onRecord(async (record) => {
+    const btn = document.getElementById('btn');
+
+    if (!record || !record.Etudiant) {
+      disableButton();
+      setStatus('Sélectionnez une période de stage...');
+      return;
+    }
+
+    if (!studentsById) {
+      try {
+        studentsById = await loadLookup('LISTE_DES_ETUDIANTS', ['NOM_PRENOM', 'PRENOM', 'Adresse_mail']);
+      } catch (e) {
+        disableButton();
+        setStatus('Erreur de lecture de la table étudiants.');
+        return;
+      }
+    }
+    if (!servicesById) {
+      try {
+        servicesById = await loadLookup('SERVICES', ['Label']);
+      } catch (e) {
+        servicesById = {};
+      }
+    }
+
+    const etu = studentsById[record.Etudiant];
+    if (!etu) {
+      disableButton();
+      setStatus('Étudiant introuvable.');
+      return;
+    }
+    if (!etu.Adresse_mail) {
+      disableButton();
+      setStatus((etu.NOM_PRENOM || 'Cet étudiant') + " n'a pas d'adresse mail renseignée.");
+      return;
+    }
+    if (!record.Lien_evaluation) {
+      disableButton();
+      setStatus("Aucun lien d'évaluation généré pour cette période.");
+      return;
+    }
+
+    const du = fmtDate(record.Du);
+    const au = fmtDate(record.Au);
+    const prenom = etu.PRENOM || '';
+    const service = (servicesById[record.Service] || {}).Label || '';
+    const lien = record.Lien_evaluation;
+
+    const subject = `Votre avis sur votre stage (${du} - ${au})`;
+    const body =
+`Bonjour ${prenom},
+
+Votre stage${service ? ' au sein du service ' + service : ''} (${du} - ${au}) touche à sa fin.
+
+Nous vous serions reconnaissants de prendre quelques minutes pour répondre à notre questionnaire d'évaluation de stage. Vos réponses nous aident à améliorer l'accueil et l'encadrement des futurs étudiants.
+
+Merci de cliquer sur le lien ci-dessous : il est déjà associé à votre période de stage.
+
+${lien}
+
+Vos réponses restent confidentielles.
+
+Merci pour votre implication durant ce stage.
+
+Cordialement,
+${EMAIL_FROM_NAME}`;
+
+    const mailto = `mailto:${encodeURIComponent(etu.Adresse_mail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+    btn.href = mailto;
+    btn.classList.remove('disabled');
+    setStatus('Vers : ' + etu.NOM_PRENOM + ' (' + etu.Adresse_mail + ')');
+  });
+</script>
+</body>
+</html>
