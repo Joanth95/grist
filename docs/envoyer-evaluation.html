@@ -72,7 +72,7 @@
   let studentsById = null;
   let servicesById = null;
 
-  grist.ready({ requiredAccess: 'read table' });
+  grist.ready({ requiredAccess: 'full' });
 
   function fmtDate(ts) {
     if (!ts) return '?';
