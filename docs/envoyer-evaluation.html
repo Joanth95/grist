@@ -127,6 +127,7 @@
       }
     }
 
+console.log('DEBUG_ETU', record.Etudiant, typeof record.Etudiant, JSON.stringify(Object.keys(studentsById)));
     const etu = studentsById[record.Etudiant];
     if (!etu) {
       disableButton();
