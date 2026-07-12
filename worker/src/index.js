@@ -208,6 +208,7 @@ async function buildPayload(env, student) {
       id: s.id,
       Motif: s.fields.Motif || "",
       Commentaire: s.fields.Motif_ou_Commentaire || "",
+      Periode: s.fields.Pour_le_stage_du_ || s.fields.Rapprochement_manuel || null,
       Date: epochToIso(s.fields.Date),
       Heure_debut: s.fields.Heure_debut || "",
       Heure_fin: s.fields.Heure_fin || "",

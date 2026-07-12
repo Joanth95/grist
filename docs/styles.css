@@ -128,6 +128,39 @@ input:focus, textarea:focus, button:focus-visible {
 
 /* ---------- Période de stage ---------- */
 
+.periode-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.periode-tabs:empty { display: none; }
+
+.periode-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  background: var(--blanc);
+  border: 1px solid var(--gris-bordure);
+  border-bottom: 3px solid transparent;
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.periode-tab:hover { background: var(--gris-fond); }
+.periode-tab.active {
+  border-bottom-color: var(--bleu);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+.tab-service { font-weight: 700; font-size: 0.9rem; }
+.tab-dates {
+  display: flex; align-items: center; gap: 0.4rem;
+  font-size: 0.75rem; color: var(--texte-doux);
+}
+.tab-dates .badge { font-size: 0.65rem; padding: 0.1rem 0.4rem; }
+
 .periode-card {
   background: var(--blanc);
   border-left: 4px solid var(--bleu);

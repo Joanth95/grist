@@ -15,6 +15,7 @@ const TYPE_LABELS = {
 const state = {
   code: sessionStorage.getItem("code") || null,
   data: null, // { etudiant, motifs, periodes, semaines, codes, sorties }
+  selectedPeriodeId: null, // période affichée (onglet actif)
 };
 
 /* ------------------------------------------------------------------ */
@@ -83,15 +84,49 @@ async function refresh() {
 /* Rendu                                                               */
 /* ------------------------------------------------------------------ */
 
-function currentPeriode() {
+// Période affichée par défaut : celle en cours, sinon la plus récente
+function defaultPeriode() {
   const p = state.data.periodes;
   return p.find((x) => x.En_cours) || p[p.length - 1] || null;
 }
 
+// Période actuellement sélectionnée (onglet actif)
+function currentPeriode() {
+  const p = state.data.periodes;
+  return p.find((x) => x.id === state.selectedPeriodeId) || defaultPeriode();
+}
+
 function render() {
+  // Fixe l'onglet actif au premier affichage / si la sélection n'existe plus
+  if (!state.data.periodes.some((p) => p.id === state.selectedPeriodeId)) {
+    const def = defaultPeriode();
+    state.selectedPeriodeId = def ? def.id : null;
+  }
+  renderTabs();
   renderPeriode();
   renderSorties();
   renderWeeks();
+}
+
+function renderTabs() {
+  const container = $("periode-tabs");
+  container.innerHTML = "";
+  const periodes = state.data.periodes;
+  if (periodes.length <= 1) return; // pas d'onglets pour une seule période
+
+  const tabs = [...periodes].sort((a, b) => (a.Du || "").localeCompare(b.Du || ""));
+  for (const p of tabs) {
+    const tab = el("button", "periode-tab" + (p.id === state.selectedPeriodeId ? " active" : ""));
+    tab.appendChild(el("span", "tab-service", p.Service || "Stage"));
+    const meta = el("span", "tab-dates", shortDate(p.Du) + " – " + shortDate(p.Au));
+    if (p.En_cours) meta.appendChild(badge("en cours", "ok"));
+    tab.appendChild(meta);
+    tab.addEventListener("click", () => {
+      state.selectedPeriodeId = p.id;
+      render();
+    });
+    container.appendChild(tab);
+  }
 }
 
 function renderPeriode() {
@@ -151,10 +186,17 @@ function renderCadre(cadre) {
 function renderSorties() {
   const container = $("sorties");
   container.innerHTML = "";
-  const sorties = [...state.data.sorties].sort((a, b) => (b.Date || "").localeCompare(a.Date || ""));
+  const p = currentPeriode();
+  const isDefault = p && defaultPeriode() && p.id === defaultPeriode().id;
+
+  // Déclarations de la période sélectionnée ; celles sans période rattachée
+  // apparaissent sous la période par défaut.
+  const sorties = state.data.sorties
+    .filter((s) => s.Periode === (p && p.id) || (!s.Periode && isDefault))
+    .sort((a, b) => (b.Date || "").localeCompare(a.Date || ""));
 
   if (!sorties.length) {
-    container.appendChild(el("p", "empty", "Aucune déclaration pour l'instant."));
+    container.appendChild(el("p", "empty", "Aucune déclaration pour cette période."));
     return;
   }
 
@@ -374,6 +416,13 @@ function frDate(iso) {
   if (!iso) return "?";
   return new Date(iso + "T00:00:00").toLocaleDateString("fr-FR", {
     day: "numeric", month: "long", year: "numeric",
+  });
+}
+
+function shortDate(iso) {
+  if (!iso) return "?";
+  return new Date(iso + "T00:00:00").toLocaleDateString("fr-FR", {
+    day: "numeric", month: "short", year: "2-digit",
   });
 }
 
