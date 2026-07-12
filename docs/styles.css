@@ -152,6 +152,7 @@ input:focus, textarea:focus, button:focus-visible {
 
 .badge.ok { background: #e3fdeb; border-color: #b8eec6; color: #18753c; }
 .badge.warn { background: #fdeeee; border-color: #f6c8c8; color: var(--rouge); }
+.badge.pending { background: #fff3e0; border-color: #ffd9a0; color: #b34000; }
 
 /* ---------- Semaines ---------- */
 
@@ -241,7 +242,7 @@ input:focus, textarea:focus, button:focus-visible {
 
 .sortie-hours { min-width: 4rem; text-align: center; }
 .sortie-main { flex: 1; }
-.sortie-title { font-weight: 600; }
+.sortie-title { font-weight: 600; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .sortie-meta { font-size: 0.85rem; color: var(--texte-doux); }
 
 .sortie-delete {

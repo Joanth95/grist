@@ -131,23 +131,37 @@ function renderSorties() {
   for (const s of sorties) {
     const row = el("div", "sortie-row");
 
-    const sign = s.Ajustement_h > 0 ? "+" : "";
-    const badgeEl = badge(`${sign}${s.Ajustement_h} h`,
-      s.Ajustement_h > 0 ? "ok" : (s.Ajustement_h < 0 ? "warn" : ""));
+    // Heures affichées : réelles si validé, prévues sinon
+    const adj = s.Valide ? s.Ajustement_h : expectedAdjustment(s);
+    const sign = adj > 0 ? "+" : "";
+    const badgeEl = badge(`${sign}${adj} h`,
+      s.Valide ? (adj > 0 ? "ok" : (adj < 0 ? "warn" : "")) : "");
     badgeEl.classList.add("sortie-hours");
 
     const main = el("div", "sortie-main");
-    main.appendChild(el("div", "sortie-title", s.Motif || "(sans motif)"));
+    const title = el("div", "sortie-title", s.Motif || "(sans motif)");
+    title.appendChild(badge(s.Valide ? "Validé" : "En attente", s.Valide ? "ok" : "pending"));
+    main.appendChild(title);
     main.appendChild(el("div", "sortie-meta",
       `${frDate(s.Date)} · ${s.Heure_debut || "?"} – ${s.Heure_fin || "?"}`));
 
-    const delBtn = el("button", "sortie-delete", "🗑️");
-    delBtn.title = "Supprimer cette déclaration";
-    delBtn.addEventListener("click", () => removeSortie(s));
+    row.append(badgeEl, main);
 
-    row.append(badgeEl, main, delBtn);
+    if (!s.Valide) {
+      const delBtn = el("button", "sortie-delete", "🗑️");
+      delBtn.title = "Supprimer cette déclaration";
+      delBtn.addEventListener("click", () => removeSortie(s));
+      row.appendChild(delBtn);
+    }
     container.appendChild(row);
   }
+}
+
+/** Heures qu'une déclaration en attente vaudra une fois validée. */
+function expectedAdjustment(s) {
+  const d = s.Duree_heures || 0;
+  if ((s.Motif || "").trim().toUpperCase() === "RETARD") return -d;
+  return s.Compte_stage ? d : 0;
 }
 
 async function removeSortie(s) {

@@ -45,7 +45,8 @@
       "Bash(curl -s -X POST https://espace-etudiant-api.joanth95.workers.dev/api/login -H 'Content-Type: application/json' -d '{\"code\":\"T010100Z\"}')",
       "Bash(curl -s https://joanth95.github.io/grist/entree-stage.html -o /dev/null -w \"%{http_code}\")",
       "Bash(curl -s https://joanth95.github.io/grist/)",
-      "Bash(curl -s -w ' [HTTP %{http_code}]\\\\n' -X POST https://espace-etudiant-api.joanth95.workers.dev/api/inscription -H 'Content-Type: application/json' -d '{\"Civilite\":\"Monsieur\",\"NOM\":\"Zzztest\",\"PRENOM\":\"Test\",\"DDN\":\"2000-01-01\",\"FORMATION\":\"AUTRE\",\"periode\":{\"Service\":361,\"Niveau\":\"L1\",\"Du\":\"2026-07-13\",\"Au\":\"2026-08-23\"}}')"
+      "Bash(curl -s -w ' [HTTP %{http_code}]\\\\n' -X POST https://espace-etudiant-api.joanth95.workers.dev/api/inscription -H 'Content-Type: application/json' -d '{\"Civilite\":\"Monsieur\",\"NOM\":\"Zzztest\",\"PRENOM\":\"Test\",\"DDN\":\"2000-01-01\",\"FORMATION\":\"AUTRE\",\"periode\":{\"Service\":361,\"Niveau\":\"L1\",\"Du\":\"2026-07-13\",\"Au\":\"2026-08-23\"}}')",
+      "Bash(curl -s https://espace-etudiant-api.joanth95.workers.dev/api/data -H 'X-Student-Code: M110607H')"
     ]
   }
 }

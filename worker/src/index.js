@@ -196,7 +196,9 @@ async function buildPayload(env, student) {
       Heure_debut: s.fields.Heure_debut || "",
       Heure_fin: s.fields.Heure_fin || "",
       Compte_stage: !!s.fields.Compte_stage,
+      Valide: !!s.fields.Valide,
       Duree_affichee: s.fields.Duree_affichee || "",
+      Duree_heures: s.fields.Duree_heures ?? 0,
       Ajustement_h: s.fields.Ajustement_h ?? 0,
     })),
   };
@@ -256,6 +258,9 @@ async function deleteSortie(env, student, rowId) {
   if (!rows.length) throw httpError(404, "Déclaration introuvable");
   if (rows[0].fields.Anonymat !== student.rowId) {
     throw httpError(403, "Cette déclaration ne vous appartient pas");
+  }
+  if (rows[0].fields.Valide) {
+    throw httpError(403, "Cette déclaration a été validée : contactez votre encadrant pour la modifier");
   }
   await grist(env, "POST", `/tables/${T_SORTIES}/data/delete`, [rowId]);
   return json({ ok: true });
