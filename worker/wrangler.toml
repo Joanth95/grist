@@ -10,12 +10,6 @@ GRIST_BASE_URL = "https://grist.numerique.gouv.fr/api"
 # (https://grist.numerique.gouv.fr/o/chr-metz-thionville/qdm9zxQGmCPH/GESTION-ETUDIANT)
 GRIST_DOC_ID = "qdm9zxQGmCPH"
 
-# Noms des tables et colonnes dans ton document Grist
-TABLE_ETUDIANTS = "Etudiants"
-TABLE_PLANNING = "Planning"
-COL_CODE = "Code"
-COL_PLANNING_CODE = "Code_Etudiant"
-
 # Origine autorisée : mets l'URL de ton site GitHub Pages, par exemple
 # "https://toncompte.github.io" (ou "*" pendant les tests)
 ALLOWED_ORIGIN = "*"

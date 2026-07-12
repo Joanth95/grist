@@ -1,52 +1,59 @@
 /**
- * Proxy API entre l'espace étudiant (GitHub Pages) et Grist (DINUM).
+ * Proxy API entre l'espace étudiant (GitHub Pages) et le document Grist
+ * GESTION-ETUDIANT (instance DINUM).
  *
- * La clé API Grist reste secrète ici (variable GRIST_API_KEY).
- * Chaque étudiant s'authentifie avec son code personnel (colonne Code
- * de la table Etudiants) et ne peut lire/modifier que ses propres
- * lignes de la table Planning.
+ * La clé API Grist reste secrète ici (secret GRIST_API_KEY).
+ * L'étudiant s'authentifie avec son code anonymat (1ère lettre du prénom
+ * + date de naissance JJMMAA + 1ère lettre du nom, ex. J150398D), présent
+ * dans LISTE_DES_ETUDIANTS.Anonymat et PERIODES_DE_STAGE.Code_anonymat.
  *
- * Endpoints :
- *   POST   /api/login              { code }            -> infos étudiant
- *   GET    /api/planning                                -> créneaux de l'étudiant
- *   POST   /api/planning           { fields }           -> création
- *   PATCH  /api/planning/:id       { fields }           -> modification
- *   DELETE /api/planning/:id                            -> suppression
+ * Modèle de données :
+ *   PERIODES_DE_STAGE : une ligne par stage (Du, Au, Service, En_cours…)
+ *   PLANNING_HEBDO    : une ligne par semaine de stage ; Lundi…Dimanche
+ *                       référencent CODES_HORAIRES (M, S, N, R, ABS…)
  *
- * Le code étudiant est transmis dans l'en-tête X-Student-Code.
+ * Endpoints (code anonymat dans l'en-tête X-Student-Code) :
+ *   POST  /api/login          { code }   -> profil + périodes + semaines + codes
+ *   GET   /api/data                      -> même payload (rafraîchissement)
+ *   POST  /api/semaines       { Periode, Semaine_debut }        -> nouvelle semaine
+ *   PATCH /api/semaines/:id   { Lundi…Dimanche, Commentaire }   -> modification
  */
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
 
-// Champs que l'étudiant a le droit d'écrire dans Planning.
-const WRITABLE_FIELDS = ["Date", "Heure_Debut", "Heure_Fin", "Activite", "Lieu", "Notes"];
+const T_ETUDIANTS = "LISTE_DES_ETUDIANTS";
+const T_PERIODES = "PERIODES_DE_STAGE";
+const T_HEBDO = "PLANNING_HEBDO";
+const T_CODES = "CODES_HORAIRES";
+const T_SERVICES = "SERVICES";
+
+const DAY_COLUMNS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
 export default {
   async fetch(request, env) {
-    const cors = corsHeaders(env, request);
+    const cors = corsHeaders(env);
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: cors });
     }
-
     try {
       const response = await route(request, env);
       for (const [k, v] of Object.entries(cors)) response.headers.set(k, v);
       return response;
     } catch (err) {
-      const body = JSON.stringify({ error: err.publicMessage || "Erreur interne du serveur" });
       const status = err.status || 500;
       if (!err.status) console.error(err);
-      return new Response(body, { status, headers: { ...JSON_HEADERS, ...cors } });
+      return new Response(JSON.stringify({ error: err.publicMessage || "Erreur interne du serveur" }), {
+        status,
+        headers: { ...JSON_HEADERS, ...cors },
+      });
     }
   },
 };
 
-function corsHeaders(env, request) {
-  const allowed = env.ALLOWED_ORIGIN || "*";
-  const origin = request.headers.get("Origin") || "";
+function corsHeaders(env) {
   return {
-    "Access-Control-Allow-Origin": allowed === "*" ? "*" : (origin === allowed ? allowed : allowed),
-    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+    "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, X-Student-Code",
     "Access-Control-Max-Age": "86400",
   };
@@ -60,22 +67,25 @@ function httpError(status, publicMessage) {
 }
 
 async function route(request, env) {
-  const url = new URL(request.url);
-  const path = url.pathname.replace(/\/+$/, "");
+  const path = new URL(request.url).pathname.replace(/\/+$/, "");
 
   if (request.method === "POST" && path === "/api/login") {
-    return login(request, env);
+    const body = await request.json().catch(() => ({}));
+    const student = await authenticateCode(env, body.code);
+    return json(await buildPayload(env, student));
   }
 
-  const planningMatch = path.match(/^\/api\/planning(?:\/(\d+))?$/);
-  if (planningMatch) {
-    const student = await authenticate(request, env);
-    const rowId = planningMatch[1] ? Number(planningMatch[1]) : null;
+  const student = await authenticateCode(env, request.headers.get("X-Student-Code"));
 
-    if (request.method === "GET" && rowId === null) return listPlanning(env, student);
-    if (request.method === "POST" && rowId === null) return createEntry(request, env, student);
-    if (request.method === "PATCH" && rowId !== null) return updateEntry(request, env, student, rowId);
-    if (request.method === "DELETE" && rowId !== null) return deleteEntry(env, student, rowId);
+  if (request.method === "GET" && path === "/api/data") {
+    return json(await buildPayload(env, student));
+  }
+  if (request.method === "POST" && path === "/api/semaines") {
+    return createWeek(request, env, student);
+  }
+  const m = path.match(/^\/api\/semaines\/(\d+)$/);
+  if (request.method === "PATCH" && m) {
+    return updateWeek(request, env, student, Number(m[1]));
   }
 
   throw httpError(404, "Route inconnue");
@@ -85,102 +95,141 @@ async function route(request, env) {
 /* Authentification                                                    */
 /* ------------------------------------------------------------------ */
 
-async function findStudentByCode(env, code) {
-  if (!code || typeof code !== "string" || code.length < 4 || code.length > 64) return null;
-  const table = env.TABLE_ETUDIANTS || "Etudiants";
-  const colCode = env.COL_CODE || "Code";
-  const filter = encodeURIComponent(JSON.stringify({ [colCode]: [code] }));
-  const data = await grist(env, "GET", `/tables/${table}/records?filter=${filter}`);
-  return data.records && data.records.length === 1 ? data.records[0] : null;
-}
+async function authenticateCode(env, code) {
+  if (typeof code !== "string") throw httpError(401, "Code anonymat invalide");
+  code = code.trim().toUpperCase();
+  // Format attendu : 1 lettre + JJMMAA + 1 lettre (ex. J150398D)
+  if (!/^[A-Z]\d{6}[A-Z]$/.test(code)) throw httpError(401, "Code anonymat invalide");
 
-async function authenticate(request, env) {
-  const code = request.headers.get("X-Student-Code");
-  const student = await findStudentByCode(env, code);
-  if (!student) throw httpError(401, "Code étudiant invalide");
-  return { id: student.id, code, fields: student.fields };
-}
-
-async function login(request, env) {
-  const body = await request.json().catch(() => ({}));
-  const student = await findStudentByCode(env, body.code);
-  if (!student) throw httpError(401, "Code étudiant invalide");
-  return json({
-    nom: student.fields.Nom || "",
-    prenom: student.fields.Prenom || "",
-  });
+  const records = await gristFilter(env, T_ETUDIANTS, { Anonymat: [code] });
+  if (records.length !== 1) throw httpError(401, "Code anonymat invalide");
+  return { rowId: records[0].id, code, fields: records[0].fields };
 }
 
 /* ------------------------------------------------------------------ */
-/* Planning                                                            */
+/* Lecture : payload complet pour l'étudiant                           */
 /* ------------------------------------------------------------------ */
 
-async function listPlanning(env, student) {
-  const table = env.TABLE_PLANNING || "Planning";
-  const colStudent = env.COL_PLANNING_CODE || "Code_Etudiant";
-  const filter = encodeURIComponent(JSON.stringify({ [colStudent]: [student.code] }));
-  const data = await grist(env, "GET", `/tables/${table}/records?filter=${filter}`);
-  const records = (data.records || []).map((r) => ({
-    id: r.id,
-    fields: { ...r.fields, Date: epochToIso(r.fields.Date) },
-  }));
-  return json({ records });
+async function buildPayload(env, student) {
+  const [periodes, services, codes] = await Promise.all([
+    gristFilter(env, T_PERIODES, { Code_anonymat: [student.code] }),
+    gristAll(env, T_SERVICES),
+    gristAll(env, T_CODES),
+  ]);
+
+  const serviceName = new Map(services.map((s) => [s.id, s.fields.Nom || ""]));
+  const periodeIds = periodes.map((p) => p.id);
+
+  const semaines = periodeIds.length
+    ? await gristFilter(env, T_HEBDO, { Periode: periodeIds })
+    : [];
+
+  return {
+    etudiant: {
+      prenom: student.fields.PRENOM || "",
+      nom: student.fields.NOM || "",
+    },
+    periodes: periodes.map((p) => ({
+      id: p.id,
+      Du: epochToIso(p.fields.Du),
+      Au: epochToIso(p.fields.Au),
+      Service: serviceName.get(p.fields.Service) || "",
+      Niveau: p.fields.Niveau || "",
+      En_cours: !!p.fields.En_cours,
+      A_FAIRE: p.fields.A_FAIRE ?? null,
+      FAIT: p.fields.FAIT ?? null,
+      Solde_heures: p.fields.Solde_heures ?? null,
+      Tuteur: p.fields.Tuteur || "",
+    })),
+    semaines: semaines.map((s) => {
+      const out = {
+        id: s.id,
+        Periode: s.fields.Periode,
+        Semaine_debut: epochToIso(s.fields.Semaine_debut),
+        Commentaire: s.fields.Commentaire || "",
+        Total_h_semaine: s.fields.Total_h_semaine ?? null,
+      };
+      for (const d of DAY_COLUMNS) out[d] = s.fields[d] || 0;
+      return out;
+    }),
+    codes: codes.map((c) => ({
+      id: c.id,
+      Code: c.fields.Code || "",
+      Libelle: c.fields.Libelle || "",
+      Heure_debut: c.fields.Heure_debut || "",
+      Heure_fin: c.fields.Heure_fin || "",
+      Duree_heures: c.fields.Duree_heures ?? null,
+    })),
+  };
 }
 
-async function createEntry(request, env, student) {
-  const table = env.TABLE_PLANNING || "Planning";
-  const colStudent = env.COL_PLANNING_CODE || "Code_Etudiant";
-  const fields = sanitizeFields(await request.json().catch(() => ({})));
-  fields[colStudent] = student.code; // toujours rattaché à l'étudiant authentifié
-  const data = await grist(env, "POST", `/tables/${table}/records`, { records: [{ fields }] });
-  return json({ id: data.records[0].id }, 201);
+/* ------------------------------------------------------------------ */
+/* Écriture : semaines de planning                                     */
+/* ------------------------------------------------------------------ */
+
+async function studentPeriodeIds(env, student) {
+  const periodes = await gristFilter(env, T_PERIODES, { Code_anonymat: [student.code] });
+  return periodes.map((p) => p.id);
 }
 
-async function updateEntry(request, env, student, rowId) {
-  await assertOwnership(env, student, rowId);
-  const table = env.TABLE_PLANNING || "Planning";
-  const fields = sanitizeFields(await request.json().catch(() => ({})));
-  await grist(env, "PATCH", `/tables/${table}/records`, { records: [{ id: rowId, fields }] });
-  return json({ ok: true });
-}
-
-async function deleteEntry(env, student, rowId) {
-  await assertOwnership(env, student, rowId);
-  const table = env.TABLE_PLANNING || "Planning";
-  await grist(env, "POST", `/tables/${table}/data/delete`, [rowId]);
-  return json({ ok: true });
-}
-
-/** Vérifie que la ligne appartient bien à l'étudiant connecté. */
-async function assertOwnership(env, student, rowId) {
-  const table = env.TABLE_PLANNING || "Planning";
-  const colStudent = env.COL_PLANNING_CODE || "Code_Etudiant";
-  const filter = encodeURIComponent(JSON.stringify({ id: [rowId] }));
-  const data = await grist(env, "GET", `/tables/${table}/records?filter=${filter}`);
-  const record = data.records && data.records[0];
-  if (!record || record.fields[colStudent] !== student.code) {
-    throw httpError(403, "Ce créneau ne vous appartient pas");
-  }
-}
-
-/** Ne garde que les champs autorisés et convertit la date en epoch pour Grist. */
-function sanitizeFields(body) {
+async function sanitizeWeekFields(env, body) {
   const source = body.fields || body || {};
   const fields = {};
-  for (const key of WRITABLE_FIELDS) {
-    if (source[key] !== undefined) fields[key] = source[key];
+  if (source.Commentaire !== undefined) {
+    fields.Commentaire = String(source.Commentaire).slice(0, 500);
   }
-  if (typeof fields.Date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(fields.Date)) {
-    fields.Date = Date.parse(fields.Date + "T00:00:00Z") / 1000;
-  } else {
-    delete fields.Date;
+  const dayValues = DAY_COLUMNS.filter((d) => source[d] !== undefined);
+  if (dayValues.length) {
+    const codes = await gristAll(env, T_CODES);
+    const validIds = new Set(codes.map((c) => c.id));
+    for (const d of dayValues) {
+      const v = Number(source[d]);
+      if (v === 0) fields[d] = 0; // jour vide
+      else if (validIds.has(v)) fields[d] = v;
+      else throw httpError(400, `Code horaire inconnu pour ${d}`);
+    }
   }
   return fields;
 }
 
-function epochToIso(value) {
-  if (typeof value !== "number") return value || null;
-  return new Date(value * 1000).toISOString().slice(0, 10);
+async function createWeek(request, env, student) {
+  const body = await request.json().catch(() => ({}));
+  const periodeId = Number(body.Periode);
+  const semaineDebut = body.Semaine_debut;
+
+  const allowed = await studentPeriodeIds(env, student);
+  if (!allowed.includes(periodeId)) throw httpError(403, "Cette période de stage ne vous appartient pas");
+  if (typeof semaineDebut !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(semaineDebut)) {
+    throw httpError(400, "Date de début de semaine invalide");
+  }
+  const epoch = Date.parse(semaineDebut + "T00:00:00Z") / 1000;
+
+  // Pas de doublon de semaine pour une même période
+  const existing = await gristFilter(env, T_HEBDO, { Periode: [periodeId], Semaine_debut: [epoch] });
+  if (existing.length) throw httpError(409, "Cette semaine existe déjà");
+
+  const fields = await sanitizeWeekFields(env, body);
+  fields.Periode = periodeId;
+  fields.Semaine_debut = epoch;
+
+  const data = await grist(env, "POST", `/tables/${T_HEBDO}/records`, { records: [{ fields }] });
+  return json({ id: data.records[0].id }, 201);
+}
+
+async function updateWeek(request, env, student, rowId) {
+  const rows = await gristFilter(env, T_HEBDO, { id: [rowId] });
+  if (!rows.length) throw httpError(404, "Semaine introuvable");
+
+  const allowed = await studentPeriodeIds(env, student);
+  if (!allowed.includes(rows[0].fields.Periode)) {
+    throw httpError(403, "Cette semaine ne vous appartient pas");
+  }
+
+  const fields = await sanitizeWeekFields(env, await request.json().catch(() => ({})));
+  if (!Object.keys(fields).length) throw httpError(400, "Aucun champ à modifier");
+
+  await grist(env, "PATCH", `/tables/${T_HEBDO}/records`, { records: [{ id: rowId, fields }] });
+  return json({ ok: true });
 }
 
 /* ------------------------------------------------------------------ */
@@ -189,8 +238,7 @@ function epochToIso(value) {
 
 async function grist(env, method, path, body) {
   const base = (env.GRIST_BASE_URL || "https://grist.numerique.gouv.fr/api").replace(/\/$/, "");
-  const url = `${base}/docs/${env.GRIST_DOC_ID}${path}`;
-  const res = await fetch(url, {
+  const res = await fetch(`${base}/docs/${env.GRIST_DOC_ID}${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${env.GRIST_API_KEY}`,
@@ -199,12 +247,30 @@ async function grist(env, method, path, body) {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!res.ok) {
-    const text = await res.text();
-    console.error(`Grist ${method} ${path} -> ${res.status}: ${text}`);
+    console.error(`Grist ${method} ${path} -> ${res.status}: ${await res.text()}`);
     throw httpError(502, "Erreur de communication avec Grist");
   }
-  if (res.status === 204) return {};
   return res.json().catch(() => ({}));
+}
+
+async function gristFilter(env, table, filter) {
+  const q = encodeURIComponent(JSON.stringify(filter));
+  const data = await grist(env, "GET", `/tables/${table}/records?filter=${q}`);
+  return data.records || [];
+}
+
+async function gristAll(env, table) {
+  const data = await grist(env, "GET", `/tables/${table}/records`);
+  return data.records || [];
+}
+
+/* ------------------------------------------------------------------ */
+/* Utilitaires                                                         */
+/* ------------------------------------------------------------------ */
+
+function epochToIso(value) {
+  if (typeof value !== "number") return value || null;
+  return new Date(value * 1000).toISOString().slice(0, 10);
 }
 
 function json(data, status = 200) {

@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh auth *)",
+      "Bash(git commit -m 'Espace étudiant : site GitHub Pages + proxy Cloudflare Worker vers Grist *)",
+      "Bash(brew --version)",
+      "Bash(brew install *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://grist.numerique.gouv.fr/api/docs/qdm9zxQGmCPH/tables\")",
+      "Bash(curl -s \"https://grist.numerique.gouv.fr/api/docs/qdm9zxQGmCPH/tables\")",
+      "Bash(git add *)",
+      "Bash(git commit -m 'Configure l'\\\\''identifiant du document Grist GESTION-ETUDIANT *)",
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "mcp__claude-in-chrome__navigate",
+      "mcp__claude-in-chrome__computer",
+      "mcp__claude-in-chrome__javascript_tool",
+      "Bash(git commit -m 'Adapte l'\\\\''app au modèle réel : code anonymat + planning hebdo par codes horaires *)"
+    ]
+  }
+}

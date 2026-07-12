@@ -1,13 +1,12 @@
-/* Espace étudiant — logique de l'application */
+/* Espace étudiant — planning de stage hebdomadaire */
 
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
+const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
 const state = {
   code: sessionStorage.getItem("code") || null,
-  name: sessionStorage.getItem("name") || "",
-  entries: [],           // { id, fields: { Date, Heure_Debut, Heure_Fin, Activite, Lieu, Notes } }
-  weekStart: mondayOf(new Date()),
+  data: null, // { etudiant, periodes, semaines, codes }
 };
 
 /* ------------------------------------------------------------------ */
@@ -40,12 +39,10 @@ $("login-form").addEventListener("submit", async (e) => {
   btn.disabled = true;
   btn.textContent = "Connexion…";
   try {
-    state.code = $("login-code").value.trim();
-    const info = await api("POST", "/api/login", { code: state.code });
-    state.name = [info.prenom, info.nom].filter(Boolean).join(" ");
+    state.code = $("login-code").value.trim().toUpperCase();
+    state.data = await api("POST", "/api/login", { code: state.code });
     sessionStorage.setItem("code", state.code);
-    sessionStorage.setItem("name", state.name);
-    await enterApp();
+    enterApp();
   } catch (err) {
     state.code = null;
     errEl.textContent = err.message;
@@ -61,206 +58,192 @@ $("logout-btn").addEventListener("click", () => {
   location.reload();
 });
 
-async function enterApp() {
+function enterApp() {
   $("login-screen").hidden = true;
   $("app-screen").hidden = false;
-  $("student-name").textContent = state.name;
-  await refresh();
+  const e = state.data.etudiant;
+  $("student-name").textContent = `${e.prenom} ${e.nom}`.trim();
+  render();
+}
+
+async function refresh() {
+  state.data = await api("GET", "/api/data");
+  render();
 }
 
 /* ------------------------------------------------------------------ */
-/* Planning                                                            */
+/* Rendu                                                               */
 /* ------------------------------------------------------------------ */
 
-async function refresh() {
-  const data = await api("GET", "/api/planning");
-  state.entries = data.records || [];
-  render();
+function currentPeriode() {
+  const p = state.data.periodes;
+  return p.find((x) => x.En_cours) || p[p.length - 1] || null;
 }
 
 function render() {
-  $("week-label").textContent = weekLabel(state.weekStart);
-  const container = $("planning");
+  renderPeriode();
+  renderWeeks();
+}
+
+function renderPeriode() {
+  const container = $("periode-info");
   container.innerHTML = "";
-
-  const todayIso = isoDate(new Date());
-  let hasEntries = false;
-
-  for (let i = 0; i < 7; i++) {
-    const day = addDays(state.weekStart, i);
-    const dayIso = isoDate(day);
-    const entries = state.entries
-      .filter((e) => e.fields.Date === dayIso)
-      .sort((a, b) => (a.fields.Heure_Debut || "").localeCompare(b.fields.Heure_Debut || ""));
-
-    if (entries.length === 0) continue;
-    hasEntries = true;
-
-    const section = document.createElement("section");
-    section.className = "day" + (dayIso === todayIso ? " today" : "");
-    const h3 = document.createElement("h3");
-    h3.textContent = day.toLocaleDateString("fr-FR", {
-      weekday: "long", day: "numeric", month: "long",
-    }) + (dayIso === todayIso ? " — aujourd'hui" : "");
-    section.appendChild(h3);
-
-    for (const entry of entries) section.appendChild(renderEntry(entry));
-    container.appendChild(section);
-  }
-
-  if (!hasEntries) {
-    const empty = document.createElement("p");
-    empty.className = "empty-week";
-    empty.textContent = "Aucun créneau cette semaine.";
-    container.appendChild(empty);
-  }
-}
-
-function renderEntry(entry) {
-  const f = entry.fields;
-  const div = document.createElement("div");
-  div.className = "entry";
-
-  const time = document.createElement("span");
-  time.className = "entry-time";
-  time.textContent = `${f.Heure_Debut || "?"} – ${f.Heure_Fin || "?"}`;
-
-  const main = document.createElement("div");
-  main.className = "entry-main";
-  const title = document.createElement("div");
-  title.className = "entry-title";
-  title.textContent = f.Activite || "(sans titre)";
-  main.appendChild(title);
-  const metaText = [f.Lieu, f.Notes].filter(Boolean).join(" · ");
-  if (metaText) {
-    const meta = document.createElement("div");
-    meta.className = "entry-meta";
-    meta.textContent = metaText;
-    main.appendChild(meta);
-  }
-
-  const actions = document.createElement("div");
-  actions.className = "entry-actions";
-  const editBtn = document.createElement("button");
-  editBtn.textContent = "✏️";
-  editBtn.title = "Modifier";
-  editBtn.addEventListener("click", () => openDialog(entry));
-  const delBtn = document.createElement("button");
-  delBtn.textContent = "🗑️";
-  delBtn.title = "Supprimer";
-  delBtn.addEventListener("click", () => removeEntry(entry));
-  actions.append(editBtn, delBtn);
-
-  div.append(time, main, actions);
-  return div;
-}
-
-async function removeEntry(entry) {
-  const f = entry.fields;
-  if (!confirm(`Supprimer « ${f.Activite || "ce créneau"} » du ${frDate(f.Date)} ?`)) return;
-  try {
-    await api("DELETE", `/api/planning/${entry.id}`);
-    await refresh();
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/* Dialogue ajout / modification                                       */
-/* ------------------------------------------------------------------ */
-
-const dialog = $("entry-dialog");
-
-$("add-btn").addEventListener("click", () => openDialog(null));
-$("cancel-btn").addEventListener("click", () => dialog.close());
-
-function openDialog(entry) {
-  $("dialog-title").textContent = entry ? "Modifier le créneau" : "Nouveau créneau";
-  $("entry-id").value = entry ? entry.id : "";
-  $("entry-date").value = entry ? entry.fields.Date : isoDate(new Date());
-  $("entry-start").value = entry ? entry.fields.Heure_Debut || "" : "";
-  $("entry-end").value = entry ? entry.fields.Heure_Fin || "" : "";
-  $("entry-activity").value = entry ? entry.fields.Activite || "" : "";
-  $("entry-place").value = entry ? entry.fields.Lieu || "" : "";
-  $("entry-notes").value = entry ? entry.fields.Notes || "" : "";
-  $("entry-error").hidden = true;
-  dialog.showModal();
-}
-
-$("entry-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const errEl = $("entry-error");
-  errEl.hidden = true;
-
-  const fields = {
-    Date: $("entry-date").value,
-    Heure_Debut: $("entry-start").value,
-    Heure_Fin: $("entry-end").value,
-    Activite: $("entry-activity").value.trim(),
-    Lieu: $("entry-place").value.trim(),
-    Notes: $("entry-notes").value.trim(),
-  };
-
-  if (fields.Heure_Fin && fields.Heure_Debut && fields.Heure_Fin <= fields.Heure_Debut) {
-    errEl.textContent = "L'heure de fin doit être après l'heure de début.";
-    errEl.hidden = false;
+  const p = currentPeriode();
+  if (!p) {
+    container.appendChild(el("p", "empty", "Aucune période de stage enregistrée. Contactez votre encadrant."));
+    $("add-week-btn").hidden = true;
     return;
   }
 
-  const saveBtn = $("save-btn");
-  saveBtn.disabled = true;
-  try {
-    const id = $("entry-id").value;
-    if (id) {
-      await api("PATCH", `/api/planning/${id}`, { fields });
-    } else {
-      await api("POST", "/api/planning", { fields });
+  const card = el("div", "periode-card");
+  card.appendChild(el("div", "periode-service", p.Service || "Stage"));
+  card.appendChild(el("div", "periode-dates",
+    `Du ${frDate(p.Du)} au ${frDate(p.Au)}` +
+    (p.Niveau ? ` · ${p.Niveau}` : "") +
+    (p.Tuteur ? ` · Tuteur : ${p.Tuteur}` : "")));
+
+  if (p.A_FAIRE != null) {
+    const fait = p.FAIT ?? 0;
+    const stats = el("div", "periode-stats");
+    stats.appendChild(badge(`${fait} h effectuées`, "ok"));
+    stats.appendChild(badge(`${p.A_FAIRE} h à réaliser`, ""));
+    if (p.Solde_heures != null) {
+      stats.appendChild(badge(`Solde : ${p.Solde_heures > 0 ? "+" : ""}${p.Solde_heures} h`,
+        p.Solde_heures >= 0 ? "ok" : "warn"));
     }
-    dialog.close();
-    // Affiche la semaine du créneau créé/modifié
-    state.weekStart = mondayOf(new Date(fields.Date + "T00:00:00"));
+    card.appendChild(stats);
+  }
+  container.appendChild(card);
+  $("add-week-btn").hidden = false;
+}
+
+function renderWeeks() {
+  const container = $("weeks");
+  container.innerHTML = "";
+  const p = currentPeriode();
+  if (!p) return;
+
+  const weeks = state.data.semaines
+    .filter((s) => s.Periode === p.id)
+    .sort((a, b) => (a.Semaine_debut || "").localeCompare(b.Semaine_debut || ""));
+
+  if (!weeks.length) {
+    container.appendChild(el("p", "empty", "Aucune semaine de planning pour l'instant. Ajoutez-en une !"));
+    return;
+  }
+
+  const todayIso = isoDate(new Date());
+  for (const week of weeks) container.appendChild(renderWeek(week, todayIso));
+}
+
+function renderWeek(week, todayIso) {
+  const card = el("section", "week-card");
+
+  const header = el("div", "week-header");
+  header.appendChild(el("h2", "", `Semaine du ${frDate(week.Semaine_debut)}`));
+  if (week.Total_h_semaine != null) {
+    header.appendChild(el("span", "week-total", `${week.Total_h_semaine} h`));
+  }
+  card.appendChild(header);
+
+  const grid = el("div", "week-grid");
+  DAYS.forEach((day, i) => {
+    const dayIso = addDaysIso(week.Semaine_debut, i);
+    const cell = el("div", "day-cell" + (dayIso === todayIso ? " today" : ""));
+    const lbl = el("label", "day-label", `${day.slice(0, 3)}. ${dayNum(dayIso)}`);
+    const select = document.createElement("select");
+    select.dataset.day = day;
+    select.appendChild(new Option("—", "0"));
+    for (const c of state.data.codes) {
+      const hours = c.Heure_debut && c.Heure_fin ? ` (${c.Heure_debut}–${c.Heure_fin})` : "";
+      const opt = new Option(`${c.Code} · ${c.Libelle}${hours}`, String(c.id));
+      if (week[day] === c.id) opt.selected = true;
+      select.appendChild(opt);
+    }
+    select.addEventListener("change", () => card.classList.add("dirty"));
+    lbl.appendChild(select);
+    cell.appendChild(lbl);
+    grid.appendChild(cell);
+  });
+  card.appendChild(grid);
+
+  const footer = el("div", "week-footer");
+  const comment = document.createElement("input");
+  comment.type = "text";
+  comment.placeholder = "Commentaire (facultatif)";
+  comment.maxLength = 500;
+  comment.value = week.Commentaire || "";
+  comment.addEventListener("input", () => card.classList.add("dirty"));
+  const saveBtn = el("button", "btn btn-primary", "Enregistrer");
+  saveBtn.addEventListener("click", () => saveWeek(week, card, comment, saveBtn));
+  const status = el("span", "save-status", "");
+  footer.append(comment, saveBtn, status);
+  card.appendChild(footer);
+
+  return card;
+}
+
+async function saveWeek(week, card, commentInput, saveBtn) {
+  const status = card.querySelector(".save-status");
+  const fields = { Commentaire: commentInput.value.trim() };
+  for (const select of card.querySelectorAll("select")) {
+    fields[select.dataset.day] = Number(select.value);
+  }
+  saveBtn.disabled = true;
+  status.textContent = "Enregistrement…";
+  status.className = "save-status";
+  try {
+    await api("PATCH", `/api/semaines/${week.id}`, fields);
     await refresh();
   } catch (err) {
-    errEl.textContent = err.message;
-    errEl.hidden = false;
-  } finally {
+    status.textContent = err.message;
+    status.className = "save-status error";
     saveBtn.disabled = false;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Ajout de semaine                                                    */
+/* ------------------------------------------------------------------ */
+
+$("add-week-btn").addEventListener("click", async () => {
+  const p = currentPeriode();
+  if (!p) return;
+
+  const weeks = state.data.semaines.filter((s) => s.Periode === p.id);
+  let nextMonday;
+  if (weeks.length) {
+    const last = weeks.map((w) => w.Semaine_debut).sort().pop();
+    nextMonday = addDaysIso(last, 7);
+  } else {
+    nextMonday = mondayIso(p.Du || isoDate(new Date()));
+  }
+
+  const btn = $("add-week-btn");
+  btn.disabled = true;
+  try {
+    await api("POST", "/api/semaines", { Periode: p.id, Semaine_debut: nextMonday });
+    await refresh();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.disabled = false;
   }
 });
 
 /* ------------------------------------------------------------------ */
-/* Navigation semaine                                                  */
+/* Utilitaires                                                         */
 /* ------------------------------------------------------------------ */
 
-$("prev-week").addEventListener("click", () => shiftWeek(-7));
-$("next-week").addEventListener("click", () => shiftWeek(7));
-$("today-btn").addEventListener("click", () => {
-  state.weekStart = mondayOf(new Date());
-  render();
-});
-
-function shiftWeek(days) {
-  state.weekStart = addDays(state.weekStart, days);
-  render();
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
 }
 
-/* ------------------------------------------------------------------ */
-/* Utilitaires dates                                                   */
-/* ------------------------------------------------------------------ */
-
-function mondayOf(date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const shift = (d.getDay() + 6) % 7; // lundi = 0
-  d.setDate(d.getDate() - shift);
-  return d;
-}
-
-function addDays(date, n) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + n);
-  return d;
+function badge(text, kind) {
+  return el("span", "badge " + kind, text);
 }
 
 function isoDate(date) {
@@ -270,17 +253,27 @@ function isoDate(date) {
   return `${y}-${m}-${d}`;
 }
 
+function addDaysIso(iso, n) {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  return isoDate(d);
+}
+
+function mondayIso(iso) {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return isoDate(d);
+}
+
+function dayNum(iso) {
+  return new Date(iso + "T00:00:00").toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+}
+
 function frDate(iso) {
   if (!iso) return "?";
   return new Date(iso + "T00:00:00").toLocaleDateString("fr-FR", {
-    day: "numeric", month: "long",
+    day: "numeric", month: "long", year: "numeric",
   });
-}
-
-function weekLabel(monday) {
-  const sunday = addDays(monday, 6);
-  const opts = { day: "numeric", month: "short" };
-  return `Semaine du ${monday.toLocaleDateString("fr-FR", opts)} au ${sunday.toLocaleDateString("fr-FR", opts)}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -288,8 +281,7 @@ function weekLabel(monday) {
 /* ------------------------------------------------------------------ */
 
 if (state.code) {
-  enterApp().catch(() => {
-    sessionStorage.clear();
-    state.code = null;
-  });
+  api("GET", "/api/data")
+    .then((data) => { state.data = data; enterApp(); })
+    .catch(() => { sessionStorage.clear(); state.code = null; });
 }

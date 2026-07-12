@@ -1,61 +1,52 @@
-# Espace étudiant — Planning
+# Espace étudiant — Planning de stage
 
-Un espace web permettant aux étudiants de **consulter et modifier leur planning**,
-dont les données sont stockées dans un document **Grist** (instance DINUM :
-[grist.numerique.gouv.fr](https://grist.numerique.gouv.fr)).
+Un espace web permettant aux étudiants du service de **consulter et modifier
+leur planning de stage hebdomadaire**, dont les données sont dans le document
+Grist **GESTION-ETUDIANT** (instance DINUM, CHR Metz-Thionville).
 
-Les étudiants n'ont **pas besoin de compte Grist** : ils se connectent avec un
-**code personnel** que tu leur remets.
+Les étudiants n'ont **pas besoin de compte Grist** : ils se connectent avec
+leur **code anonymat** (1ère lettre du prénom + date de naissance JJMMAA +
+1ère lettre du nom — ex. Jean DUPONT né le 15/03/1998 → `J150398D`).
 
 ## Architecture
 
 ```
 Étudiant ──▶ Site web (GitHub Pages, dossier docs/)
-                 │  code personnel
+                 │  code anonymat
                  ▼
              Proxy API (Cloudflare Worker, dossier worker/)
                  │  clé API Grist (secrète, jamais côté navigateur)
                  ▼
-             Document Grist (DINUM)
+             Document Grist GESTION-ETUDIANT (DINUM)
 ```
 
-Le proxy garantit que chaque étudiant ne voit et ne modifie **que ses propres
-créneaux**.
+Le proxy garantit que chaque étudiant ne voit et ne modifie **que son propre
+planning** (semaines liées à ses périodes de stage).
 
-## 1. Préparer le document Grist
+## Tables Grist utilisées
 
-Dans ton document Grist, crée (ou adapte) deux tables :
+Le proxy s'appuie sur la structure existante du document :
 
-### Table `Etudiants`
+| Table | Usage |
+|---|---|
+| `LISTE_DES_ETUDIANTS` | Authentification via la colonne `Anonymat` ; nom/prénom |
+| `PERIODES_DE_STAGE` | Périodes de l'étudiant (`Code_anonymat`, `Du`, `Au`, `Service`, `En_cours`, heures) |
+| `PLANNING_HEBDO` | Une ligne par semaine ; `Lundi`…`Dimanche` → codes horaires ; l'étudiant peut créer et modifier ses semaines |
+| `CODES_HORAIRES` | Référentiel des codes (M, S, N, R, ABS…) — lecture seule |
+| `SERVICES` | Nom du service affiché — lecture seule |
 
-| Colonne  | Type  | Rôle                                        |
-|----------|-------|---------------------------------------------|
-| `Nom`    | Texte | Nom de l'étudiant                            |
-| `Prenom` | Texte | Prénom                                       |
-| `Code`   | Texte | **Code personnel secret** (min. 8 caractères, unique) |
+Ce que le proxy autorise :
+- lire son profil, ses périodes, ses semaines et le référentiel des codes ;
+- **modifier** les jours (`Lundi`…`Dimanche`) et le `Commentaire` de ses semaines ;
+- **créer** une nouvelle semaine sur une de ses périodes (doublon refusé).
 
-> Astuce : génère les codes avec une formule Grist ou un générateur de mots de
-> passe. Ne réutilise jamais le même code pour deux étudiants.
+Rien d'autre : pas de suppression, pas d'accès aux autres tables (évaluations,
+utilisateurs, etc.), pas d'accès aux données des autres étudiants.
 
-### Table `Planning`
-
-| Colonne         | Type  | Rôle                                   |
-|-----------------|-------|-----------------------------------------|
-| `Code_Etudiant` | Texte | Code de l'étudiant propriétaire du créneau |
-| `Date`          | Date  | Jour du créneau                         |
-| `Heure_Debut`   | Texte | ex. `09:00`                             |
-| `Heure_Fin`     | Texte | ex. `12:00`                             |
-| `Activite`      | Texte | Intitulé (cours, stage…)                |
-| `Lieu`          | Texte | Salle, site…                            |
-| `Notes`         | Texte | Commentaire libre                       |
-
-Si tes tables ou colonnes portent d'autres noms, adapte les variables dans
-`worker/wrangler.toml`.
-
-### Clé API Grist
+## 1. Clé API Grist
 
 1. Sur Grist : avatar en haut à droite → **Paramètres du profil** → **Clé API** → créer/copier la clé.
-2. Note aussi l'**identifiant du document** (dans l'URL du document, ou menu du document → *Paramètres*).
+2. Le compte associé doit avoir accès en écriture au document GESTION-ETUDIANT.
 
 ## 2. Déployer le proxy (Cloudflare Workers)
 
@@ -64,10 +55,9 @@ et Node.js installé.
 
 ```bash
 cd worker
-# Renseigne GRIST_DOC_ID (et les noms de tables si besoin) dans wrangler.toml
 npm install
-npx wrangler login          # ouvre le navigateur pour autoriser
-npx wrangler secret put GRIST_API_KEY    # colle ta clé API Grist
+npx wrangler login                        # ouvre le navigateur pour autoriser
+npx wrangler secret put GRIST_API_KEY     # colle ta clé API Grist
 npx wrangler deploy
 ```
 
@@ -84,26 +74,20 @@ npx wrangler deploy
    par l'origine de ton site (ex. `"https://toncompte.github.io"`) et
    redéploie (`npx wrangler deploy`).
 
-## 4. Distribuer les codes
-
-Remets à chaque étudiant son code personnel (colonne `Code`). Il se connecte
-sur le site, voit son planning de la semaine, et peut ajouter, modifier ou
-supprimer ses créneaux. Toutes les modifications apparaissent en direct dans
-ton document Grist.
-
 ## Sécurité — points d'attention
 
 - La clé API Grist n'est stockée **que** dans le secret Cloudflare, jamais dans
   le code ni sur GitHub.
-- Le code personnel fait office de mot de passe : privilégie des codes longs
-  (8+ caractères aléatoires) et change-les en cas de doute.
-- Le proxy n'autorise que la lecture/écriture des créneaux du code authentifié,
-  et uniquement les champs du planning (pas d'accès au reste du document).
+- ⚠️ Le code anonymat est **devinable** par quiconque connaît le nom et la date
+  de naissance d'un étudiant (format documenté sur l'écran de connexion).
+  C'est un choix assumé de simplicité ; les données exposées se limitent au
+  planning de stage. Pour durcir : ajouter un suffixe aléatoire aux codes.
+- Le proxy ne permet ni suppression ni accès aux tables sensibles du document.
 
 ## Développement local
 
 ```bash
 cd worker && npx wrangler dev        # proxy sur http://localhost:8787
 # puis mettre API_URL: "http://localhost:8787" dans docs/config.js
-# et ouvrir docs/index.html dans un navigateur
+# et servir docs/ (ex. python3 -m http.server 4173 --directory docs)
 ```
