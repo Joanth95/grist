@@ -6,9 +6,9 @@ compatibility_date = "2026-01-01"
 # URL de l'API de l'instance Grist de la DINUM
 GRIST_BASE_URL = "https://grist.numerique.gouv.fr/api"
 
-# Identifiant de ton document Grist (visible dans l'URL du document,
-# ou via Paramètres > API du document)
-GRIST_DOC_ID = "A_REMPLACER"
+# Identifiant du document Grist GESTION-ETUDIANT
+# (https://grist.numerique.gouv.fr/o/chr-metz-thionville/qdm9zxQGmCPH/GESTION-ETUDIANT)
+GRIST_DOC_ID = "qdm9zxQGmCPH"
 
 # Noms des tables et colonnes dans ton document Grist
 TABLE_ETUDIANTS = "Etudiants"
