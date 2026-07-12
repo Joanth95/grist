@@ -1,7 +1,8 @@
 # Espace étudiant — Planning de stage
 
-Un espace web permettant aux étudiants du service de **consulter et modifier
-leur planning de stage hebdomadaire**, dont les données sont dans le document
+Un espace web permettant aux étudiants du service de **s'enregistrer à leur
+entrée en stage, consulter leur planning et déclarer leurs heures**
+(rattrapages, retards, sorties de stage). Les données sont dans le document
 Grist **GESTION-ETUDIANT** (instance DINUM, CHR Metz-Thionville).
 
 Les étudiants n'ont **pas besoin de compte Grist** : ils se connectent avec
@@ -20,8 +21,13 @@ leur **code anonymat** (1ère lettre du prénom + date de naissance JJMMAA +
              Document Grist GESTION-ETUDIANT (DINUM)
 ```
 
-Le proxy garantit que chaque étudiant ne voit et ne modifie **que son propre
-planning** (semaines liées à ses périodes de stage).
+Le proxy garantit que chaque étudiant ne voit **que ses propres données** et
+ne modifie que ses propres déclarations.
+
+Pages du site :
+- `index.html` — connexion + espace étudiant (planning en lecture seule,
+  déclarations d'heures) ;
+- `entree-stage.html` — auto-inscription à l'arrivée en stage.
 
 ## Tables Grist utilisées
 
@@ -29,19 +35,31 @@ Le proxy s'appuie sur la structure existante du document :
 
 | Table | Usage |
 |---|---|
-| `LISTE_DES_ETUDIANTS` | Authentification via la colonne `Anonymat` ; nom/prénom |
-| `PERIODES_DE_STAGE` | Périodes de l'étudiant (`Code_anonymat`, `Du`, `Au`, `Service`, `En_cours`, heures) |
-| `PLANNING_HEBDO` | Une ligne par semaine ; `Lundi`…`Dimanche` → codes horaires ; l'étudiant peut créer et modifier ses semaines |
+| `LISTE_DES_ETUDIANTS` | Authentification via `Anonymat` ; **création** lors de l'entrée en stage |
+| `PERIODES_DE_STAGE` | Périodes de l'étudiant ; **création** lors de l'entrée en stage |
+| `PLANNING_HEBDO` | Planning établi par le service — **lecture seule** pour l'étudiant |
+| `Sortie_de_stage` | Déclarations de l'étudiant : rattrapage (+h), retard (−h)… **création/suppression** de ses propres lignes |
 | `CODES_HORAIRES` | Référentiel des codes (M, S, N, R, ABS…) — lecture seule |
-| `SERVICES` | Nom du service affiché — lecture seule |
+| `SERVICES` | Liste des services accueillant des étudiants — lecture seule |
 
 Ce que le proxy autorise :
-- lire son profil, ses périodes, ses semaines et le référentiel des codes ;
-- **modifier** les jours (`Lundi`…`Dimanche`) et le `Commentaire` de ses semaines ;
-- **créer** une nouvelle semaine sur une de ses périodes (doublon refusé).
+- **s'inscrire** (« entrée en stage », page `entree-stage.html`) : crée la fiche
+  étudiant et sa période de stage ; le code anonymat est calculé et affiché ;
+  si l'étudiant existe déjà, seule la nouvelle période est ajoutée ;
+- lire son profil, ses périodes, son planning (établi dans Grist, **non
+  modifiable** depuis le site) et le référentiel des codes ;
+- **déclarer** des heures (`Sortie_de_stage`) : motif Rattrapage (heures
+  ajoutées), Retard (heures déduites par la formule `Ajustement_h`), ou motif
+  libre avec case « compte pour le stage » ;
+- **supprimer** uniquement ses propres déclarations.
 
-Rien d'autre : pas de suppression, pas d'accès aux autres tables (évaluations,
-utilisateurs, etc.), pas d'accès aux données des autres étudiants.
+Rien d'autre : pas de modification du planning, pas d'accès aux autres tables
+(évaluations, utilisateurs…), pas d'accès aux données des autres étudiants.
+
+> L'endpoint d'inscription est public (nécessaire pour les nouveaux arrivants).
+> Il est protégé par un champ-piège anti-robots et une validation stricte ;
+> surveille ponctuellement la table `LISTE_DES_ETUDIANTS` pour repérer
+> d'éventuelles inscriptions fantaisistes.
 
 ## 1. Clé API Grist
 

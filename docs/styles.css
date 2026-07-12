@@ -164,8 +164,6 @@ input:focus, textarea:focus, button:focus-visible {
   padding: 1rem 1.25rem;
 }
 
-.week-card.dirty { outline: 2px solid var(--bleu); }
-
 .week-header {
   display: flex;
   justify-content: space-between;
@@ -173,7 +171,7 @@ input:focus, textarea:focus, button:focus-visible {
   margin-bottom: 0.75rem;
 }
 
-.week-header h2 { margin: 0; font-size: 1rem; }
+.week-header h3 { margin: 0; font-size: 1rem; }
 .week-total { font-weight: 700; color: var(--bleu); }
 
 .week-grid {
@@ -191,31 +189,147 @@ input:focus, textarea:focus, button:focus-visible {
   font-size: 0.8rem;
 }
 
-.day-cell select {
-  font: inherit;
-  font-size: 0.8rem;
+.day-cell.readonly {
+  background: var(--gris-fond);
+  border-radius: 6px;
+  padding: 0.4rem;
+  text-align: center;
+}
+
+.day-chip {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--bleu);
+  margin-top: 0.2rem;
+}
+
+.day-hours { font-size: 0.7rem; color: var(--texte-doux); }
+
+.week-comment {
+  margin: 0.6rem 0 0;
+  font-size: 0.85rem;
+  color: var(--texte-doux);
+  font-style: italic;
+}
+
+/* ---------- Sections ---------- */
+
+.content section h2 { font-size: 1.05rem; margin: 0.5rem 0; }
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.section-note { font-size: 0.85rem; color: var(--texte-doux); margin: 0.25rem 0 0.75rem; }
+
+/* ---------- Déclarations ---------- */
+
+#sorties { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.sortie-row {
+  background: var(--blanc);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  padding: 0.6rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.sortie-hours { min-width: 4rem; text-align: center; }
+.sortie-main { flex: 1; }
+.sortie-title { font-weight: 600; }
+.sortie-meta { font-size: 0.85rem; color: var(--texte-doux); }
+
+.sortie-delete {
+  background: none; border: none; cursor: pointer;
+  font-size: 1rem; padding: 0.3rem; border-radius: 4px;
+}
+.sortie-delete:hover { background: var(--gris-fond); }
+
+/* ---------- Dialogue ---------- */
+
+dialog {
+  border: none;
+  border-radius: var(--radius);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  padding: 1.5rem;
   width: 100%;
-  padding: 0.4rem 0.2rem;
+  max-width: 420px;
+}
+
+dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
+
+dialog form { display: flex; flex-direction: column; gap: 0.6rem; }
+
+dialog h2 { margin: 0 0 0.5rem; }
+
+select {
+  font: inherit;
+  padding: 0.6rem 0.75rem;
   border: 1px solid var(--gris-bordure);
   border-radius: 4px;
+  width: 100%;
   background: var(--blanc);
 }
 
-.week-footer {
+.checkbox-label {
   display: flex;
-  gap: 0.5rem;
   align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+  margin-top: 0.5rem;
+}
+.checkbox-label input { width: auto; }
+
+.row { display: flex; gap: 0.75rem; }
+.row > div { flex: 1; display: flex; flex-direction: column; gap: 0.35rem; }
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
   margin-top: 0.75rem;
 }
 
-.week-footer input { flex: 1; }
+/* ---------- Entrée en stage ---------- */
 
-.save-status { font-size: 0.85rem; color: var(--texte-doux); }
-.save-status.error { color: var(--rouge); }
+.login-card.wide { max-width: 560px; }
 
-#add-week-btn { align-self: flex-start; }
+.login-card.wide form h2 {
+  font-size: 1rem;
+  margin: 1rem 0 0.25rem;
+  color: var(--bleu);
+}
+
+.hp {
+  position: absolute !important;
+  left: -9999px !important;
+  width: 1px; height: 1px;
+  opacity: 0;
+}
+
+.code-display {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  text-align: center;
+  color: var(--bleu);
+  background: var(--gris-fond);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  margin: 1rem 0;
+}
+
+.btn-block {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+}
 
 @media (max-width: 720px) {
-  .week-grid { grid-template-columns: repeat(2, 1fr); }
-  .week-footer { flex-wrap: wrap; }
+  .week-grid { grid-template-columns: repeat(4, 1fr); }
 }

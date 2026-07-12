@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Entrée en stage — Espace étudiant</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <section class="screen" id="form-screen">
+    <div class="login-card wide">
+      <h1>Entrée en stage</h1>
+      <p class="subtitle">Enregistrez votre arrivée : votre dossier est créé directement dans le service.</p>
+
+      <form id="inscription-form">
+        <h2>Vous</h2>
+
+        <div class="row">
+          <div>
+            <label for="f-civilite">Civilité</label>
+            <select id="f-civilite" required></select>
+          </div>
+          <div>
+            <label for="f-formation">Formation</label>
+            <select id="f-formation" required></select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="f-nom">Nom</label>
+            <input type="text" id="f-nom" required maxlength="80" autocomplete="family-name">
+          </div>
+          <div>
+            <label for="f-prenom">Prénom</label>
+            <input type="text" id="f-prenom" required maxlength="80" autocomplete="given-name">
+          </div>
+        </div>
+
+        <label for="f-ddn">Date de naissance</label>
+        <input type="date" id="f-ddn" required>
+
+        <label for="f-centre">Centre de formation</label>
+        <input type="text" id="f-centre" maxlength="120" placeholder="Ex. : IFSI Croix-Rouge de Metz">
+
+        <div class="row">
+          <div>
+            <label for="f-email">Adresse mail</label>
+            <input type="email" id="f-email" maxlength="120" autocomplete="email">
+          </div>
+          <div>
+            <label for="f-tel">Téléphone</label>
+            <input type="tel" id="f-tel" maxlength="20" autocomplete="tel">
+          </div>
+        </div>
+
+        <!-- Champ-piège invisible pour les robots -->
+        <input type="text" id="f-website" name="website" tabindex="-1" autocomplete="off" class="hp">
+
+        <h2>Votre stage</h2>
+
+        <div class="row">
+          <div>
+            <label for="f-service">Service</label>
+            <select id="f-service" required></select>
+          </div>
+          <div>
+            <label for="f-niveau">Niveau</label>
+            <select id="f-niveau" required></select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="f-du">Début du stage</label>
+            <input type="date" id="f-du" required>
+          </div>
+          <div>
+            <label for="f-au">Fin du stage</label>
+            <input type="date" id="f-au" required>
+          </div>
+        </div>
+
+        <label for="f-tuteur">Tuteur (si connu)</label>
+        <input type="text" id="f-tuteur" maxlength="80">
+
+        <p id="form-error" class="error" hidden></p>
+
+        <button type="submit" class="btn btn-primary" id="submit-btn">Enregistrer mon entrée en stage</button>
+      </form>
+
+      <p class="hint"><a href="index.html">← Retour à la connexion</a></p>
+    </div>
+  </section>
+
+  <!-- Confirmation -->
+  <section class="screen" id="success-screen" hidden>
+    <div class="login-card">
+      <h1>Bienvenue ! 🎉</h1>
+      <p id="success-message">Votre entrée en stage est enregistrée.</p>
+      <p class="code-display" id="code-display"></p>
+      <p class="hint">
+        <strong>Notez bien ce code</strong> : c'est votre identifiant de connexion
+        à l'espace étudiant. Il correspond à : 1ère lettre du prénom + date de
+        naissance (JJMMAA) + 1ère lettre du nom.
+      </p>
+      <a href="index.html" class="btn btn-primary btn-block">Accéder à mon espace</a>
+    </div>
+  </section>
+
+  <script src="config.js"></script>
+  <script src="entree-stage.js"></script>
+</body>
+</html>

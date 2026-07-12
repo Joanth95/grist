@@ -1,12 +1,13 @@
-/* Espace étudiant — planning de stage hebdomadaire */
+/* Espace étudiant — consultation du planning + déclarations d'heures */
 
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+const MOTIF_AUTRE = "Autre motif…";
 
 const state = {
   code: sessionStorage.getItem("code") || null,
-  data: null, // { etudiant, periodes, semaines, codes }
+  data: null, // { etudiant, motifs, periodes, semaines, codes, sorties }
 };
 
 /* ------------------------------------------------------------------ */
@@ -82,6 +83,7 @@ function currentPeriode() {
 
 function render() {
   renderPeriode();
+  renderSorties();
   renderWeeks();
 }
 
@@ -91,7 +93,6 @@ function renderPeriode() {
   const p = currentPeriode();
   if (!p) {
     container.appendChild(el("p", "empty", "Aucune période de stage enregistrée. Contactez votre encadrant."));
-    $("add-week-btn").hidden = true;
     return;
   }
 
@@ -114,8 +115,53 @@ function renderPeriode() {
     card.appendChild(stats);
   }
   container.appendChild(card);
-  $("add-week-btn").hidden = false;
 }
+
+/* ---------- Déclarations (sorties de stage) ---------- */
+
+function renderSorties() {
+  const container = $("sorties");
+  container.innerHTML = "";
+  const sorties = [...state.data.sorties].sort((a, b) => (b.Date || "").localeCompare(a.Date || ""));
+
+  if (!sorties.length) {
+    container.appendChild(el("p", "empty", "Aucune déclaration pour l'instant."));
+    return;
+  }
+
+  for (const s of sorties) {
+    const row = el("div", "sortie-row");
+
+    const sign = s.Ajustement_h > 0 ? "+" : "";
+    const badgeEl = badge(`${sign}${s.Ajustement_h} h`,
+      s.Ajustement_h > 0 ? "ok" : (s.Ajustement_h < 0 ? "warn" : ""));
+    badgeEl.classList.add("sortie-hours");
+
+    const main = el("div", "sortie-main");
+    main.appendChild(el("div", "sortie-title", s.Motif || "(sans motif)"));
+    main.appendChild(el("div", "sortie-meta",
+      `${frDate(s.Date)} · ${s.Heure_debut || "?"} – ${s.Heure_fin || "?"}`));
+
+    const delBtn = el("button", "sortie-delete", "🗑️");
+    delBtn.title = "Supprimer cette déclaration";
+    delBtn.addEventListener("click", () => removeSortie(s));
+
+    row.append(badgeEl, main, delBtn);
+    container.appendChild(row);
+  }
+}
+
+async function removeSortie(s) {
+  if (!confirm(`Supprimer la déclaration « ${s.Motif} » du ${frDate(s.Date)} ?`)) return;
+  try {
+    await api("DELETE", `/api/sorties/${s.id}`);
+    await refresh();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+/* ---------- Planning (lecture seule) ---------- */
 
 function renderWeeks() {
   const container = $("weeks");
@@ -123,109 +169,113 @@ function renderWeeks() {
   const p = currentPeriode();
   if (!p) return;
 
+  const codeById = new Map(state.data.codes.map((c) => [c.id, c]));
   const weeks = state.data.semaines
     .filter((s) => s.Periode === p.id)
     .sort((a, b) => (a.Semaine_debut || "").localeCompare(b.Semaine_debut || ""));
 
   if (!weeks.length) {
-    container.appendChild(el("p", "empty", "Aucune semaine de planning pour l'instant. Ajoutez-en une !"));
+    container.appendChild(el("p", "empty", "Le planning n'a pas encore été établi par le service."));
     return;
   }
 
   const todayIso = isoDate(new Date());
-  for (const week of weeks) container.appendChild(renderWeek(week, todayIso));
-}
+  for (const week of weeks) {
+    const card = el("section", "week-card");
 
-function renderWeek(week, todayIso) {
-  const card = el("section", "week-card");
-
-  const header = el("div", "week-header");
-  header.appendChild(el("h2", "", `Semaine du ${frDate(week.Semaine_debut)}`));
-  if (week.Total_h_semaine != null) {
-    header.appendChild(el("span", "week-total", `${week.Total_h_semaine} h`));
-  }
-  card.appendChild(header);
-
-  const grid = el("div", "week-grid");
-  DAYS.forEach((day, i) => {
-    const dayIso = addDaysIso(week.Semaine_debut, i);
-    const cell = el("div", "day-cell" + (dayIso === todayIso ? " today" : ""));
-    const lbl = el("label", "day-label", `${day.slice(0, 3)}. ${dayNum(dayIso)}`);
-    const select = document.createElement("select");
-    select.dataset.day = day;
-    select.appendChild(new Option("—", "0"));
-    for (const c of state.data.codes) {
-      const hours = c.Heure_debut && c.Heure_fin ? ` (${c.Heure_debut}–${c.Heure_fin})` : "";
-      const opt = new Option(`${c.Code} · ${c.Libelle}${hours}`, String(c.id));
-      if (week[day] === c.id) opt.selected = true;
-      select.appendChild(opt);
+    const header = el("div", "week-header");
+    header.appendChild(el("h3", "", `Semaine du ${frDate(week.Semaine_debut)}`));
+    if (week.Total_h_semaine != null) {
+      header.appendChild(el("span", "week-total", `${week.Total_h_semaine} h`));
     }
-    select.addEventListener("change", () => card.classList.add("dirty"));
-    lbl.appendChild(select);
-    cell.appendChild(lbl);
-    grid.appendChild(cell);
-  });
-  card.appendChild(grid);
+    card.appendChild(header);
 
-  const footer = el("div", "week-footer");
-  const comment = document.createElement("input");
-  comment.type = "text";
-  comment.placeholder = "Commentaire (facultatif)";
-  comment.maxLength = 500;
-  comment.value = week.Commentaire || "";
-  comment.addEventListener("input", () => card.classList.add("dirty"));
-  const saveBtn = el("button", "btn btn-primary", "Enregistrer");
-  saveBtn.addEventListener("click", () => saveWeek(week, card, comment, saveBtn));
-  const status = el("span", "save-status", "");
-  footer.append(comment, saveBtn, status);
-  card.appendChild(footer);
+    const grid = el("div", "week-grid");
+    DAYS.forEach((day, i) => {
+      const dayIso = addDaysIso(week.Semaine_debut, i);
+      const code = codeById.get(week[day]);
+      const cell = el("div", "day-cell readonly" + (dayIso === todayIso ? " today" : ""));
+      cell.appendChild(el("div", "day-label", `${day.slice(0, 3)}. ${dayNum(dayIso)}`));
+      const chip = el("div", "day-chip", code ? code.Code : "—");
+      if (code && code.Heure_debut && code.Heure_fin) {
+        chip.title = `${code.Libelle} (${code.Heure_debut}–${code.Heure_fin})`;
+        cell.appendChild(el("div", "day-hours", `${code.Heure_debut}–${code.Heure_fin}`));
+      } else if (code) {
+        chip.title = code.Libelle;
+      }
+      cell.insertBefore(chip, cell.children[1] || null);
+      grid.appendChild(cell);
+    });
+    card.appendChild(grid);
 
-  return card;
-}
-
-async function saveWeek(week, card, commentInput, saveBtn) {
-  const status = card.querySelector(".save-status");
-  const fields = { Commentaire: commentInput.value.trim() };
-  for (const select of card.querySelectorAll("select")) {
-    fields[select.dataset.day] = Number(select.value);
-  }
-  saveBtn.disabled = true;
-  status.textContent = "Enregistrement…";
-  status.className = "save-status";
-  try {
-    await api("PATCH", `/api/semaines/${week.id}`, fields);
-    await refresh();
-  } catch (err) {
-    status.textContent = err.message;
-    status.className = "save-status error";
-    saveBtn.disabled = false;
+    if (week.Commentaire) {
+      card.appendChild(el("p", "week-comment", week.Commentaire));
+    }
+    container.appendChild(card);
   }
 }
 
 /* ------------------------------------------------------------------ */
-/* Ajout de semaine                                                    */
+/* Dialogue de déclaration                                             */
 /* ------------------------------------------------------------------ */
 
-$("add-week-btn").addEventListener("click", async () => {
-  const p = currentPeriode();
-  if (!p) return;
+const dialog = $("sortie-dialog");
 
-  const weeks = state.data.semaines.filter((s) => s.Periode === p.id);
-  let nextMonday;
-  if (weeks.length) {
-    const last = weeks.map((w) => w.Semaine_debut).sort().pop();
-    nextMonday = addDaysIso(last, 7);
-  } else {
-    nextMonday = mondayIso(p.Du || isoDate(new Date()));
+$("add-sortie-btn").addEventListener("click", () => {
+  const select = $("sortie-motif");
+  select.innerHTML = "";
+  for (const m of state.data.motifs) select.appendChild(new Option(m, m));
+  select.appendChild(new Option(MOTIF_AUTRE, MOTIF_AUTRE));
+  $("sortie-motif-autre-wrap").hidden = true;
+  $("sortie-motif-autre").value = "";
+  $("sortie-compte").checked = true;
+  $("sortie-date").value = isoDate(new Date());
+  $("sortie-debut").value = "";
+  $("sortie-fin").value = "";
+  $("sortie-error").hidden = true;
+  dialog.showModal();
+});
+
+$("sortie-motif").addEventListener("change", () => {
+  $("sortie-motif-autre-wrap").hidden = $("sortie-motif").value !== MOTIF_AUTRE;
+});
+
+$("sortie-cancel-btn").addEventListener("click", () => dialog.close());
+
+$("sortie-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = $("sortie-error");
+  errEl.hidden = true;
+
+  let motif = $("sortie-motif").value;
+  let compte = motif !== "Retard";
+  if (motif === MOTIF_AUTRE) {
+    motif = $("sortie-motif-autre").value.trim();
+    compte = $("sortie-compte").checked;
+    if (!motif) {
+      errEl.textContent = "Précisez le motif.";
+      errEl.hidden = false;
+      return;
+    }
   }
 
-  const btn = $("add-week-btn");
+  const body = {
+    Motif: motif,
+    Date: $("sortie-date").value,
+    Heure_debut: $("sortie-debut").value,
+    Heure_fin: $("sortie-fin").value,
+    Compte_stage: compte,
+  };
+
+  const btn = $("sortie-save-btn");
   btn.disabled = true;
   try {
-    await api("POST", "/api/semaines", { Periode: p.id, Semaine_debut: nextMonday });
+    await api("POST", "/api/sorties", body);
+    dialog.close();
     await refresh();
   } catch (err) {
-    alert(err.message);
+    errEl.textContent = err.message;
+    errEl.hidden = false;
   } finally {
     btn.disabled = false;
   }
@@ -256,12 +306,6 @@ function isoDate(date) {
 function addDaysIso(iso, n) {
   const d = new Date(iso + "T00:00:00");
   d.setDate(d.getDate() + n);
-  return isoDate(d);
-}
-
-function mondayIso(iso) {
-  const d = new Date(iso + "T00:00:00");
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
   return isoDate(d);
 }
 
