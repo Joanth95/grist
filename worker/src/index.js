@@ -202,7 +202,7 @@ async function buildPayload(env, student) {
     sorties: sorties.map((s) => ({
       id: s.id,
       Motif: s.fields.Motif || "",
-      Commentaire: s.fields.Commentaire || "",
+      Commentaire: s.fields.Motif_ou_Commentaire || "",
       Date: epochToIso(s.fields.Date),
       Heure_debut: s.fields.Heure_debut || "",
       Heure_fin: s.fields.Heure_fin || "",
@@ -258,7 +258,7 @@ async function createSortie(request, env, student) {
     Anonymat: student.rowId,
     Code_anonymat: student.code,
     Motif: motif,
-    Commentaire: cleanText(body.Commentaire, 200),
+    Motif_ou_Commentaire: cleanText(body.Commentaire, 200),
     Date: dateEpoch,
     Heure_debut: debut,
     Heure_fin: fin,
