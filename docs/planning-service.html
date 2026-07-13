@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Planning de service</title>
+<title>Planning de service - Mois entier</title>
 <link rel="stylesheet" href="styles.css?v=16">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <style>
@@ -12,14 +12,12 @@
   .controls { background: var(--blanc); padding: 1.25rem; border-radius: var(--radius); box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 1.5rem; display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
   .controls label { font-weight: 600; color: var(--texte); }
   select, input[type="date"] { padding: 0.65rem 0.9rem; border: 1px solid var(--gris-bordure); border-radius: 4px; }
-
   .tablewrap { background: var(--blanc); border-radius: var(--radius); box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow-x: auto; }
   table { font-size: 0.88rem; width: 100%; border-collapse: collapse; }
   th, td { border: 1px solid #ccc; padding: 7px 4px; text-align: center; font-size: 0.9rem; }
   th.student, td.student { position: sticky; left: 0; background: #f6f6f6; min-width: 210px; text-align: left; z-index: 3; font-weight: 700; }
   thead th { background: #f0f0f0; position: sticky; top: 0; z-index: 2; font-weight: 700; color: var(--bleu); }
   th.weekend { background: #fff3e0; }
-
   @media print {
     body { padding: 8mm; background: white; }
     .app-header, .controls, #status { display: none !important; }
@@ -31,75 +29,86 @@
     th.student, td.student { min-width: 160px; background: #e5e5e5; }
     thead th { background: #d0d0d0; }
     .legend { font-size: 9pt; margin-top: 20px; }
-    .print-footer { 
-      position: fixed; bottom: 8mm; left: 0; right: 0; 
-      text-align: center; font-size: 8pt; color: #555; 
-      border-top: 1px solid #ccc; padding-top: 6px; 
+    .print-footer {
+      position: fixed; bottom: 8mm; left: 0; right: 0;
+      text-align: center; font-size: 8pt; color: #555;
+      border-top: 1px solid #ccc; padding-top: 6px;
     }
-    @page { 
-      size: landscape; 
-      margin: 6mm; 
+    @page {
+      size: landscape;
+      margin: 6mm;
     }
   }
 </style>
 </head>
 <body>
-
 <header class="app-header">
   <div>
     <h1>📋 Planning de service</h1>
-    <p class="subtitle">Gestion des présences et plannings étudiants</p>
+    <p class="subtitle">Gestion des présences et plannings étudiants — Vue mois complet</p>
   </div>
 </header>
-
 <div class="content">
   <div class="controls no-print">
-    <label>Service</label>
-    <select id="service" style="min-width: 260px;"></select>
-    <label>Début</label>
+    <label>Mois</label>
     <input type="date" id="startDate">
     <button id="today" class="btn btn-ghost">Aujourd'hui</button>
-    <button id="prev" class="btn btn-ghost">◀ 31 jours</button>
-    <button id="next" class="btn btn-ghost">31 jours ▶</button>
+    <button id="prev" class="btn btn-ghost">◀ Mois préc.</button>
+    <button id="next" class="btn btn-ghost">Mois suiv. ▶</button>
     <button id="refresh" class="btn btn-primary">Actualiser</button>
     <button id="printBtn" class="btn btn-primary">🖨️ Imprimer</button>
   </div>
-
   <div id="status" style="margin: 10px 0; color: var(--bleu);"></div>
   <div class="print-header" id="printHeader"></div>
   <div id="content"></div>
-
   <div class="print-footer">
     Document généré par <strong>GESTION ÉTUDIANT</strong> — Conçu et développé par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant — Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville
   </div>
 </div>
-
 <script>
 grist.ready({requiredAccess: 'full'});
 
 const DAY_NAMES = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
-const WINDOW_LEN = 31;
+
 let SERVICES = null, PERIODES = null, ETUDIANTS = null, PLANNING = null, CODES = null, SORTIES = null;
 
 function todayKey() {
   const d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
+
 function keyToDate(key) { return new Date(key + 'T00:00:00Z'); }
 function dateToKey(d) { return d.toISOString().slice(0,10); }
 function addDaysKey(key, n) { const d = keyToDate(key); d.setUTCDate(d.getUTCDate()+n); return dateToKey(d); }
 function epochToKey(epoch) { if (epoch == null) return null; return dateToKey(new Date(epoch*1000)); }
+
 function fmtDateFull(key) {
   const d = keyToDate(key);
   const dd = String(d.getUTCDate()).padStart(2,'0');
   const mm = String(d.getUTCMonth()+1).padStart(2,'0');
   return dd + '/' + mm + '/' + d.getUTCFullYear();
 }
+
 function fmtDayLabel(key) {
   const d = keyToDate(key);
   const dd = String(d.getUTCDate()).padStart(2,'0');
   const mm = String(d.getUTCMonth()+1).padStart(2,'0');
   return { num: dd + '/' + mm, name: DAY_NAMES[d.getUTCDay()], isWeekend: (d.getUTCDay() === 0 || d.getUTCDay() === 6) };
+}
+
+// === NOUVEAU : calcule le début et la fin du mois complet ===
+function getMonthRange(key) {
+  if (!key) key = todayKey();
+  const d = keyToDate(key);
+  const year = d.getUTCFullYear();
+  const month = d.getUTCMonth();
+  const firstDay = new Date(Date.UTC(year, month, 1));
+  const lastDay = new Date(Date.UTC(year, month + 1, 0));
+  return {
+    startKey: dateToKey(firstDay),
+    endKey: dateToKey(lastDay),
+    numDays: lastDay.getUTCDate()
+  };
 }
 
 async function loadData() {
@@ -117,6 +126,7 @@ async function loadData() {
 
 function populateServiceSelect() {
   const sel = document.getElementById('service');
+  if (!sel) return [];
   const items = [];
   for (let i = 0; i < SERVICES.id.length; i++) {
     const nom = SERVICES.Nom[i] || ('Service ' + SERVICES.id[i]);
@@ -182,13 +192,26 @@ function buildSortieIndex() {
 
 function render() {
   const startKey = document.getElementById('startDate').value;
-  const serviceId = parseInt(document.getElementById('service').value, 10);
+  const serviceSelect = document.getElementById('service');
+  const serviceId = serviceSelect ? parseInt(serviceSelect.value, 10) : null;
   const content = document.getElementById('content');
-  if (!startKey || !serviceId) { content.innerHTML = '<div class="empty">Sélectionnez un service et une date.</div>'; return; }
+
+  if (!startKey || !serviceId) {
+    content.innerHTML = '<div class="empty">Sélectionnez un service et un mois.</div>';
+    return;
+  }
+
+  // === Calcul du mois complet ===
+  const monthRange = getMonthRange(startKey);
+  const windowStart = monthRange.startKey;
+  const windowEnd = monthRange.endKey;
 
   const days = [];
-  for (let i = 0; i < WINDOW_LEN; i++) days.push(addDaysKey(startKey, i));
-  const windowStart = days[0], windowEnd = days[days.length-1];
+  let currentDay = windowStart;
+  for (let i = 0; i < monthRange.numDays; i++) {
+    days.push(currentDay);
+    currentDay = addDaysKey(currentDay, 1);
+  }
 
   const codesMap = buildCodesMap();
   const etudiantsMap = buildEtudiantsMap();
@@ -201,11 +224,17 @@ function render() {
     const au = epochToKey(PERIODES.Au[i]);
     if (!du || !au) continue;
     if (au < windowStart || du > windowEnd) continue;
-    matches.push({ periodeId: PERIODES.id[i], etudiantId: PERIODES.Etudiant[i], du, au, niveau: PERIODES.Niveau[i] || '', tuteur: PERIODES.Tuteur[i] || '' });
+    matches.push({
+      periodeId: PERIODES.id[i],
+      etudiantId: PERIODES.Etudiant[i],
+      du, au,
+      niveau: PERIODES.Niveau[i] || '',
+      tuteur: PERIODES.Tuteur[i] || ''
+    });
   }
 
   if (matches.length === 0) {
-    content.innerHTML = '<div class="empty">Aucun étudiant sur ce service pour cette période.</div>';
+    content.innerHTML = '<div class="empty">Aucun étudiant sur ce service pour ce mois.</div>';
     return;
   }
 
@@ -239,12 +268,17 @@ function render() {
     if (m.tuteur) infoParts.push('Tuteur : ' + m.tuteur);
     const infoLine = infoParts.join(' · ').replace(/</g,'&lt;');
     html += `<tr><td class="student"><div class="student-name">${nom}</div><div class="student-info">${infoLine}</div></td>`;
+
     for (const dk of days) {
-      if (dk < m.du || dk > m.au) { html += '<td class="hors-periode"></td>'; continue; }
+      if (dk < m.du || dk > m.au) {
+        html += '<td class="hors-periode"></td>';
+        continue;
+      }
       const cellInfo = (periodeDayMap[m.periodeId] || {})[dk];
       const coderef = cellInfo ? cellInfo.coderef : null;
       const code = coderef ? codesMap[coderef] : null;
       const sortie = sortieIdx[m.periodeId + '_' + dk];
+
       let cls = '', text = '', title = '';
       if (sortie) {
         if (sortie.Compte) {
@@ -261,6 +295,7 @@ function render() {
         if (code.Code === 'R' || code.Code === 'ABS') cls = 'repos';
         title = code.Code + (code.Duree ? ' (' + code.Duree + 'h)' : '');
       }
+
       let dataAttrs = '';
       if (cellInfo) {
         cls += (cls ? ' ' : '') + 'editable';
@@ -271,8 +306,10 @@ function render() {
     }
     html += '</tr>';
   }
+
   html += '</tbody></table></div>';
 
+  // Légende
   const legendParts = [];
   const seen = {};
   for (let i = 0; i < CODES.id.length; i++) {
@@ -288,10 +325,11 @@ function render() {
 
   content.innerHTML = html;
 
-  const serviceLabel = document.getElementById('service').selectedOptions[0] ? document.getElementById('service').selectedOptions[0].textContent : '';
+  // En-tête impression
+  const serviceLabel = serviceSelect && serviceSelect.selectedOptions[0] ? serviceSelect.selectedOptions[0].textContent : '';
   const now = new Date();
   const genDate = String(now.getDate()).padStart(2,'0') + '/' + String(now.getMonth()+1).padStart(2,'0') + '/' + now.getFullYear() + ' à ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
-  document.getElementById('printHeader').innerHTML = `<h1>Planning de service — ${serviceLabel}</h1><p class="subtitle">Du ${fmtDayLabel(windowStart).num} au ${fmtDayLabel(windowEnd).num} • Généré le ${genDate}</p>`;
+  document.getElementById('printHeader').innerHTML = `<h1>Planning de service — ${serviceLabel}</h1><p class="subtitle">Mois complet : du ${fmtDayLabel(windowStart).num} au ${fmtDayLabel(windowEnd).num} • Généré le ${genDate}</p>`;
 }
 
 function codesListSorted() {
@@ -308,13 +346,16 @@ function startEditCell(td) {
   const col = td.dataset.col;
   const currentCoderef = td.dataset.coderef ? parseInt(td.dataset.coderef, 10) : null;
   const originalHTML = td.innerHTML;
+
   const select = document.createElement('select');
   select.className = 'cell-edit-select';
+
   const optEmpty = document.createElement('option');
   optEmpty.value = '';
   optEmpty.textContent = '(vide)';
   if (!currentCoderef) optEmpty.selected = true;
   select.appendChild(optEmpty);
+
   for (const c of codesListSorted()) {
     const opt = document.createElement('option');
     opt.value = c.id;
@@ -322,23 +363,31 @@ function startEditCell(td) {
     if (currentCoderef === c.id) opt.selected = true;
     select.appendChild(opt);
   }
+
   td.innerHTML = '';
   td.appendChild(select);
   select.focus();
+
   let done = false;
+
   function commit() {
     if (done) return;
     done = true;
     const val = select.value;
     const newCoderef = val ? parseInt(val, 10) : null;
-    if (newCoderef === currentCoderef) { td.innerHTML = originalHTML; return; }
+    if (newCoderef === currentCoderef) {
+      td.innerHTML = originalHTML;
+      return;
+    }
     saveCode(rowId, col, newCoderef, td);
   }
+
   function cancel() {
     if (done) return;
     done = true;
     td.innerHTML = originalHTML;
   }
+
   select.addEventListener('change', commit);
   select.addEventListener('blur', () => setTimeout(cancel, 0));
 }
@@ -363,25 +412,61 @@ document.getElementById('content').addEventListener('click', function (e) {
   startEditCell(td);
 });
 
-document.getElementById('service').addEventListener('change', render);
+// === NOUVEAU : navigation par mois ===
+function goToMonth(deltaMonths) {
+  let cur = document.getElementById('startDate').value;
+  if (!cur) cur = todayKey();
+  const d = keyToDate(cur);
+  d.setUTCMonth(d.getUTCMonth() + deltaMonths);
+  d.setUTCDate(1); // on se place au 1er du mois pour plus de clarté
+  document.getElementById('startDate').value = dateToKey(d);
+  render();
+}
+
 document.getElementById('startDate').addEventListener('change', render);
-document.getElementById('today').addEventListener('click', () => { document.getElementById('startDate').value = todayKey(); render(); });
-document.getElementById('prev').addEventListener('click', () => { const cur = document.getElementById('startDate').value; document.getElementById('startDate').value = addDaysKey(cur, -WINDOW_LEN); render(); });
-document.getElementById('next').addEventListener('click', () => { const cur = document.getElementById('startDate').value; document.getElementById('startDate').value = addDaysKey(cur, WINDOW_LEN); render(); });
+document.getElementById('today').addEventListener('click', () => {
+  document.getElementById('startDate').value = todayKey();
+  render();
+});
+document.getElementById('prev').addEventListener('click', () => goToMonth(-1));
+document.getElementById('next').addEventListener('click', () => goToMonth(1));
 document.getElementById('refresh').addEventListener('click', async () => { await loadData(); render(); });
 document.getElementById('printBtn').addEventListener('click', () => { window.print(); });
 
 async function init() {
+  // On ajoute dynamiquement le select Service s'il n'existe pas encore (sécurité)
+  let serviceSelect = document.getElementById('service');
+  if (!serviceSelect) {
+    const controls = document.querySelector('.controls');
+    if (controls) {
+      const label = document.createElement('label');
+      label.textContent = 'Service';
+      serviceSelect = document.createElement('select');
+      serviceSelect.id = 'service';
+      serviceSelect.style.minWidth = '260px';
+      controls.insertBefore(serviceSelect, controls.firstChild);
+      controls.insertBefore(label, serviceSelect);
+      serviceSelect.addEventListener('change', render);
+    }
+  }
+
   await loadData();
   const items = populateServiceSelect();
+
   const sk = todayKey();
   document.getElementById('startDate').value = sk;
-  const windowEnd = addDaysKey(sk, WINDOW_LEN - 1);
-  const defaultService = pickDefaultService(items, sk, windowEnd);
-  if (defaultService) document.getElementById('service').value = defaultService;
+
+  const monthRange = getMonthRange(sk);
+  const defaultService = pickDefaultService(items, monthRange.startKey, monthRange.endKey);
+  if (defaultService && document.getElementById('service')) {
+    document.getElementById('service').value = defaultService;
+  }
+
   render();
 }
+
 init();
 </script>
 </body>
 </html>
+
