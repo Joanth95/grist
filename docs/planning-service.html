@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Planning de service</title>
-<link rel="stylesheet" href="styles.css?v=13">
+<link rel="stylesheet" href="styles.css?v=14">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <style>
   :root { --accent: #000091; }
@@ -24,19 +24,31 @@
   td.repos { color: #555; font-weight: 600; }
   td.editable:hover { background: #eaf2fb; outline: 2px solid var(--bleu); outline-offset: -2px; }
   .badge { font-size: 0.82rem; padding: 2px 7px; }
+
   .legend { background: var(--blanc); padding: 1.25rem; border-radius: var(--radius); margin-top: 1.5rem; display: flex; flex-wrap: wrap; gap: 1.2rem; font-size: 0.9rem; }
 
+  /* === PRINT AMÉLIORÉ === */
   @media print {
-    body { background: white; padding: 12mm; }
+    body { background: white; padding: 10mm; font-family: "Marianne", Arial, sans-serif; }
     .app-header, .controls, #status, .no-print { display: none !important; }
-    h1 { font-size: 18pt; }
-    .subtitle { font-size: 11pt; color: #444; }
-    .tablewrap { box-shadow: none; border: 1px solid #ccc; }
-    table { font-size: 9.8pt; }
-    th, td { padding: 6px 5px; border: 1px solid #999; }
-    .legend { font-size: 9pt; }
-    .print-footer { position: fixed; bottom: 10mm; left: 0; right: 0; text-align: center; font-size: 8.5pt; color: #555; border-top: 1px solid #ccc; padding-top: 8px; }
-    @page { size: landscape; margin: 10mm; }
+    h1 { font-size: 18pt; margin-bottom: 8px; }
+    .subtitle { font-size: 11pt; color: #444; margin-bottom: 20px; }
+    .tablewrap { margin: 15px 0; border: 1px solid #333; }
+    table { font-size: 9.5pt; width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #666; padding: 5px 4px; text-align: center; vertical-align: middle; }
+    th.student, td.student { min-width: 180px; text-align: left; background: #f0f0f0; font-weight: 600; }
+    thead th { background: #e5e5e5; color: #000091; font-weight: 700; }
+    th.weekend { background: #fff3e0 !important; }
+    td.hors-periode { background: #f6f6f6 !important; color: #888; }
+    .student-info { font-size: 8pt; }
+    .badge { font-size: 8pt; padding: 1px 5px; border: 1px solid #888; }
+    .legend { margin-top: 25px; font-size: 9pt; display: flex; flex-wrap: wrap; gap: 15px; }
+    .print-footer { 
+      position: fixed; bottom: 8mm; left: 0; right: 0; 
+      text-align: center; font-size: 8pt; color: #555; 
+      border-top: 1px solid #ccc; padding-top: 6px; 
+    }
+    @page { size: landscape; margin: 8mm; }
   }
 </style>
 </head>
