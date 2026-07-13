@@ -4,14 +4,6 @@ const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
-// Libellés d'affichage des types de déclaration (le stockage Grist garde
-// « Rattrapage »/« Retard »/« Sortie de stage » pour la formule Ajustement_h)
-const TYPE_LABELS = {
-  "Rattrapage": "Heures supplémentaires",
-  "Retard": "Retard",
-  "Sortie de stage": "Sortie de stage",
-};
-
 const state = {
   code: sessionStorage.getItem("code") || null,
   data: null, // { etudiant, motifs, periodes, semaines, codes, sorties }
@@ -226,7 +218,8 @@ function renderSorties() {
     badgeEl.classList.add("sortie-hours");
 
     const main = el("div", "sortie-main");
-    const label = TYPE_LABELS[s.Motif] || s.Motif || "(sans motif)";
+    // Affiche le motif tel qu'enregistré dans Grist, sans traduction
+    const label = s.Motif || "(sans motif)";
     const titleText = s.Commentaire ? `${label} — ${s.Commentaire}` : label;
     const title = el("div", "sortie-title", titleText);
     title.appendChild(badge(s.Valide ? "Validé" : "En attente", s.Valide ? "ok" : "pending"));
