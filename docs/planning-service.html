@@ -66,14 +66,26 @@
     .print-header .meta { font-size: 10.5px; color: #555; }
     .tablewrap { border: none; overflow: visible; }
     table { font-size: 10px; }
-    th, td { padding: 2px 3px; }
-    th.student, td.student { position: static; min-width: 160px; max-width: 180px; }
+    th, td { 
+      padding: 2px 3px; 
+      border-right: 1px solid #444 !important;
+      border-bottom: 1px solid #444 !important;
+    }
+    th.student, td.student { 
+      position: static; 
+      min-width: 160px; 
+      max-width: 180px; 
+      border-right: 2px solid #222 !important;
+    }
     .student-name { font-size: 10.5px; }
     .student-info { font-size: 8px; }
-    thead th { position: static; }
+    thead th { 
+      position: static; 
+      border-bottom: 2px solid #222 !important;
+    }
     thead tr { height: 66px; }
-    td.hors-periode { background: #ccc !important; }
-    th.weekend { background: #eee !important; }
+    td.hors-periode { background: #ddd !important; }
+    th.weekend { background: #f5f5f5 !important; border-right: 1.5px solid #333 !important; }
     .badge-oui { background: #e6e6e6 !important; color: #111 !important; border: 1px solid #888; }
     .badge-non { background: #e6e6e6 !important; color: #111 !important; border: 1px dashed #888; }
     th:not(.student) {
@@ -99,7 +111,7 @@
 </style>
 </head>
 <body>
-<h2 class="no-print">📋 Planning de service <span class="version">v2.7</span></h2>
+<h2 class="no-print">📋 Planning de service <span class="version">v2.8</span></h2>
 <div class="controls">
   <label>Service</label>
   <select id="service"></select>
@@ -119,7 +131,7 @@
 <div id="status"></div>
 <div class="print-header" id="printHeader"></div>
 <div id="content"></div>
-<div class="print-footer">Document généré automatiquement par l'application <strong>GESTION ÉTUDIANT</strong> v2.7 — Conçu et développé par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant — Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville</div>
+<div class="print-footer">Document généré automatiquement par l'application <strong>GESTION ÉTUDIANT</strong> v2.8 — Conçu et développé par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant — Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville</div>
 <script>
 grist.ready({requiredAccess: 'full'});
 const DAY_NAMES = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
