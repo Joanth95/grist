@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Planning de service</title>
-<link rel="stylesheet" href="styles.css?v=15">
+<link rel="stylesheet" href="styles.css?v=16">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <style>
   :root { --accent: #000091; }
@@ -14,32 +14,32 @@
   select, input[type="date"] { padding: 0.65rem 0.9rem; border: 1px solid var(--gris-bordure); border-radius: 4px; }
 
   .tablewrap { background: var(--blanc); border-radius: var(--radius); box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow-x: auto; }
-  table { font-size: 0.9rem; width: 100%; border-collapse: collapse; }
-  th, td { border: 1px solid #ccc; padding: 8px 6px; text-align: center; }
-  th.student, td.student { position: sticky; left: 0; background: #f6f6f6; min-width: 220px; text-align: left; z-index: 3; font-weight: 700; }
+  table { font-size: 0.88rem; width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #ccc; padding: 7px 4px; text-align: center; font-size: 0.9rem; }
+  th.student, td.student { position: sticky; left: 0; background: #f6f6f6; min-width: 210px; text-align: left; z-index: 3; font-weight: 700; }
   thead th { background: #f0f0f0; position: sticky; top: 0; z-index: 2; font-weight: 700; color: var(--bleu); }
   th.weekend { background: #fff3e0; }
-  td.hors-periode { background: #f8f8f8; color: #aaa; }
 
   @media print {
-    body { padding: 12mm; background: white; font-family: "Marianne", Arial, sans-serif; }
-    .app-header, .controls, #status, .no-print { display: none !important; }
-    h1 { font-size: 20pt; margin-bottom: 10px; color: #000091; }
-    .subtitle { font-size: 12pt; color: #333; margin-bottom: 25px; }
-    .tablewrap { margin: 20px 0; border: 2px solid #333; }
-    table { font-size: 9.8pt; border-collapse: collapse; }
-    th, td { border: 1px solid #555; padding: 6px 4px; }
-    th.student, td.student { min-width: 170px; background: #e5e5e5; text-align: left; font-weight: 700; }
-    thead th { background: #d0d0d0; color: #000091; }
-    th.weekend { background: #fff3e0 !important; }
-    td.hors-periode { background: #f6f6f6 !important; }
-    .legend { margin-top: 30px; font-size: 9.5pt; }
+    body { padding: 8mm; background: white; }
+    .app-header, .controls, #status { display: none !important; }
+    h1 { font-size: 18pt; margin-bottom: 8px; }
+    .subtitle { font-size: 11pt; color: #333; }
+    .tablewrap { margin: 15px 0; border: 2px solid #333; }
+    table { font-size: 9pt; }
+    th, td { padding: 5px 3px; border: 1px solid #555; }
+    th.student, td.student { min-width: 160px; background: #e5e5e5; }
+    thead th { background: #d0d0d0; }
+    .legend { font-size: 9pt; margin-top: 20px; }
     .print-footer { 
-      position: fixed; bottom: 10mm; left: 0; right: 0; 
-      text-align: center; font-size: 8.5pt; color: #555; 
-      border-top: 1px solid #ccc; padding-top: 8px; 
+      position: fixed; bottom: 8mm; left: 0; right: 0; 
+      text-align: center; font-size: 8pt; color: #555; 
+      border-top: 1px solid #ccc; padding-top: 6px; 
     }
-    @page { size: landscape; margin: 8mm; }
+    @page { 
+      size: landscape; 
+      margin: 6mm; 
+    }
   }
 </style>
 </head>
