@@ -462,24 +462,6 @@ function formatH(hours) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Assistant « code oublié » (calcul local, aucune donnée envoyée)     */
-/* ------------------------------------------------------------------ */
-
-function majHelper() {
-  const prenom = $("helper-prenom").value.trim();
-  const nom = $("helper-nom").value.trim();
-  const ddn = $("helper-ddn").value; // AAAA-MM-JJ
-  const out = $("helper-result");
-  if (!prenom || !nom || !ddn) { out.hidden = true; return; }
-  const [y, m, d] = ddn.split("-");
-  out.textContent = (prenom[0] + d + m + y.slice(2) + nom[0]).toUpperCase();
-  out.hidden = false;
-}
-for (const id of ["helper-prenom", "helper-nom", "helper-ddn"]) {
-  $(id).addEventListener("input", majHelper);
-}
-
-/* ------------------------------------------------------------------ */
 /* Démarrage                                                           */
 /* ------------------------------------------------------------------ */
 
