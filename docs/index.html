@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Espace étudiant</title>
-  <link rel="stylesheet" href="styles.css?v=13">
+  <link rel="stylesheet" href="styles.css?v=14">
 
 </head>
 <body>
@@ -27,6 +27,22 @@
         + 1ère lettre du nom, en majuscules.<br>
         <em>Exemple : Jean DUPONT né le 15/03/1998 → J150398D</em>
       </p>
+      <details class="code-helper">
+        <summary>Code oublié ? Retrouvez-le ici</summary>
+        <div class="row">
+          <div>
+            <label for="helper-prenom">Prénom</label>
+            <input type="text" id="helper-prenom" autocomplete="off">
+          </div>
+          <div>
+            <label for="helper-nom">Nom</label>
+            <input type="text" id="helper-nom" autocomplete="off">
+          </div>
+        </div>
+        <label for="helper-ddn">Date de naissance</label>
+        <input type="date" id="helper-ddn">
+        <p id="helper-result" class="code-display small" hidden></p>
+      </details>
       <p class="hint">
         Vous arrivez en stage ? <a href="entree-stage.html">Enregistrez votre entrée en stage</a>.<br>
         Besoin d'aide ? <a href="guide-etudiant.html">Consultez le mode d'emploi</a>.
@@ -41,7 +57,10 @@
         <h1>Mon planning de stage</h1>
         <p id="student-name" class="subtitle"></p>
       </div>
-      <button id="logout-btn" class="btn btn-ghost">Se déconnecter</button>
+      <div class="header-actions">
+        <button id="print-btn" class="btn btn-ghost" title="Imprimer ou enregistrer en PDF">🖨 PDF</button>
+        <button id="logout-btn" class="btn btn-ghost">Se déconnecter</button>
+      </div>
     </header>
 
     <main class="content">
@@ -127,7 +146,7 @@
     </form>
   </dialog>
 
-  <script src="config.js?v=13"></script>
-  <script src="app.js?v=13"></script>
+  <script src="config.js?v=14"></script>
+  <script src="app.js?v=14"></script>
 </body>
 </html>

@@ -174,11 +174,15 @@ async function buildPayload(env, student) {
     ? await gristFilter(env, T_HEBDO, { Periode: periodeIds })
     : [];
 
-  // Heures par jour de chaque semaine + jours de récupération par période :
-  // un férié travaillé (heures > 0) ouvre un jour de récupération ; poser un
-  // jour au code RF (récupération de férié) le consomme.
+  // Heures par jour de chaque semaine + compteurs par période :
+  // - un férié travaillé (heures > 0) ouvre un jour de récupération ; poser un
+  //   jour au code RF (récupération de férié) le consomme ;
+  // - les jours ABS alimentent le suivi de présence (arrêté du 31/07/2009 :
+  //   présence >= 80 % par stage, franchise de 30 jours sur le cursus).
   const feriesIso = [...feriesSet];
   const recuperationByPeriode = {};
+  const absencesByPeriode = {};
+  const joursPrevusByPeriode = {};
   const semainesData = semaines.map((s) => {
     const debut = s.fields.Semaine_debut;
     const jours = DAY_COLUMNS.map((d, i) => {
@@ -186,12 +190,21 @@ async function buildPayload(env, student) {
       const iso = debut ? epochToIso(debut + i * 86400) : null;
       const info = jourInfo(codeRec, iso, s.fields.Periode, sortiesByJour, feriesSet);
       const per = s.fields.Periode;
+      const codeTxt = codeRec ? (codeRec.fields.Code || "").trim().toUpperCase() : "";
       if (info.ferie && info.heures > 0) {
         recuperationByPeriode[per] = (recuperationByPeriode[per] || 0) + 1;
       }
-      if (codeRec && (codeRec.fields.Code || "").trim().toUpperCase() === "RF") {
+      if (codeTxt === "RF") {
         recuperationByPeriode[per] = (recuperationByPeriode[per] || 0) - 1;
         info.recup = true;
+      }
+      // Jour prévu = jour où l'étudiant devait être présent (code qui compte
+      // en stage) ou a été absent ; l'absence se repère au code ABS.
+      if (codeTxt === "ABS") {
+        absencesByPeriode[per] = (absencesByPeriode[per] || 0) + 1;
+        joursPrevusByPeriode[per] = (joursPrevusByPeriode[per] || 0) + 1;
+      } else if (codeRec && codeRec.fields.Compte_stage) {
+        joursPrevusByPeriode[per] = (joursPrevusByPeriode[per] || 0) + 1;
       }
       return info;
     });
@@ -223,10 +236,16 @@ async function buildPayload(env, student) {
         FAIT: fait,
         Solde_heures: Math.round((fait - aFaire) * 100) / 100,
         Recuperation: Math.max(0, recuperationByPeriode[p.id] || 0),
+        Absences: absencesByPeriode[p.id] || 0,
+        Presence_pct: joursPrevusByPeriode[p.id]
+          ? Math.round(100 * (1 - (absencesByPeriode[p.id] || 0) / joursPrevusByPeriode[p.id]))
+          : null,
         Tuteur: p.fields.Tuteur || "",
         cadre: cadreInfo(service, usersById),
       };
     }),
+    // Suivi cursus : total des jours d'absence toutes périodes (franchise 30 j)
+    absences_cursus: Object.values(absencesByPeriode).reduce((a, b) => a + b, 0),
     semaines: semainesData.map(({ s, jours }) => {
       const out = {
         id: s.id,

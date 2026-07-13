@@ -438,3 +438,55 @@ select {
 @media (max-width: 720px) {
   .week-grid { grid-template-columns: repeat(4, 1fr); }
 }
+
+/* ---------- Assistant code oublié ---------- */
+
+.code-helper {
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--gris-bordure);
+  padding-top: 0.75rem;
+  font-size: 0.9rem;
+}
+.code-helper summary { cursor: pointer; color: var(--bleu); font-weight: 600; }
+.code-helper .row { margin-top: 0.6rem; }
+.code-helper label { display: block; margin: 0.4rem 0 0.2rem; }
+.code-display.small { font-size: 1.4rem; padding: 0.5rem; margin: 0.75rem 0 0; }
+
+.header-actions { display: flex; gap: 0.25rem; align-items: center; }
+
+/* ---------- Mode sombre ---------- */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bleu: #8585f6;
+    --bleu-hover: #a3a3fb;
+    --rouge: #ff5655;
+    --gris-fond: #161616;
+    --gris-bordure: #3a3a3a;
+    --texte: #e6e6e6;
+    --texte-doux: #a5a5a5;
+    --blanc: #242424;
+  }
+  .badge.ok { background: #123c22; border-color: #1d5c35; color: #7ee2a0; }
+  .badge.warn { background: #4a1210; border-color: #7a2a26; color: #ffb3b0; }
+  .badge.pending { background: #4a2f00; border-color: #7a5200; color: #ffcf87; }
+  .day-cell.ferie { background: #3a2a10; outline-color: #6b4a1a; }
+  .ferie-tag, .day-cell.ferie .day-hours { color: #ffb377; }
+  .day-cell.recup { background: #123c22; outline-color: #1d5c35; }
+  .recup-tag { color: #7ee2a0; }
+  .cadre-contact { background: #10203a; border-color: #274a7a; }
+  .type-option:has(input:checked) { background: rgba(133, 133, 246, 0.08); }
+  .btn-primary { color: #0b0b0b; }
+}
+
+/* ---------- Impression / export PDF ---------- */
+
+@media print {
+  body { background: #fff; }
+  .app-header { border-bottom-color: #000; }
+  .header-actions, #add-sortie-btn, .sortie-delete, .periode-tabs,
+  #login-screen, dialog { display: none !important; }
+  .periode-card, .week-card, .sortie-row { box-shadow: none; border: 1px solid #999; }
+  .week-card { break-inside: avoid; }
+  .content { max-width: none; margin: 0; }
+}

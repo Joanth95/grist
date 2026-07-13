@@ -67,6 +67,9 @@ $("logout-btn").addEventListener("click", () => {
   location.reload();
 });
 
+// Impression / export PDF du récapitulatif affiché
+$("print-btn").addEventListener("click", () => window.print());
+
 function enterApp() {
   $("login-screen").hidden = true;
   $("app-screen").hidden = false;
@@ -156,6 +159,15 @@ function renderPeriode() {
     }
     if (p.Recuperation > 0) {
       stats.appendChild(badge(`${p.Recuperation} jour${p.Recuperation > 1 ? "s" : ""} de récupération à poser`, "ok"));
+    }
+    if (p.Absences > 0) {
+      stats.appendChild(badge(`${p.Absences} jour${p.Absences > 1 ? "s" : ""} d'absence`, "warn"));
+    }
+    if (p.Presence_pct != null && p.Presence_pct < 80) {
+      stats.appendChild(badge(`Présence ${p.Presence_pct} % (minimum 80 %)`, "warn"));
+    }
+    if ((state.data.absences_cursus || 0) > 30) {
+      stats.appendChild(badge(`Franchise d'absences dépassée (${state.data.absences_cursus}/30 j)`, "warn"));
     }
     card.appendChild(stats);
   }
@@ -447,6 +459,24 @@ function formatH(hours) {
   const hh = Math.floor(totalMin / 60);
   const mm = totalMin % 60;
   return (neg ? "-" : "") + hh + "h" + (mm ? String(mm).padStart(2, "0") : "");
+}
+
+/* ------------------------------------------------------------------ */
+/* Assistant « code oublié » (calcul local, aucune donnée envoyée)     */
+/* ------------------------------------------------------------------ */
+
+function majHelper() {
+  const prenom = $("helper-prenom").value.trim();
+  const nom = $("helper-nom").value.trim();
+  const ddn = $("helper-ddn").value; // AAAA-MM-JJ
+  const out = $("helper-result");
+  if (!prenom || !nom || !ddn) { out.hidden = true; return; }
+  const [y, m, d] = ddn.split("-");
+  out.textContent = (prenom[0] + d + m + y.slice(2) + nom[0]).toUpperCase();
+  out.hidden = false;
+}
+for (const id of ["helper-prenom", "helper-nom", "helper-ddn"]) {
+  $(id).addEventListener("input", majHelper);
 }
 
 /* ------------------------------------------------------------------ */
