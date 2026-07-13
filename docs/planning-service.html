@@ -43,9 +43,19 @@
 </head>
 <body>
 <header class="app-header">
-  <div>
-    <h1>📋 Planning de service</h1>
-    <p class="subtitle">Gestion des présences et plannings étudiants — Vue mois complet</p>
+  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+    <div>
+      <h1 style="margin: 0 0 4px 0;">📋 Planning de service</h1>
+      <p class="subtitle" style="margin: 0;">Gestion des présences et plannings étudiants</p>
+    </div>
+    <div style="text-align: right;">
+      <span style="display: inline-block; background: #dbeafe; color: #1e40af; font-size: 0.8rem; font-weight: 700; padding: 4px 12px; border-radius: 9999px; border: 1px solid #3b82f6; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">
+        v2.3 — 13/07/2026
+      </span>
+      <div style="font-size: 0.65rem; color: #64748b; margin-top: 3px;">
+        Joan THUILLIER • CHR Metz-Thionville
+      </div>
+    </div>
   </div>
 </header>
 <div class="content">
@@ -69,7 +79,7 @@
   <div class="print-header" id="printHeader"></div>
   <div id="content"></div>
   <div class="print-footer">
-    Document généré par <strong>GESTION ÉTUDIANT</strong> — Conçu et développé par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant — Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville
+    Document généré par <strong>GESTION ÉTUDIANT</strong> v2.3 — Conçu et développé par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant — Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville
   </div>
 </div>
 <script>
@@ -475,6 +485,14 @@ document.getElementById('prev').addEventListener('click', () => shiftWindow(-1))
 document.getElementById('next').addEventListener('click', () => shiftWindow(1));
 document.getElementById('refresh').addEventListener('click', async () => { await loadData(); render(); });
 document.getElementById('printBtn').addEventListener('click', () => { window.print(); });
+
+// Raccourci clavier : appuyer sur "R" pour actualiser (sauf si on est en train de taper dans un champ)
+document.addEventListener('keydown', function(e) {
+  if (e.key.toLowerCase() === 'r' && !e.target.matches('input, select, textarea')) {
+    e.preventDefault();
+    document.getElementById('refresh').click();
+  }
+});
 
 async function init() {
   await loadData();
