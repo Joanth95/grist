@@ -122,7 +122,7 @@
 </style>
 </head>
 <body>
-<h2 class="no-print">📋 Planning de service <span class="version">v3.1</span></h2>
+<h2 class="no-print">📋 Planning de service <span class="version">v3.2</span></h2>
 <div class="controls">
   <label>Service</label>
   <select id="service"></select>
@@ -142,7 +142,7 @@
 <div id="status"></div>
 <div class="print-header" id="printHeader"></div>
 <div id="content"></div>
-<div class="print-footer">Document généré automatiquement par l'application <strong>GESTION ÉTUDIANT</strong> v3.1 — Conçu et développé par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant — Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville</div>
+<div class="print-footer">Document généré automatiquement par l'application <strong>GESTION ÉTUDIANT</strong> v3.2 — Conçu et développé par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant — Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville</div>
 <script>
 grist.ready({requiredAccess: 'full'});
 const DAY_NAMES = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
@@ -250,7 +250,9 @@ function buildSortieIndex() {
     idx[pid + '_' + dk] = {
       Compte: !!SORTIES.Compte_stage[i],
       Duree: SORTIES.Duree_heures[i] || 0,
-      Motif: SORTIES.Motif[i] || ''
+      Motif: SORTIES.Motif[i] || '',
+      HeureDebut: SORTIES.Heure_debut ? SORTIES.Heure_debut[i] : null,
+      HeureFin: SORTIES.Heure_fin ? SORTIES.Heure_fin[i] : null
     };
   }
   return idx;
@@ -363,9 +365,14 @@ function render() {
           title = (sortie.Motif || 'Sortie comptée') + ' (' + sortie.Duree + 'h)';
         } else {
           cls = 'sortie-non';
-          let hours = sortie.Duree ? sortie.Duree + 'h' : '';
+          let timeInfo = '';
+          if (sortie.HeureDebut && sortie.HeureFin) {
+            timeInfo = sortie.HeureDebut + '-' + sortie.HeureFin;
+          } else if (sortie.Duree) {
+            timeInfo = sortie.Duree + 'h';
+          }
           text = (code ? code.Code : '') + 
-                 '<div class="rattrapage-x">✕ ' + hours + '</div>';
+                 '<div class="rattrapage-x">✕ ' + timeInfo + '</div>';
           title = 'Rattrapage / Absence non comptée';
         }
       } else if (code) {
