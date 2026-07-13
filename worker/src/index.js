@@ -174,6 +174,23 @@ async function buildPayload(env, student) {
     ? await gristFilter(env, T_HEBDO, { Periode: periodeIds })
     : [];
 
+  // Heures par jour de chaque semaine + jours de récupération acquis par période
+  // (un férié travaillé, càd férié avec heures > 0, ouvre un jour de récupération).
+  const feriesIso = [...feriesSet];
+  const recuperationByPeriode = {};
+  const semainesData = semaines.map((s) => {
+    const debut = s.fields.Semaine_debut;
+    const jours = DAY_COLUMNS.map((d, i) => {
+      const iso = debut ? epochToIso(debut + i * 86400) : null;
+      const info = jourInfo(codesById.get(s.fields[d]), iso, s.fields.Periode, sortiesByJour, feriesSet);
+      if (info.ferie && info.heures > 0) {
+        recuperationByPeriode[s.fields.Periode] = (recuperationByPeriode[s.fields.Periode] || 0) + 1;
+      }
+      return info;
+    });
+    return { s, jours };
+  });
+
   return {
     etudiant: {
       prenom: student.fields.PRENOM || "",
@@ -181,9 +198,10 @@ async function buildPayload(env, student) {
     },
     motifs: MOTIFS,
     periodes: periodes.map((p) => {
-      // Heures à réaliser : valeur saisie dans Grist si > 0, sinon calcul
-      // automatique sur la base de 35 h par semaine de stage.
-      const heuresBase = HEURES_PAR_SEMAINE * nombreSemaines(p.fields.Du, p.fields.Au);
+      // Heures à réaliser : valeur Grist si > 0 (déjà nette des fériés), sinon
+      // calcul auto = 35 h/semaine moins les jours fériés (accordés à l'étudiant).
+      const heuresBase = Math.max(0, HEURES_PAR_SEMAINE * nombreSemaines(p.fields.Du, p.fields.Au)
+        - HEURES_PAR_SEMAINE / 5 * nombreFeries(feriesIso, p.fields.Du, p.fields.Au));
       const aFaire = p.fields.A_FAIRE > 0 ? p.fields.A_FAIRE : heuresBase;
       const fait = p.fields.FAIT ?? 0;
       const service = serviceById.get(p.fields.Service);
@@ -197,26 +215,21 @@ async function buildPayload(env, student) {
         A_FAIRE: aFaire,
         FAIT: fait,
         Solde_heures: Math.round((fait - aFaire) * 100) / 100,
+        Recuperation: recuperationByPeriode[p.id] || 0,
         Tuteur: p.fields.Tuteur || "",
         cadre: cadreInfo(service, usersById),
       };
     }),
-    semaines: semaines.map((s) => {
+    semaines: semainesData.map(({ s, jours }) => {
       const out = {
         id: s.id,
         Periode: s.fields.Periode,
         Semaine_debut: epochToIso(s.fields.Semaine_debut),
         Commentaire: s.fields.Commentaire || "",
         Total_h_semaine: s.fields.Total_h_semaine ?? null,
+        jours,
       };
-      // Heures comptabilisées par jour (même calcul que la formule Grist :
-      // code + ajustement sortie, doublé si jour férié travaillé).
-      const debut = s.fields.Semaine_debut;
-      out.jours = DAY_COLUMNS.map((d, i) => {
-        out[d] = s.fields[d] || 0;
-        const iso = debut ? epochToIso(debut + i * 86400) : null;
-        return jourInfo(codesById.get(s.fields[d]), iso, s.fields.Periode, sortiesByJour, feriesSet);
-      });
+      for (const d of DAY_COLUMNS) out[d] = s.fields[d] || 0;
       return out;
     }),
     codes: codes.map((c) => ({
@@ -267,8 +280,18 @@ function jourInfo(codeRec, dateIso, periodeId, sortiesByJour, feriesSet) {
     h = (codeRec.fields.Duree_heures || 0) + (codeRec.fields.Ajustement_h || 0);
   }
   if (dateIso && periodeId) h += sortiesByJour.get(periodeId + "|" + dateIso) || 0;
-  if (h > 0 && ferie) h = h * 2; // jour férié travaillé = compté double
+  // Conformité (arrêté du 31/07/2009) : un jour férié est accordé à l'étudiant.
+  // Il n'est PAS compté double ; il est déduit du volume à réaliser (A_FAIRE).
+  // Un férié travaillé produit donc un surplus = droit à un jour de récupération.
   return { heures: Math.round(h * 100) / 100, ferie };
+}
+
+/** Nombre de jours fériés (ISO) compris dans l'intervalle [du, au] (epoch). */
+function nombreFeries(feriesIso, duEpoch, auEpoch) {
+  if (typeof duEpoch !== "number" || typeof auEpoch !== "number") return 0;
+  const duIso = epochToIso(duEpoch);
+  const auIso = epochToIso(auEpoch);
+  return feriesIso.filter((iso) => iso >= duIso && iso <= auIso).length;
 }
 
 /** Coordonnées du cadre responsable d'un service (nom, email, téléphone). */
@@ -441,6 +464,13 @@ async function inscription(request, env) {
   const duEpoch = Date.parse(du + "T00:00:00Z") / 1000;
   const auEpoch = Date.parse(au + "T00:00:00Z") / 1000;
 
+  // Heures à réaliser = 35 h/semaine, moins les jours fériés (accordés à l'étudiant).
+  const feriesIns = await gristAll(env, T_FERIES);
+  const feriesInsIso = feriesIns.map((f) => epochToIso(f.fields.Date)).filter(Boolean);
+  const aFaireInscription = Math.max(0,
+    HEURES_PAR_SEMAINE * nombreSemaines(duEpoch, auEpoch)
+    - HEURES_PAR_SEMAINE / 5 * nombreFeries(feriesInsIso, duEpoch, auEpoch));
+
   const createdPeriode = await grist(env, "POST", `/tables/${T_PERIODES}/records`, {
     records: [{
       fields: {
@@ -451,8 +481,7 @@ async function inscription(request, env) {
         Niveau: niveau,
         Service: serviceId,
         Tuteur: tuteur,
-        // Heures à réaliser : 35 h par semaine de stage
-        A_FAIRE: HEURES_PAR_SEMAINE * nombreSemaines(duEpoch, auEpoch),
+        A_FAIRE: aFaireInscription,
       },
     }],
   });

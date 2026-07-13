@@ -96,12 +96,12 @@
 
     <section id="feries">
       <h2>5. Jours fériés</h2>
-      <p>Les jours fériés sont listés dans la table <span class="code">JOURS_FERIES</span>. La règle appliquée automatiquement :</p>
+      <p>Les jours fériés sont listés dans la table <span class="code">JOURS_FERIES</span>. Règle appliquée (conforme à l'<strong>arrêté du 31 juillet 2009</strong>) :</p>
       <ul>
-        <li><strong>Férié travaillé → compté double (×2).</strong></li>
-        <li><strong>Férié non travaillé → 0 h</strong> (repos, non rattrapé).</li>
+        <li>Le férié est <strong>accordé</strong> : il est <strong>déduit du volume à réaliser</strong> (A_FAIRE = 35 h/semaine − 7 h par férié). Un férié non travaillé ne crée donc pas de dette.</li>
+        <li>Un férié <strong>travaillé</strong> compte ses heures normales (plus de ×2) et ouvre un <strong>jour de récupération</strong>, affiché sur la fiche de l'étudiant.</li>
       </ul>
-      <div class="callout warn">Si vous souhaitez une autre règle (ex. férié non travaillé décompté des heures à faire, ou majoration différente), c'est une décision de politique de service : signalez-le pour adapter la formule.</div>
+      <div class="callout">A_FAIRE est recalculé automatiquement à l'inscription. Pour un cas particulier, ajustez la valeur A_FAIRE directement dans la période. Le décompte compte tous les fériés tombant dans la période de stage.</div>
     </section>
 
     <section id="valider">

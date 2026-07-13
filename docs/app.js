@@ -154,6 +154,9 @@ function renderPeriode() {
       stats.appendChild(badge(`Solde : ${p.Solde_heures > 0 ? "+" : ""}${formatH(p.Solde_heures)}`,
         p.Solde_heures >= 0 ? "ok" : "warn"));
     }
+    if (p.Recuperation > 0) {
+      stats.appendChild(badge(`${p.Recuperation} jour${p.Recuperation > 1 ? "s" : ""} de récupération`, "ok"));
+    }
     card.appendChild(stats);
   }
 
@@ -295,8 +298,7 @@ function renderWeeks() {
       cell.appendChild(chip);
 
       if (info.heures > 0) {
-        const h = el("div", "day-hours", formatH(info.heures) + (info.ferie ? " ×2" : ""));
-        cell.appendChild(h);
+        cell.appendChild(el("div", "day-hours", formatH(info.heures)));
       } else if (code && code.Heure_debut && code.Heure_fin) {
         cell.appendChild(el("div", "day-hours", `${code.Heure_debut}–${code.Heure_fin}`));
       }
