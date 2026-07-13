@@ -122,7 +122,7 @@
 </style>
 </head>
 <body>
-<h2 class="no-print">📋 Planning de service <span class="version">v3.2</span></h2>
+<h2 class="no-print">📋 Planning de service <span class="version">v3.3</span></h2>
 <div class="controls">
   <label>Service</label>
   <select id="service"></select>
@@ -142,7 +142,7 @@
 <div id="status"></div>
 <div class="print-header" id="printHeader"></div>
 <div id="content"></div>
-<div class="print-footer">Document généré automatiquement par l'application <strong>GESTION ÉTUDIANT</strong> v3.2 — Conçu et développé par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant — Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville</div>
+<div class="print-footer">Document généré automatiquement par l'application <strong>GESTION ÉTUDIANT</strong> v3.3 — Conçu et développé par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant — Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville</div>
 <script>
 grist.ready({requiredAccess: 'full'});
 const DAY_NAMES = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
@@ -404,7 +404,7 @@ function render() {
     legendParts.push('<span class="chip"><strong>' + c + '</strong>&nbsp;' + (CODES.Libelle[i] || '') + '</span>');
   }
   legendParts.push('<span class="chip"><span class="badge badge-oui">Code+S</span> sortie comptée</span>');
-  legendParts.push('<span class="chip"><span class="rattrapage-x">✕</span> Rattrapage (ne compte pas)</span>');
+  legendParts.push('<span class="chip"><span class="rattrapage-x">✕</span> Rattrapage (ne compte pas) — Plage horaire affichée</span>');
   legendParts.push('<span class="chip"><span class="swatch" style="background:var(--period-off);"></span> Hors temps de stage</span>');
   html += '<div class="legend">' + legendParts.join('') + '</div>';
 
