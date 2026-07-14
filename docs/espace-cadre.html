@@ -209,7 +209,48 @@
     </form>
   </dialog>
 
+  <!-- Modifier une déclaration en attente (motif, date, heures) -->
+  <dialog id="edit-sortie-dialog">
+    <form id="edit-sortie-form" method="dialog">
+      <h2>Modifier la déclaration</h2>
+
+      <label for="edit-sortie-motif">Motif</label>
+      <input type="text" id="edit-sortie-motif" maxlength="100" required>
+
+      <label for="edit-sortie-commentaire">Commentaire <span class="optional">(facultatif)</span></label>
+      <input type="text" id="edit-sortie-commentaire" maxlength="200">
+
+      <div class="checkbox-label">
+        <label class="checkbox-label">
+          <input type="checkbox" id="edit-sortie-compte">
+          Ce temps compte en temps de stage
+        </label>
+      </div>
+
+      <label for="edit-sortie-date">Date</label>
+      <input type="date" id="edit-sortie-date" required>
+
+      <div class="row">
+        <div>
+          <label for="edit-sortie-debut">De</label>
+          <input type="time" id="edit-sortie-debut" required>
+        </div>
+        <div>
+          <label for="edit-sortie-fin">À</label>
+          <input type="time" id="edit-sortie-fin" required>
+        </div>
+      </div>
+
+      <p id="edit-sortie-error" class="error" hidden></p>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="edit-sortie-cancel-btn">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="edit-sortie-save-btn">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="config.js?v=18"></script>
-  <script src="espace-cadre.js?v=4"></script>
+  <script src="espace-cadre.js?v=5"></script>
 </body>
 </html>

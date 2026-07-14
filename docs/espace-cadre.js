@@ -1,6 +1,6 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 
-const APP_VERSION = "v4"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v5"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -158,7 +158,10 @@ function renderActiveTab() {
 /* ------------------------------------------------------------------ */
 
 function renderDeclarationsTab() {
-  const periodeIds = new Set(periodesDuService().map((p) => p.id));
+  // Seuls les stages EN COURS apparaissent ici ; les stages terminés ne sont
+  // plus à traiter (leurs déclarations restent visibles dans le dossier
+  // étudiant, onglet Planning personnel).
+  const periodeIds = new Set(periodesDuService().filter((p) => p.En_cours).map((p) => p.id));
   const periodesById = new Map(state.data.periodes.map((p) => [p.id, p]));
   const sorties = state.data.sorties.filter((s) => periodeIds.has(s.Periode));
   const pending = sorties.filter((s) => !s.Valide).sort((a, b) => (a.Date || "").localeCompare(b.Date || ""));
@@ -187,6 +190,17 @@ function renderSortieActionList(container, list, periodesById, isValid) {
       `${frDate(s.Date)} · ${s.Heure_debut || "?"} – ${s.Heure_fin || "?"} · ${formatH(s.Duree_heures)}`));
     row.appendChild(main);
 
+    const actions = el("div", "");
+    actions.style.display = "flex";
+    actions.style.gap = "0.4rem";
+
+    if (!isValid) {
+      const editBtn = el("button", "btn btn-ghost", "Modifier");
+      editBtn.type = "button";
+      editBtn.addEventListener("click", () => openEditDeclarationDialog(s));
+      actions.appendChild(editBtn);
+    }
+
     const btn = el("button", isValid ? "btn btn-ghost" : "btn btn-primary", isValid ? "Dévalider" : "Valider");
     btn.addEventListener("click", async () => {
       btn.disabled = true;
@@ -198,10 +212,60 @@ function renderSortieActionList(container, list, periodesById, isValid) {
         btn.disabled = false;
       }
     });
-    row.appendChild(btn);
+    actions.appendChild(btn);
+    row.appendChild(actions);
     container.appendChild(row);
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Dialogue : modifier une déclaration en attente (motif, date, heures) */
+/* ------------------------------------------------------------------ */
+
+const editSortieDialog = $("edit-sortie-dialog");
+let editingSortieId = null;
+
+function openEditDeclarationDialog(s) {
+  editingSortieId = s.id;
+  $("edit-sortie-motif").value = s.Motif || "";
+  $("edit-sortie-commentaire").value = s.Commentaire || "";
+  $("edit-sortie-date").value = s.Date || "";
+  $("edit-sortie-debut").value = s.Heure_debut || "";
+  $("edit-sortie-fin").value = s.Heure_fin || "";
+  $("edit-sortie-compte").checked = s.Compte_stage !== false;
+  $("edit-sortie-error").hidden = true;
+  editSortieDialog.showModal();
+}
+
+$("edit-sortie-cancel-btn").addEventListener("click", () => editSortieDialog.close());
+
+$("edit-sortie-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = $("edit-sortie-error");
+  errEl.hidden = true;
+
+  const body = {
+    Motif: $("edit-sortie-motif").value.trim(),
+    Commentaire: $("edit-sortie-commentaire").value.trim(),
+    Date: $("edit-sortie-date").value,
+    Heure_debut: $("edit-sortie-debut").value,
+    Heure_fin: $("edit-sortie-fin").value,
+    Compte_stage: $("edit-sortie-compte").checked,
+  };
+
+  const btn = $("edit-sortie-save-btn");
+  btn.disabled = true;
+  try {
+    await api("PATCH", `/api/cadre/sorties/${editingSortieId}`, body);
+    editSortieDialog.close();
+    await refresh();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 /* ------------------------------------------------------------------ */
 /* Onglet Dossier étudiants                                            */

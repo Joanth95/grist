@@ -555,16 +555,50 @@ async function creerSortiePourEtudiant(request, env, cadre) {
   return json({ id: data.records[0].id }, 201);
 }
 
+/** Valide/dévalide une déclaration, et/ou en modifie le contenu (motif, date,
+ * heures) tant qu'elle n'est pas validée. */
 async function validerSortie(request, env, cadre, rowId) {
   const body = await request.json().catch(() => ({}));
-  if (typeof body.Valide !== "boolean") throw httpError(400, "Le champ Valide (booléen) est requis");
 
   const rows = await gristFilter(env, T_SORTIES, { id: [rowId] });
   if (!rows.length) throw httpError(404, "Déclaration introuvable");
   const periodeId = rows[0].fields.Pour_le_stage_du_ || rows[0].fields.Rapprochement_manuel;
   await ensurePeriodeInScope(env, cadre, periodeId);
 
-  await gristUpdate(env, T_SORTIES, rowId, { Valide: body.Valide });
+  const modifieContenu = body.Motif !== undefined || body.Commentaire !== undefined
+    || body.Date !== undefined || body.Heure_debut !== undefined
+    || body.Heure_fin !== undefined || body.Compte_stage !== undefined;
+  if (modifieContenu && rows[0].fields.Valide) {
+    throw httpError(403, "Cette déclaration est validée : dévalidez-la avant de la modifier");
+  }
+
+  const fields = {};
+  if (body.Motif !== undefined) {
+    const motif = String(body.Motif || "").trim().slice(0, 100);
+    if (!motif) throw httpError(400, "Le motif est obligatoire");
+    fields.Motif = motif;
+  }
+  if (body.Commentaire !== undefined) fields.Motif_ou_Commentaire = cleanText(body.Commentaire, 200);
+  if (body.Date !== undefined) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(body.Date)) throw httpError(400, "Date invalide");
+    fields.Date = Date.parse(body.Date + "T00:00:00Z") / 1000;
+  }
+  if (body.Heure_debut !== undefined) {
+    if (!TIME_RE.test(body.Heure_debut)) throw httpError(400, "Heure de début invalide (format HH:MM)");
+    fields.Heure_debut = body.Heure_debut;
+  }
+  if (body.Heure_fin !== undefined) {
+    if (!TIME_RE.test(body.Heure_fin)) throw httpError(400, "Heure de fin invalide (format HH:MM)");
+    fields.Heure_fin = body.Heure_fin;
+  }
+  if (body.Compte_stage !== undefined) fields.Compte_stage = !!body.Compte_stage;
+  if (body.Valide !== undefined) {
+    if (typeof body.Valide !== "boolean") throw httpError(400, "Le champ Valide doit être un booléen");
+    fields.Valide = body.Valide;
+  }
+  if (!Object.keys(fields).length) throw httpError(400, "Aucune modification fournie");
+
+  await gristUpdate(env, T_SORTIES, rowId, fields);
   return json({ ok: true });
 }
 
