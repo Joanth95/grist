@@ -21,6 +21,15 @@
  *   GET    /api/data                           -> payload complet (rafraîchissement)
  *   POST   /api/sorties        { ... }         -> nouvelle déclaration
  *   DELETE /api/sorties/:id                    -> suppression d'une de SES déclarations
+ *
+ * Espace cadre (email + code d'accès personnel dans X-Cadre-Email / X-Cadre-Code,
+ * UTILISATEURS.Code_acces) : un cadre ne voit/modifie que les services dont il
+ * est le Cadre_ref (SERVICES.Cadre_ref).
+ *   POST   /api/cadre/login    { email, code }         -> payload des services du cadre
+ *   GET    /api/cadre/data                             -> payload complet (rafraîchissement)
+ *   PATCH  /api/cadre/sorties/:id   { Valide }         -> valider/invalider une déclaration
+ *   PATCH  /api/cadre/planning/:semaineId { jour, codeId } -> édite une case du planning
+ *   PATCH  /api/cadre/periodes/:id  { Tuteur, Niveau, Du, Au } -> édite une fiche de période
  */
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
@@ -73,8 +82,8 @@ export default {
 function corsHeaders(env) {
   return {
     "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
-    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, X-Student-Code",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, X-Student-Code, X-Cadre-Email, X-Cadre-Code",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -100,6 +109,36 @@ async function route(request, env) {
     const body = await request.json().catch(() => ({}));
     const student = await authenticateCode(env, body.code);
     return json(await buildPayload(env, student));
+  }
+  if (request.method === "POST" && path === "/api/cadre/login") {
+    const body = await request.json().catch(() => ({}));
+    const cadre = await authenticateCadre(env, body.email, body.code);
+    return json(await buildCadrePayload(env, cadre));
+  }
+
+  // --- Endpoints cadre authentifiés ---
+  if (path.startsWith("/api/cadre/")) {
+    const cadre = await authenticateCadre(
+      env,
+      request.headers.get("X-Cadre-Email"),
+      request.headers.get("X-Cadre-Code")
+    );
+    if (request.method === "GET" && path === "/api/cadre/data") {
+      return json(await buildCadrePayload(env, cadre));
+    }
+    const sm = path.match(/^\/api\/cadre\/sorties\/(\d+)$/);
+    if (request.method === "PATCH" && sm) {
+      return validerSortie(request, env, cadre, Number(sm[1]));
+    }
+    const wm = path.match(/^\/api\/cadre\/planning\/(\d+)$/);
+    if (request.method === "PATCH" && wm) {
+      return updatePlanningJour(request, env, cadre, Number(wm[1]));
+    }
+    const pm = path.match(/^\/api\/cadre\/periodes\/(\d+)$/);
+    if (request.method === "PATCH" && pm) {
+      return updatePeriode(request, env, cadre, Number(pm[1]));
+    }
+    throw httpError(404, "Route inconnue");
   }
 
   // --- Endpoints authentifiés ---
@@ -137,6 +176,33 @@ async function authenticateCode(env, rawCode) {
   const records = await gristFilter(env, T_ETUDIANTS, { Anonymat: [code] });
   if (records.length !== 1) throw httpError(401, "Code anonymat invalide");
   return { rowId: records[0].id, code, fields: records[0].fields };
+}
+
+/** Authentifie un cadre par email + code d'accès personnel (UTILISATEURS.Code_acces). */
+async function authenticateCadre(env, rawEmail, rawCode) {
+  const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : "";
+  const code = typeof rawCode === "string" ? rawCode.trim() : "";
+  if (!email || !code) throw httpError(401, "Email ou code d'accès invalide");
+
+  const users = await gristAll(env, T_UTILISATEURS);
+  const match = users.find(
+    (u) => (u.fields.Email || "").trim().toLowerCase() === email
+      && (u.fields.Code_acces || "").trim() === code
+  );
+  if (!match) throw httpError(401, "Email ou code d'accès invalide");
+
+  const services = await gristAll(env, T_SERVICES);
+  const myServices = services.filter((s) => s.fields.Cadre_ref === match.id);
+  if (!myServices.length) {
+    throw httpError(403, "Aucun service ne vous est rattaché : contactez l'administrateur");
+  }
+
+  return {
+    rowId: match.id,
+    fields: match.fields,
+    services: myServices,
+    serviceIds: new Set(myServices.map((s) => s.id)),
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -296,6 +362,185 @@ async function listServices(env) {
     formations: FORMATIONS,
     niveaux: NIVEAUX,
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Espace cadre                                                        */
+/* ------------------------------------------------------------------ */
+
+/** Payload complet des services/étudiants/planning rattachés au cadre. */
+async function buildCadrePayload(env, cadre) {
+  const [periodesAll, students, codes, feries] = await Promise.all([
+    gristAll(env, T_PERIODES),
+    gristAll(env, T_ETUDIANTS),
+    gristAll(env, T_CODES),
+    gristAll(env, T_FERIES),
+  ]);
+
+  const periodes = periodesAll.filter((p) => cadre.serviceIds.has(p.fields.Service));
+  const periodeIds = periodes.map((p) => p.id);
+  const periodeIdSet = new Set(periodeIds);
+  const etudiantsById = new Map(students.map((e) => [e.id, e]));
+  const codesById = new Map(codes.map((c) => [c.id, c]));
+  const feriesSet = new Set(feries.map((f) => epochToIso(f.fields.Date)).filter(Boolean));
+
+  const studentIds = [...new Set(periodes.map((p) => p.fields.Etudiant).filter(Boolean))];
+  const sortiesAll = studentIds.length ? await gristFilter(env, T_SORTIES, { Anonymat: studentIds }) : [];
+  const sorties = sortiesAll.filter((s) => {
+    const per = s.fields.Pour_le_stage_du_ || s.fields.Rapprochement_manuel;
+    return periodeIdSet.has(per);
+  });
+
+  const sortiesByJour = new Map();
+  for (const s of sorties) {
+    const per = s.fields.Pour_le_stage_du_ || s.fields.Rapprochement_manuel;
+    const iso = epochToIso(s.fields.Date);
+    if (per && iso) {
+      const key = per + "|" + iso;
+      sortiesByJour.set(key, (sortiesByJour.get(key) || 0) + (s.fields.Ajustement_h || 0));
+    }
+  }
+
+  const semaines = periodeIds.length ? await gristFilter(env, T_HEBDO, { Periode: periodeIds }) : [];
+  const semainesData = semaines.map((s) => {
+    const debut = s.fields.Semaine_debut;
+    const jours = DAY_COLUMNS.map((d, i) => {
+      const codeRec = codesById.get(s.fields[d]);
+      const iso = debut ? epochToIso(debut + i * 86400) : null;
+      return jourInfo(codeRec, iso, s.fields.Periode, sortiesByJour, feriesSet);
+    });
+    return { s, jours };
+  });
+
+  return {
+    services: cadre.services.map((s) => ({ id: s.id, Nom: s.fields.Nom || "" })),
+    niveaux: NIVEAUX,
+    periodes: periodes.map((p) => {
+      const etu = etudiantsById.get(p.fields.Etudiant);
+      const fait = p.fields.FAIT ?? 0;
+      const aFaire = p.fields.A_FAIRE ?? 0;
+      return {
+        id: p.id,
+        Service: p.fields.Service,
+        Etudiant: { nom: etu ? etu.fields.NOM || "" : "", prenom: etu ? etu.fields.PRENOM || "" : "" },
+        Du: epochToIso(p.fields.Du),
+        Au: epochToIso(p.fields.Au),
+        Niveau: p.fields.Niveau || "",
+        Tuteur: p.fields.Tuteur || "",
+        En_cours: !!p.fields.En_cours,
+        A_FAIRE: aFaire,
+        FAIT: fait,
+        Solde_heures: Math.round((fait - aFaire) * 100) / 100,
+      };
+    }),
+    semaines: semainesData.map(({ s, jours }) => {
+      const out = {
+        id: s.id,
+        Periode: s.fields.Periode,
+        Semaine_debut: epochToIso(s.fields.Semaine_debut),
+        jours,
+      };
+      for (const d of DAY_COLUMNS) out[d] = s.fields[d] || 0;
+      return out;
+    }),
+    codes: codes.map((c) => ({
+      id: c.id,
+      Code: c.fields.Code || "",
+      Libelle: c.fields.Libelle || "",
+      Heure_debut: c.fields.Heure_debut || "",
+      Heure_fin: c.fields.Heure_fin || "",
+    })),
+    sorties: sorties.map((s) => ({
+      id: s.id,
+      Periode: s.fields.Pour_le_stage_du_ || s.fields.Rapprochement_manuel || null,
+      Motif: s.fields.Motif || "",
+      Commentaire: s.fields.Motif_ou_Commentaire || "",
+      Date: epochToIso(s.fields.Date),
+      Heure_debut: s.fields.Heure_debut || "",
+      Heure_fin: s.fields.Heure_fin || "",
+      Compte_stage: !!s.fields.Compte_stage,
+      Valide: !!s.fields.Valide,
+      Duree_heures: s.fields.Duree_heures ?? 0,
+      Ajustement_h: s.fields.Ajustement_h ?? 0,
+    })),
+  };
+}
+
+/** Vérifie que la période appartient à un service du cadre ; la renvoie sinon lève 403/404. */
+async function ensurePeriodeInScope(env, cadre, periodeId) {
+  if (!periodeId) throw httpError(403, "Aucune période rattachée");
+  const rows = await gristFilter(env, T_PERIODES, { id: [periodeId] });
+  if (!rows.length) throw httpError(404, "Période introuvable");
+  if (!cadre.serviceIds.has(rows[0].fields.Service)) {
+    throw httpError(403, "Cet étudiant n'appartient pas à l'un de vos services");
+  }
+  return rows[0];
+}
+
+async function validerSortie(request, env, cadre, rowId) {
+  const body = await request.json().catch(() => ({}));
+  if (typeof body.Valide !== "boolean") throw httpError(400, "Le champ Valide (booléen) est requis");
+
+  const rows = await gristFilter(env, T_SORTIES, { id: [rowId] });
+  if (!rows.length) throw httpError(404, "Déclaration introuvable");
+  const periodeId = rows[0].fields.Pour_le_stage_du_ || rows[0].fields.Rapprochement_manuel;
+  await ensurePeriodeInScope(env, cadre, periodeId);
+
+  await gristUpdate(env, T_SORTIES, rowId, { Valide: body.Valide });
+  return json({ ok: true });
+}
+
+async function updatePlanningJour(request, env, cadre, semaineId) {
+  const body = await request.json().catch(() => ({}));
+  const jour = String(body.jour || "");
+  if (!DAY_COLUMNS.includes(jour)) throw httpError(400, "Jour invalide");
+  const codeId = body.codeId === null || body.codeId === undefined ? null : Number(body.codeId);
+  if (codeId !== null && !Number.isInteger(codeId)) throw httpError(400, "Code horaire invalide");
+
+  const rows = await gristFilter(env, T_HEBDO, { id: [semaineId] });
+  if (!rows.length) throw httpError(404, "Semaine introuvable");
+  await ensurePeriodeInScope(env, cadre, rows[0].fields.Periode);
+
+  if (codeId !== null) {
+    const codes = await gristFilter(env, T_CODES, { id: [codeId] });
+    if (!codes.length) throw httpError(400, "Code horaire introuvable");
+  }
+
+  await gristUpdate(env, T_HEBDO, semaineId, { [jour]: codeId });
+  return json({ ok: true });
+}
+
+async function updatePeriode(request, env, cadre, periodeId) {
+  const body = await request.json().catch(() => ({}));
+  const rows = await gristFilter(env, T_PERIODES, { id: [periodeId] });
+  if (!rows.length) throw httpError(404, "Période introuvable");
+  if (!cadre.serviceIds.has(rows[0].fields.Service)) {
+    throw httpError(403, "Cet étudiant n'appartient pas à l'un de vos services");
+  }
+
+  const fields = {};
+  if (body.Tuteur !== undefined) fields.Tuteur = cleanText(body.Tuteur, 80);
+  if (body.Niveau !== undefined) {
+    if (!NIVEAUX.includes(body.Niveau)) throw httpError(400, "Niveau invalide");
+    fields.Niveau = body.Niveau;
+  }
+  if (body.Du !== undefined) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(body.Du)) throw httpError(400, "Date de début invalide");
+    fields.Du = Date.parse(body.Du + "T00:00:00Z") / 1000;
+  }
+  if (body.Au !== undefined) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(body.Au)) throw httpError(400, "Date de fin invalide");
+    fields.Au = Date.parse(body.Au + "T00:00:00Z") / 1000;
+  }
+  const du = fields.Du !== undefined ? fields.Du : rows[0].fields.Du;
+  const au = fields.Au !== undefined ? fields.Au : rows[0].fields.Au;
+  if (typeof du === "number" && typeof au === "number" && du > au) {
+    throw httpError(400, "La fin du stage doit être après le début");
+  }
+  if (!Object.keys(fields).length) throw httpError(400, "Aucune modification fournie");
+
+  await gristUpdate(env, T_PERIODES, periodeId, fields);
+  return json({ ok: true });
 }
 
 /** Heures comptabilisées un jour donné (réplique la formule Grist Total_h_semaine). */
@@ -585,6 +830,10 @@ async function gristFilter(env, table, filter) {
 async function gristAll(env, table) {
   const data = await grist(env, "GET", `/tables/${table}/records`);
   return data.records || [];
+}
+
+async function gristUpdate(env, table, id, fields) {
+  await grist(env, "PATCH", `/tables/${table}/records`, { records: [{ id, fields }] });
 }
 
 /* ------------------------------------------------------------------ */
