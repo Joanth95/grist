@@ -389,6 +389,7 @@ async function buildCadrePayload(env, cadre) {
   const etudiantsById = new Map(students.map((e) => [e.id, e]));
   const codesById = new Map(codes.map((c) => [c.id, c]));
   const feriesSet = new Set(feries.map((f) => epochToIso(f.fields.Date)).filter(Boolean));
+  const feriesIso = [...feriesSet];
 
   // Une évaluation se rattache à une période soit par sa clé (Cle_lien ==
   // PERIODES_DE_STAGE.UUID, cas normal du lien envoyé par mail), soit par la
@@ -436,6 +437,7 @@ async function buildCadrePayload(env, cadre) {
     niveaux: NIVEAUX,
     motifs: MOTIFS,
     moi: { nom: cadreNomComplet(cadre) },
+    feries: feriesIso,
     periodes: periodes.map((p) => {
       // Volontairement PAS de date de naissance ni de numéro de téléphone
       // personnel : ces données sont trop sensibles pour ce niveau de sécurité.

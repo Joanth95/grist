@@ -4,6 +4,14 @@ const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
+// Lien direct (?code=...) : permet d'ouvrir l'espace déjà connecté, sans
+// ressaisir le code anonymat (ex. lien fourni depuis Grist).
+const urlCode = new URLSearchParams(location.search).get("code");
+if (urlCode) {
+  sessionStorage.setItem("code", urlCode.trim().toUpperCase());
+  history.replaceState(null, "", location.pathname);
+}
+
 const state = {
   code: sessionStorage.getItem("code") || null,
   data: null, // { etudiant, motifs, periodes, semaines, codes, sorties }
