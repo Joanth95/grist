@@ -30,6 +30,7 @@
     .flow{background:var(--fond);border-radius:var(--radius);padding:.75rem 1rem;font-family:ui-monospace,monospace;font-size:.85rem;overflow-x:auto}
     footer{text-align:center;color:var(--doux);font-size:.85rem;padding:2rem 1rem}
     .pill{display:inline-block;font-size:.78rem;font-weight:700;padding:.1rem .5rem;border-radius:999px;background:var(--okbg);color:var(--ok)}
+    .pill.warn{background:var(--warnbg);color:var(--warn)}
   </style>
 </head>
 <body>
@@ -44,107 +45,119 @@
     <nav class="toc">
       <strong>Sommaire</strong>
       <a href="#principe">1. Principe général</a>
-      <a href="#espace-cadre">2. Espace cadre en ligne</a>
-      <a href="#ou">3. Où se passe quoi</a>
-      <a href="#planning">4. Établir le planning</a>
-      <a href="#heures">5. Comprendre les heures</a>
-      <a href="#feries">6. Jours fériés</a>
-      <a href="#valider">7. Valider les déclarations</a>
-      <a href="#cadre">8. Vos coordonnées</a>
-      <a href="#imprimer">9. Planning imprimable & évaluations</a>
+      <a href="#connexion">2. Se connecter</a>
+      <a href="#onglets">3. Les 4 onglets de l'espace cadre</a>
+      <a href="#dossier">4. Dossier étudiants</a>
+      <a href="#planning">5. Planning de service</a>
+      <a href="#heures">6. Comprendre les heures</a>
+      <a href="#feries">7. Jours fériés</a>
+      <a href="#valider">8. Valider les déclarations</a>
+      <a href="#evaluations">9. Envoi des évaluations</a>
+      <a href="#cadre">10. Vos coordonnées</a>
     </nav>
 
     <section id="principe">
       <h2>1. Principe général</h2>
-      <p>L'étudiant dispose d'un espace web où il consulte son planning et déclare ses écarts d'heures. Toutes les données vivent dans <strong>ce document Grist</strong> : le site web n'est qu'une fenêtre par-dessus.</p>
-      <div class="flow">Étudiant → Site web (code anonymat) → Proxy sécurisé → Document Grist (vous)</div>
-      <p>L'étudiant n'a <strong>pas</strong> de compte Grist. Il s'identifie par son code anonymat (1<sup>re</sup> lettre du prénom + date de naissance JJMMAA + 1<sup>re</sup> lettre du nom).</p>
+      <p>Chaque étudiant dispose de son propre <strong>espace en ligne</strong> pour consulter son planning de stage et déclarer ses écarts d'heures (retard, rattrapage, sortie de formation). Vous disposez de votre côté d'un <strong>espace cadre</strong> qui vous permet de piloter les étudiants de votre service : même planning, mêmes déclarations, avec en plus les actions de gestion (validation, édition du planning, fiches de stage).</p>
+      <p>L'étudiant n'a pas d'identifiant classique : il s'identifie par un <strong>code anonymat</strong> personnel (1<sup>re</sup> lettre du prénom + date de naissance JJMMAA + 1<sup>re</sup> lettre du nom).</p>
     </section>
 
-    <section id="espace-cadre">
-      <h2>2. Espace cadre en ligne</h2>
-      <p>Un <strong>espace web dédié</strong> permet de gérer les étudiants de votre service sans ouvrir Grist : <a href="espace-cadre.html">espace-cadre.html</a>. Vous vous connectez avec votre <strong>email</strong> et un <strong>code d'accès personnel</strong> (transmis par l'administrateur, colonne <span class="code">Code_acces</span> de <span class="code">UTILISATEURS</span>).</p>
-      <div class="flow">Cadre → Espace cadre (email + code) → Proxy sécurisé → Document Grist</div>
-      <p>Vous n'y voyez et modifiez <strong>que les services dont vous êtes le responsable</strong> (<span class="code">SERVICES.Cadre_ref</span>). Depuis cet espace : validation des déclarations en attente, édition du planning hebdomadaire (clic sur une case), et modification des fiches de période (tuteur, niveau, dates). Le widget Grist <span class="code">planning-serviceV2.html</span> reste utilisable en parallèle si vous préférez travailler dans Grist.</p>
+    <section id="connexion">
+      <h2>2. Se connecter à l'espace cadre</h2>
+      <p>Rendez-vous sur <a href="espace-cadre.html">espace-cadre.html</a> et connectez-vous avec votre <strong>adresse email</strong> et votre <strong>code d'accès personnel</strong> (transmis par l'administrateur de l'application).</p>
+      <p>Vous pouvez aussi recevoir un <strong>lien de connexion directe</strong> intégrant déjà vos identifiants : un simple clic vous connecte, sans ressaisir email ni code.</p>
+      <p>Vous ne voyez et ne modifiez <strong>que les services dont vous êtes responsable</strong>. Si vous couvrez plusieurs services, un sélecteur en haut de page permet de passer de l'un à l'autre.</p>
       <div class="callout warn">Le code d'accès donne accès à toutes les données de votre service : gardez-le confidentiel, comme un mot de passe.</div>
     </section>
 
-    <section id="ou">
-      <h2>3. Où se passe quoi (tables Grist)</h2>
+    <section id="onglets">
+      <h2>3. Les 4 onglets de l'espace cadre</h2>
       <table>
-        <tr><th>Table</th><th>Rôle</th></tr>
-        <tr><td><span class="code">LISTE_DES_ETUDIANTS</span></td><td>Fiche étudiant. Créée automatiquement à l'entrée en stage.</td></tr>
-        <tr><td><span class="code">PERIODES_DE_STAGE</span></td><td>Une ligne par stage (service, dates, niveau, tuteur, heures à faire/faites).</td></tr>
-        <tr><td><span class="code">PLANNING_HEBDO</span></td><td>Une ligne par semaine. <strong>C'est ici que vous saisissez le planning</strong> (codes du lundi au dimanche).</td></tr>
-        <tr><td><span class="code">Sortie_de_stage</span></td><td>Les déclarations de l'étudiant (heures sup, retards, sorties). <strong>C'est ici que vous validez.</strong></td></tr>
-        <tr><td><span class="code">CODES_HORAIRES</span></td><td>Référentiel des codes (M, S, N, JF…) et de leurs horaires.</td></tr>
-        <tr><td><span class="code">SERVICES</span> / <span class="code">UTILISATEURS</span></td><td>Services et cadres responsables.</td></tr>
+        <tr><th>Onglet</th><th>À quoi il sert</th></tr>
+        <tr><td><strong>Déclarations à valider</strong></td><td>Valider ou dévalider les heures déclarées par les étudiants en stage.</td></tr>
+        <tr><td><strong>Dossier étudiants</strong></td><td>Fiche de chaque étudiant : stages passés / en cours / à venir, planning individuel, déclarations.</td></tr>
+        <tr><td><strong>Planning de service</strong></td><td>Vue d'ensemble du service sur 30 jours, modifiable case par case, imprimable.</td></tr>
+        <tr><td><strong>Envoi des évaluations</strong></td><td>Envoyer le questionnaire de satisfaction aux étudiants en fin de stage.</td></tr>
       </table>
+    </section>
+
+    <section id="dossier">
+      <h2>4. Dossier étudiants</h2>
+      <p>Les étudiants de votre service sont classés en trois sous-onglets :</p>
+      <ul>
+        <li><span class="pill">En cours</span> — le stage est actuellement en cours ;</li>
+        <li><strong>À venir</strong> — le stage n'a pas encore commencé ;</li>
+        <li><strong>Passé</strong> — le stage est terminé.</li>
+      </ul>
+      <p>Sous le nom de chaque étudiant s'affichent son <strong>code anonymat</strong> (à lui redonner s'il l'a oublié) et les <strong>dates de son stage</strong>. Chaque dossier se compose de deux sous-onglets :</p>
+      <h3>Stages effectués</h3>
+      <p>La fiche du stage : tuteur, niveau, dates de début et de fin. Elle reste <strong>modifiable tant que le stage est en cours</strong> ; une fois le stage terminé, elle passe automatiquement en lecture seule.</p>
+      <h3>Planning personnel</h3>
+      <p>Le planning individuel de l'étudiant, semaine par semaine, ainsi que la liste de ses déclarations d'heures avec leur statut (<span class="pill warn">En attente</span> ou <span class="pill">Validé</span>). Le bouton <strong>« + Déclarer »</strong> permet de déclarer vous-même des heures pour l'étudiant (par exemple un rattrapage) ; la déclaration attend ensuite votre validation comme n'importe quelle autre, dans l'onglet « Déclarations à valider ».</p>
     </section>
 
     <section id="planning">
-      <h2>4. Établir le planning d'un étudiant</h2>
-      <ol>
-        <li>Ouvrez la page de gestion et sélectionnez l'étudiant / sa période.</li>
-        <li>Les semaines sont <strong>générées automatiquement</strong> à l'inscription (une ligne par semaine de stage). Sinon, utilisez le bouton <strong>« Générer les semaines »</strong>.</li>
-        <li>Dans <span class="code">PLANNING_HEBDO</span>, renseignez pour chaque jour un <strong>code horaire</strong> (M, S, N, R, JF…).</li>
-      </ol>
-      <p>Le total d'heures de la semaine et de la période se calcule tout seul. L'étudiant voit le planning en <strong>lecture seule</strong>.</p>
+      <h2>5. Planning de service</h2>
+      <p>Cet onglet affiche tous les étudiants du service sur une <strong>fenêtre glissante de 30 jours</strong> : choisissez une date de départ, ou naviguez avec « Aujourd'hui » / « ◀ Préc. 30j » / « Suiv. 30j ▶ ».</p>
+      <p>Cliquez sur une case pour ouvrir la liste des codes horaires disponibles et l'affecter à ce jour.</p>
+      <p>Les <strong>week-ends et jours fériés</strong> sont grisés pour les repérer d'un coup d'œil, à l'écran comme à l'impression. Une légende des codes horaires (avec leurs horaires) s'affiche en bas du tableau.</p>
+      <div class="callout">Le bouton <strong>🖨 Imprimer</strong> génère une version prête à imprimer ou à archiver : en-tête avec le nom du service, les dates, votre nom et la date de génération.</div>
     </section>
 
     <section id="heures">
-      <h2>5. Comprendre le décompte des heures</h2>
+      <h2>6. Comprendre le décompte des heures</h2>
       <table>
         <tr><th>Notion</th><th>Comment c'est calculé</th></tr>
-        <tr><td><strong>À réaliser</strong> (<span class="code">A_FAIRE</span>)</td><td><strong>35 h × nombre de semaines</strong> de stage. Renseigné automatiquement à l'inscription ; vous pouvez le modifier dans la période.</td></tr>
-        <tr><td><strong>Effectuées</strong> (<span class="code">FAIT</span>)</td><td>Somme des heures du planning + des déclarations <strong>validées</strong>.</td></tr>
+        <tr><td><strong>À réaliser</strong></td><td><strong>35 h × nombre de semaines</strong> de stage, moins les jours fériés (voir ci-dessous).</td></tr>
+        <tr><td><strong>Effectuées</strong></td><td>Heures du planning établi + heures des déclarations <strong>validées</strong>.</td></tr>
         <tr><td><strong>Solde</strong></td><td>Effectuées − À réaliser. Négatif = il reste des heures à faire.</td></tr>
       </table>
-      <div class="callout">Les heures d'un code = sa durée + son éventuel ajustement, uniquement si le code « compte pour le stage » (colonne <span class="code">Compte_stage</span> dans <span class="code">CODES_HORAIRES</span>).</div>
     </section>
 
     <section id="feries">
-      <h2>6. Jours fériés</h2>
-      <p>Les jours fériés sont listés dans la table <span class="code">JOURS_FERIES</span>. Règle appliquée (conforme à l'<strong>arrêté du 31 juillet 2009</strong>) :</p>
+      <h2>7. Jours fériés</h2>
+      <p>Règle appliquée (conforme à l'<strong>arrêté du 31 juillet 2009</strong>) :</p>
       <ul>
-        <li>Le férié est <strong>accordé</strong> : il est <strong>déduit du volume à réaliser</strong> (A_FAIRE = 35 h/semaine − 7 h par férié). Un férié non travaillé ne crée donc pas de dette.</li>
-        <li>Un férié <strong>travaillé</strong> compte ses heures normales (plus de ×2) et ouvre un <strong>jour de récupération</strong>, affiché sur la fiche de l'étudiant.</li>
-        <li>Pour solder la récupération, posez le code <span class="code">RF</span> (« Récupération jour férié », 0 h) sur un jour du planning : le compteur « à poser » de l'étudiant se décrémente automatiquement.</li>
+        <li>Le férié est <strong>accordé</strong> : il est <strong>déduit du volume à réaliser</strong>. Un férié non travaillé ne crée donc pas de dette.</li>
+        <li>Un férié <strong>travaillé</strong> compte ses heures normales (sans être doublé) et ouvre un <strong>jour de récupération</strong>, affiché sur la fiche de l'étudiant.</li>
+        <li>Pour solder la récupération, posez le code <span class="code">RF</span> (« Récupération jour férié ») sur un jour du planning.</li>
       </ul>
-      <div class="callout">A_FAIRE est recalculé automatiquement à l'inscription. Pour un cas particulier, ajustez la valeur A_FAIRE directement dans la période. Le décompte compte tous les fériés tombant dans la période de stage.</div>
+      <p>Les jours fériés sont grisés dans le planning de service (voir section 5).</p>
     </section>
 
     <section id="valider">
-      <h2>7. Valider les déclarations d'heures</h2>
-      <p>Quand un étudiant déclare des heures, la ligne apparaît dans <span class="code">Sortie_de_stage</span> avec la case <span class="code">Validé</span> <strong>décochée</strong>.</p>
+      <h2>8. Valider les déclarations d'heures</h2>
+      <p>Quand un étudiant déclare des heures (ou que vous en déclarez pour lui), elles apparaissent dans l'onglet <strong>Déclarations à valider</strong>, section « En attente ».</p>
       <ul>
-        <li>Tant qu'elle n'est pas validée, elle s'affiche <strong>« En attente »</strong> côté étudiant et <strong>ne compte pas</strong> dans ses heures.</li>
-        <li><strong>Cochez <span class="code">Validé</span></strong> pour la prendre en compte : elle devient <span class="pill">Validé</span> chez l'étudiant et alimente le total.</li>
-        <li>Une déclaration validée ne peut plus être supprimée par l'étudiant.</li>
+        <li>Tant qu'elle n'est pas validée, une déclaration <strong>ne compte pas</strong> dans les heures de l'étudiant, qui la voit comme <span class="pill warn">En attente</span>.</li>
+        <li>Cliquez sur <strong>« Valider »</strong> pour la prendre en compte : elle passe en section « Validées » et alimente le total de l'étudiant.</li>
+        <li>Une déclaration en attente peut être <strong>modifiée</strong> (motif, commentaire, date, heures) via le bouton « Modifier », en cas d'erreur de saisie.</li>
+        <li>Une déclaration validée par erreur peut être <strong>dévalidée</strong> depuis la section « Validées ».</li>
       </ul>
+      <div class="callout">Seules les déclarations des stages <strong>en cours</strong> apparaissent dans cet onglet. Celles d'un stage terminé restent consultables dans Dossier étudiants → Planning personnel.</div>
       <h3>Les trois types de déclaration</h3>
       <table>
-        <tr><th>Type (colonne Motif)</th><th>Effet</th></tr>
-        <tr><td>Rattrapage / Heures supplémentaires</td><td>Ajoute les heures.</td></tr>
-        <tr><td>Retard</td><td>Déduit les heures (la formule reconnaît « Retard »).</td></tr>
-        <tr><td>Sortie de stage</td><td>Ajoute les heures si « Compte en stage » est coché, sinon 0.</td></tr>
+        <tr><th>Type</th><th>Effet</th></tr>
+        <tr><td>Rattrapage</td><td>Ajoute les heures.</td></tr>
+        <tr><td>Retard</td><td>Déduit les heures.</td></tr>
+        <tr><td>Sortie de stage</td><td>Ajoute les heures si « Compte en temps de stage » est coché, sinon 0.</td></tr>
       </table>
-      <p>La précision libre saisie par l'étudiant se trouve dans la colonne <span class="code">Motif ou Commentaire</span>.</p>
-      <div class="callout warn">Ne renommez pas le <em>libellé</em> d'une colonne en pensant que c'est cosmétique : Grist régénère son identifiant technique et peut casser les formules. En cas de doute, demandez.</div>
+    </section>
+
+    <section id="evaluations">
+      <h2>9. Envoi des évaluations</h2>
+      <p>Cet onglet liste les étudiants <strong>éligibles à l'envoi du questionnaire de satisfaction</strong> : de 10 jours avant la fin du stage jusqu'à 40 jours après.</p>
+      <p>Le bouton <strong>« Envoyer l'évaluation »</strong> ouvre un email pré-rempli avec le lien du questionnaire, à envoyer à l'étudiant. Un badge indique l'état :</p>
+      <ul>
+        <li><span class="pill warn">O — envoyé, en attente de réponse</span> — le mail a été envoyé ; vous pouvez le renvoyer si besoin ;</li>
+        <li><span class="pill">V — a répondu</span> — l'étudiant a rempli le questionnaire.</li>
+      </ul>
     </section>
 
     <section id="cadre">
-      <h2>8. Vos coordonnées de cadre</h2>
-      <p>Le nom, le mail et le téléphone du cadre s'affichent à l'étudiant (sur sa fiche de stage et dans le message d'inscription). Ils viennent de la table <span class="code">UTILISATEURS</span> (via <span class="code">SERVICES.Cadre_ref</span>).</p>
-      <div class="callout">Pensez à renseigner la colonne <span class="code">Téléphone</span> de la table <span class="code">UTILISATEURS</span> : tant qu'elle est vide, seul le mail s'affiche.</div>
-    </section>
-
-    <section id="imprimer">
-      <h2>9. Planning imprimable & évaluations</h2>
-      <ul>
-        <li><strong>Planning imprimable</strong> : une mise en page prête à imprimer/signer (récapitulatif des semaines, heures, sorties, rendez-vous formateur, signatures).</li>
-        <li><strong>Évaluations de stage</strong> : les questionnaires de satisfaction sont collectés dans <span class="code">EVALUATION_STAGE_ETUDIANT</span> (scores par thème, note globale, recommandation, commentaires). Un tableau de bord d'analyse est en préparation.</li>
-      </ul>
+      <h2>10. Vos coordonnées de cadre</h2>
+      <p>Votre nom et vos coordonnées (mail, téléphone) s'affichent à l'étudiant sur sa fiche de stage et dans le message d'inscription. Assurez-vous qu'elles soient à jour auprès de l'administrateur de l'application.</p>
+      <div class="callout">Tant que votre téléphone n'est pas renseigné, seul le mail s'affiche à l'étudiant.</div>
     </section>
   </main>
 
