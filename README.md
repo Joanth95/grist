@@ -1,5 +1,9 @@
 # Espace étudiant — Planning de stage
 
+> Vous voulez déployer une copie de cette application pour un autre
+> service/établissement (document Grist, worker et site propres) ? Voir le
+> [guide d'installation](INSTALL.md).
+
 Un espace web permettant aux étudiants du service de **s'enregistrer à leur
 entrée en stage, consulter leur planning et déclarer leurs heures**
 (rattrapages, retards, sorties de stage). Les données sont dans le document
