@@ -48,11 +48,15 @@
     .planning-controls { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-bottom: 0.75rem; }
     .planning-controls input[type="date"] { padding: 0.4rem 0.5rem; border: 1px solid var(--gris-bordure); border-radius: 4px; }
 
-    #print-header { display: none; }
+    #print-header, #print-footer { display: none; }
     @media print {
       .app-header, .cadre-service-select, .main-tabs, .planning-controls, .app-footer,
       #tab-declarations, #tab-dossier, #tab-evaluation, .section-note { display: none !important; }
       #print-header { display: block; margin-bottom: 1rem; }
+      #print-footer {
+        display: block; margin-top: 16px; padding-top: 6px; border-top: 1px solid #ccc;
+        text-align: center; font-size: 8pt; color: #555;
+      }
       table.service-planning { display: table; overflow: visible; white-space: normal; }
       table.service-planning th.student-col, table.service-planning td.student-col { position: static; }
       td.code-cell { cursor: default; }
@@ -134,6 +138,8 @@
         </div>
       </section>
 
+      <div id="print-footer"></div>
+
       <footer class="app-footer">
         Application développée par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant —
         Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville<br>
@@ -204,6 +210,6 @@
   </dialog>
 
   <script src="config.js?v=18"></script>
-  <script src="espace-cadre.js?v=3"></script>
+  <script src="espace-cadre.js?v=4"></script>
 </body>
 </html>

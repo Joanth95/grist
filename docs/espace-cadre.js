@@ -1,5 +1,6 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 
+const APP_VERSION = "v4"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -610,6 +611,11 @@ function updatePrintHeader(startKey, endKey) {
     `<h2 style="margin:0 0 4px;">Planning de service — ${escapeHtml(serviceName)}</h2>`
     + `<p style="margin:0;color:#555;font-size:0.85rem;">Du ${frDate(startKey)} au ${frDate(endKey)} · Généré le ${genDate}`
     + (printedBy ? ` · Imprimé par ${escapeHtml(printedBy)}` : "") + `</p>`;
+
+  $("print-footer").innerHTML =
+    `Application développée par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant — `
+    + `Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville<br>`
+    + `Version bêta ${APP_VERSION} — vos retours sont les bienvenus`;
 }
 
 /** Associe chaque jour (ISO) d'une période à sa case de planning (semaine + colonne). */
