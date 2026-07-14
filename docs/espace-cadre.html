@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Espace cadre</title>
+  <link rel="stylesheet" href="styles.css?v=18">
+  <style>
+    .cadre-service-select { margin: 0 0 1rem; }
+    .cadre-service-select select { padding: 0.5rem 0.75rem; border: 1px solid var(--gris-bordure); border-radius: 4px; min-width: 260px; }
+    .etu-card { background: var(--blanc); border-radius: var(--radius); box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 1rem 1.25rem; margin-bottom: 1rem; }
+    .etu-header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; }
+    .etu-nom { font-weight: 700; font-size: 1.05rem; }
+    .etu-meta { color: var(--texte-doux); font-size: 0.9rem; }
+    .etu-fiche { display: flex; gap: 0.75rem; flex-wrap: wrap; margin: 0.6rem 0; }
+    .etu-fiche label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.8rem; color: var(--texte-doux); }
+    .etu-fiche input, .etu-fiche select { padding: 0.4rem 0.5rem; border: 1px solid var(--gris-bordure); border-radius: 4px; font-size: 0.9rem; }
+    .day-cell.editable { cursor: pointer; }
+    .day-cell.editable:hover { outline: 2px solid var(--bleu); }
+    .pending-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid var(--gris-bordure); }
+    .pending-row:last-child { border-bottom: none; }
+    .pending-main { flex: 1; }
+    .save-hint { font-size: 0.8rem; color: var(--texte-doux); margin-top: 0.25rem; }
+  </style>
+</head>
+<body>
+
+  <!-- Écran de connexion -->
+  <section id="login-screen" class="screen">
+    <div class="login-card">
+      <h1>Espace cadre</h1>
+      <p class="subtitle">Piloter les étudiants de votre service : planning, validations, fiches</p>
+      <form id="login-form">
+        <label for="login-email">Adresse email</label>
+        <input type="email" id="login-email" autocomplete="username" required>
+        <label for="login-code">Code d'accès</label>
+        <input type="password" id="login-code" autocomplete="current-password" required>
+        <button type="submit" class="btn btn-primary" id="login-btn">Se connecter</button>
+        <p id="login-error" class="error" hidden></p>
+      </form>
+      <p class="hint">
+        Le code d'accès vous a été transmis par l'administrateur de l'application.<br>
+        Besoin d'aide ? <a href="guide-cadre.html">Consultez le mode d'emploi</a>.
+      </p>
+    </div>
+    <footer class="app-footer">
+      Application développée par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant —
+      Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville<br>
+      <span class="beta-tag">Version bêta</span> — vos retours sont les bienvenus
+    </footer>
+  </section>
+
+  <!-- Application -->
+  <section id="app-screen" class="screen" hidden>
+    <header class="app-header">
+      <div>
+        <h1>Espace cadre</h1>
+        <p class="subtitle">Étudiants de votre service</p>
+      </div>
+      <div class="header-actions">
+        <button id="refresh-btn" class="btn btn-ghost">Actualiser</button>
+        <button id="logout-btn" class="btn btn-ghost">Se déconnecter</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="cadre-service-select">
+        <label for="service-select"><strong>Service</strong></label><br>
+        <select id="service-select"></select>
+      </div>
+
+      <section>
+        <h2>Déclarations en attente de validation</h2>
+        <p class="section-note">Validez ou laissez en attente les déclarations d'heures des étudiants de ce service.</p>
+        <div id="pending"></div>
+      </section>
+
+      <section>
+        <h2>Étudiants et planning</h2>
+        <p class="section-note">Cliquez sur une case du planning pour changer le code horaire du jour. Les fiches (tuteur, niveau, dates) sont éditables directement.</p>
+        <div id="etudiants"></div>
+      </section>
+
+      <footer class="app-footer">
+        Application développée par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant —
+        Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville<br>
+        <span class="beta-tag">Version bêta</span> — vos retours sont les bienvenus
+      </footer>
+    </main>
+  </section>
+
+  <!-- Sélecteur de code horaire pour une case de planning -->
+  <dialog id="code-dialog">
+    <form id="code-form" method="dialog">
+      <h2>Code horaire</h2>
+      <label for="code-select">Jour sélectionné</label>
+      <select id="code-select"></select>
+      <p id="code-error" class="error" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="code-cancel-btn">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="code-save-btn">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="config.js?v=18"></script>
+  <script src="espace-cadre.js?v=1"></script>
+</body>
+</html>

@@ -44,13 +44,14 @@
     <nav class="toc">
       <strong>Sommaire</strong>
       <a href="#principe">1. Principe général</a>
-      <a href="#ou">2. Où se passe quoi</a>
-      <a href="#planning">3. Établir le planning</a>
-      <a href="#heures">4. Comprendre les heures</a>
-      <a href="#feries">5. Jours fériés</a>
-      <a href="#valider">6. Valider les déclarations</a>
-      <a href="#cadre">7. Vos coordonnées</a>
-      <a href="#imprimer">8. Planning imprimable & évaluations</a>
+      <a href="#espace-cadre">2. Espace cadre en ligne</a>
+      <a href="#ou">3. Où se passe quoi</a>
+      <a href="#planning">4. Établir le planning</a>
+      <a href="#heures">5. Comprendre les heures</a>
+      <a href="#feries">6. Jours fériés</a>
+      <a href="#valider">7. Valider les déclarations</a>
+      <a href="#cadre">8. Vos coordonnées</a>
+      <a href="#imprimer">9. Planning imprimable & évaluations</a>
     </nav>
 
     <section id="principe">
@@ -60,8 +61,16 @@
       <p>L'étudiant n'a <strong>pas</strong> de compte Grist. Il s'identifie par son code anonymat (1<sup>re</sup> lettre du prénom + date de naissance JJMMAA + 1<sup>re</sup> lettre du nom).</p>
     </section>
 
+    <section id="espace-cadre">
+      <h2>2. Espace cadre en ligne</h2>
+      <p>Un <strong>espace web dédié</strong> permet de gérer les étudiants de votre service sans ouvrir Grist : <a href="espace-cadre.html">espace-cadre.html</a>. Vous vous connectez avec votre <strong>email</strong> et un <strong>code d'accès personnel</strong> (transmis par l'administrateur, colonne <span class="code">Code_acces</span> de <span class="code">UTILISATEURS</span>).</p>
+      <div class="flow">Cadre → Espace cadre (email + code) → Proxy sécurisé → Document Grist</div>
+      <p>Vous n'y voyez et modifiez <strong>que les services dont vous êtes le responsable</strong> (<span class="code">SERVICES.Cadre_ref</span>). Depuis cet espace : validation des déclarations en attente, édition du planning hebdomadaire (clic sur une case), et modification des fiches de période (tuteur, niveau, dates). Le widget Grist <span class="code">planning-serviceV2.html</span> reste utilisable en parallèle si vous préférez travailler dans Grist.</p>
+      <div class="callout warn">Le code d'accès donne accès à toutes les données de votre service : gardez-le confidentiel, comme un mot de passe.</div>
+    </section>
+
     <section id="ou">
-      <h2>2. Où se passe quoi (tables Grist)</h2>
+      <h2>3. Où se passe quoi (tables Grist)</h2>
       <table>
         <tr><th>Table</th><th>Rôle</th></tr>
         <tr><td><span class="code">LISTE_DES_ETUDIANTS</span></td><td>Fiche étudiant. Créée automatiquement à l'entrée en stage.</td></tr>
@@ -74,7 +83,7 @@
     </section>
 
     <section id="planning">
-      <h2>3. Établir le planning d'un étudiant</h2>
+      <h2>4. Établir le planning d'un étudiant</h2>
       <ol>
         <li>Ouvrez la page de gestion et sélectionnez l'étudiant / sa période.</li>
         <li>Les semaines sont <strong>générées automatiquement</strong> à l'inscription (une ligne par semaine de stage). Sinon, utilisez le bouton <strong>« Générer les semaines »</strong>.</li>
@@ -84,7 +93,7 @@
     </section>
 
     <section id="heures">
-      <h2>4. Comprendre le décompte des heures</h2>
+      <h2>5. Comprendre le décompte des heures</h2>
       <table>
         <tr><th>Notion</th><th>Comment c'est calculé</th></tr>
         <tr><td><strong>À réaliser</strong> (<span class="code">A_FAIRE</span>)</td><td><strong>35 h × nombre de semaines</strong> de stage. Renseigné automatiquement à l'inscription ; vous pouvez le modifier dans la période.</td></tr>
@@ -95,7 +104,7 @@
     </section>
 
     <section id="feries">
-      <h2>5. Jours fériés</h2>
+      <h2>6. Jours fériés</h2>
       <p>Les jours fériés sont listés dans la table <span class="code">JOURS_FERIES</span>. Règle appliquée (conforme à l'<strong>arrêté du 31 juillet 2009</strong>) :</p>
       <ul>
         <li>Le férié est <strong>accordé</strong> : il est <strong>déduit du volume à réaliser</strong> (A_FAIRE = 35 h/semaine − 7 h par férié). Un férié non travaillé ne crée donc pas de dette.</li>
@@ -106,7 +115,7 @@
     </section>
 
     <section id="valider">
-      <h2>6. Valider les déclarations d'heures</h2>
+      <h2>7. Valider les déclarations d'heures</h2>
       <p>Quand un étudiant déclare des heures, la ligne apparaît dans <span class="code">Sortie_de_stage</span> avec la case <span class="code">Validé</span> <strong>décochée</strong>.</p>
       <ul>
         <li>Tant qu'elle n'est pas validée, elle s'affiche <strong>« En attente »</strong> côté étudiant et <strong>ne compte pas</strong> dans ses heures.</li>
@@ -125,13 +134,13 @@
     </section>
 
     <section id="cadre">
-      <h2>7. Vos coordonnées de cadre</h2>
+      <h2>8. Vos coordonnées de cadre</h2>
       <p>Le nom, le mail et le téléphone du cadre s'affichent à l'étudiant (sur sa fiche de stage et dans le message d'inscription). Ils viennent de la table <span class="code">UTILISATEURS</span> (via <span class="code">SERVICES.Cadre_ref</span>).</p>
       <div class="callout">Pensez à renseigner la colonne <span class="code">Téléphone</span> de la table <span class="code">UTILISATEURS</span> : tant qu'elle est vide, seul le mail s'affiche.</div>
     </section>
 
     <section id="imprimer">
-      <h2>8. Planning imprimable & évaluations</h2>
+      <h2>9. Planning imprimable & évaluations</h2>
       <ul>
         <li><strong>Planning imprimable</strong> : une mise en page prête à imprimer/signer (récapitulatif des semaines, heures, sorties, rendez-vous formateur, signatures).</li>
         <li><strong>Évaluations de stage</strong> : les questionnaires de satisfaction sont collectés dans <span class="code">EVALUATION_STAGE_ETUDIANT</span> (scores par thème, note globale, recommandation, commentaires). Un tableau de bord d'analyse est en préparation.</li>
