@@ -197,9 +197,9 @@ async function authenticateCadre(env, rawEmail, rawCode) {
   if (!match) throw httpError(401, "Email ou code d'accès invalide");
 
   const services = await gristAll(env, T_SERVICES);
-  const myServices = services.filter((s) => s.fields.Cadre_ref === match.id);
+  const myServices = services.filter((s) => s.fields.Cadre_ref === match.id && s.fields.Recoit_des_etudiant);
   if (!myServices.length) {
-    throw httpError(403, "Aucun service ne vous est rattaché : contactez l'administrateur");
+    throw httpError(403, "Aucun service ouvert aux étudiants ne vous est rattaché : contactez l'administrateur");
   }
 
   return {
