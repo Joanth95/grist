@@ -1,6 +1,6 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 
-const APP_VERSION = "v5"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v7"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -11,16 +11,42 @@ const TABS = [
   { id: "evaluation", label: "Envoi des évaluations" },
 ];
 
+// Lien direct (?email=...&code=...) : permet d'ouvrir l'espace cadre déjà
+// connecté, sans ressaisir les identifiants (ex. lien fourni depuis Grist).
+const urlParams = new URLSearchParams(location.search);
+const urlEmail = urlParams.get("email");
+const urlCadreCode = urlParams.get("code");
+if (urlEmail && urlCadreCode) {
+  sessionStorage.setItem("cadre_email", urlEmail.trim());
+  sessionStorage.setItem("cadre_code", urlCadreCode.trim());
+  history.replaceState(null, "", location.pathname);
+}
+
 const state = {
   email: sessionStorage.getItem("cadre_email") || null,
   code: sessionStorage.getItem("cadre_code") || null,
   data: null, // { services, niveaux, motifs, moi, periodes, semaines, codes, sorties }
   selectedServiceId: null,
   activeTab: "declarations",
+  dossierCategory: "cours", // 'passe' | 'cours' | 'avenir'
   dossierSubTab: {}, // studentId -> 'stages' | 'planning'
   dossierSelectedPeriode: {}, // studentId -> periodeId
   planningStart: null, // ISO date : début de la fenêtre de 30 jours affichée
 };
+
+const DOSSIER_CATEGORIES = [
+  { id: "cours", label: "En cours" },
+  { id: "avenir", label: "À venir" },
+  { id: "passe", label: "Passé" },
+];
+
+/** Classe une période par rapport à aujourd'hui : en cours, à venir ou passée. */
+function periodeCategory(p) {
+  if (p.En_cours) return "cours";
+  const today = isoDate(new Date());
+  if (p.Du && p.Du > today) return "avenir";
+  return "passe";
+}
 
 /* ------------------------------------------------------------------ */
 /* API                                                                 */
@@ -115,10 +141,12 @@ function periodesDuService() {
   return state.data.periodes.filter((p) => p.Service === state.selectedServiceId);
 }
 
-/** Regroupe les périodes du service par étudiant. */
-function studentsDuService() {
+/** Regroupe par étudiant les périodes du service appartenant à une catégorie
+ *  donnée ('passe' | 'cours' | 'avenir'). Sans catégorie, prend tout. */
+function studentsDuService(category) {
   const map = new Map();
   for (const p of periodesDuService()) {
+    if (category && periodeCategory(p) !== category) continue;
     const id = p.Etudiant.id;
     if (!map.has(id)) map.set(id, { id, etudiant: p.Etudiant, periodes: [] });
     map.get(id).periodes.push(p);
@@ -167,6 +195,9 @@ function renderDeclarationsTab() {
   const pending = sorties.filter((s) => !s.Valide).sort((a, b) => (a.Date || "").localeCompare(b.Date || ""));
   const valid = sorties.filter((s) => s.Valide).sort((a, b) => (b.Date || "").localeCompare(a.Date || ""));
 
+  $("declarations-pending-count").textContent = pending.length;
+  $("declarations-valid-count").textContent = valid.length;
+
   renderSortieActionList($("declarations-pending"), pending, periodesById, false);
   renderSortieActionList($("declarations-valid"), valid, periodesById, true);
 }
@@ -181,7 +212,7 @@ function renderSortieActionList(container, list, periodesById, isValid) {
 
   for (const s of list) {
     const p = periodesById.get(s.Periode);
-    const row = el("div", "pending-row");
+    const row = el("div", "pending-row " + (isValid ? "row-valid" : "row-pending"));
     const main = el("div", "pending-main");
     const nomEtu = p ? `${p.Etudiant.prenom} ${p.Etudiant.nom}`.trim() : "";
     const titleText = s.Commentaire ? `${s.Motif} — ${s.Commentaire}` : s.Motif;
@@ -271,13 +302,31 @@ $("edit-sortie-form").addEventListener("submit", async (e) => {
 /* Onglet Dossier étudiants                                            */
 /* ------------------------------------------------------------------ */
 
+/** Sous-onglets de classement des dossiers : Passé / En cours / À venir. */
+function renderDossierCategoryTabs() {
+  const bar = $("dossier-category-tabs");
+  bar.innerHTML = "";
+  for (const c of DOSSIER_CATEGORIES) {
+    const btn = el("button", "sub-tab" + (state.dossierCategory === c.id ? " active" : ""), c.label);
+    btn.type = "button";
+    btn.addEventListener("click", () => {
+      state.dossierCategory = c.id;
+      renderDossierTab();
+    });
+    bar.appendChild(btn);
+  }
+}
+
 function renderDossierTab() {
+  renderDossierCategoryTabs();
+
   const container = $("dossier-list");
   container.innerHTML = "";
-  const students = studentsDuService();
+  const students = studentsDuService(state.dossierCategory);
 
   if (!students.length) {
-    container.appendChild(el("p", "empty", "Aucun étudiant sur ce service."));
+    const label = { cours: "en cours", avenir: "à venir", passe: "passé" }[state.dossierCategory];
+    container.appendChild(el("p", "empty", `Aucun étudiant avec un stage ${label} sur ce service.`));
     return;
   }
 
@@ -291,6 +340,11 @@ function renderDossierTab() {
       left.append(document.createTextNode(" "));
       left.appendChild(el("span", "anonymat-badge", st.etudiant.anonymat));
     }
+    const datesText = [...st.periodes]
+      .sort((a, b) => (b.Du || "").localeCompare(a.Du || ""))
+      .map((p) => `${frDate(p.Du)} → ${frDate(p.Au)}`)
+      .join(" · ");
+    left.appendChild(el("div", "etu-dates", datesText));
     header.appendChild(left);
     const metaParts = [st.etudiant.formation, st.etudiant.centre].filter(Boolean);
     if (metaParts.length) header.appendChild(el("div", "etu-meta", metaParts.join(" · ")));
@@ -620,13 +674,16 @@ function renderPlanningTab() {
     return;
   }
 
+  const feriesSet = new Set(state.data.feries || []);
+  const isJourOff = (dk) => isWeekendIso(dk) || feriesSet.has(dk);
+
   const table = document.createElement("table");
   table.className = "service-planning";
   const thead = document.createElement("thead");
   const headRow = document.createElement("tr");
   headRow.appendChild(el("th", "student-col", "Étudiant"));
   for (const dk of days) {
-    headRow.appendChild(el("th", "", dayNum(dk)));
+    headRow.appendChild(el("th", isJourOff(dk) ? "jour-off" : "", dayNum(dk)));
   }
   thead.appendChild(headRow);
   table.appendChild(thead);
@@ -640,21 +697,45 @@ function renderPlanningTab() {
     th.appendChild(el("div", "etu-meta-small", [p.Niveau, p.Tuteur].filter(Boolean).join(" · ")));
     tr.appendChild(th);
     for (const dk of days) {
+      const off = isJourOff(dk);
       if ((p.Du && dk < p.Du) || (p.Au && dk > p.Au)) {
-        tr.appendChild(el("td", "hors-periode", ""));
+        tr.appendChild(el("td", "hors-periode" + (off ? " jour-off" : ""), ""));
         continue;
       }
       const entry = dayMap.get(dk);
       if (!entry) {
-        tr.appendChild(el("td", "", "—"));
+        tr.appendChild(el("td", off ? "jour-off" : "", "—"));
       } else {
-        tr.appendChild(codeCell(entry.semaineId, entry.jour, entry.codeId));
+        tr.appendChild(codeCell(entry.semaineId, entry.jour, entry.codeId, off ? "jour-off" : ""));
       }
     }
     tbody.appendChild(tr);
   }
   table.appendChild(tbody);
   container.appendChild(table);
+  container.appendChild(renderCodesLegend());
+}
+
+/** Légende affichée sous le planning : horaires de chaque code + repère week-end/férié. */
+function renderCodesLegend() {
+  const wrap = el("div", "codes-legend");
+  wrap.appendChild(el("div", "codes-legend-title", "Codes horaires"));
+  const list = el("div", "codes-legend-list");
+  for (const c of state.data.codes) {
+    const horaire = (c.Heure_debut && c.Heure_fin) ? ` (${c.Heure_debut}–${c.Heure_fin})` : "";
+    list.appendChild(el("span", "codes-legend-item", `${c.Code} — ${c.Libelle}${horaire}`));
+  }
+  const offItem = el("span", "codes-legend-item legend-off-item");
+  offItem.appendChild(el("span", "legend-off-swatch"));
+  offItem.appendChild(document.createTextNode("Week-end / jour férié"));
+  list.appendChild(offItem);
+  wrap.appendChild(list);
+  return wrap;
+}
+
+function isWeekendIso(iso) {
+  const day = new Date(iso + "T00:00:00").getDay();
+  return day === 0 || day === 6;
 }
 
 function shiftWindow(deltaDays) {
@@ -699,10 +780,10 @@ function buildDayMap(periodeId) {
 /* Case de planning éditable (clic -> liste déroulante, comme dans Grist) */
 /* ------------------------------------------------------------------ */
 
-function codeCell(semaineId, jour, codeId) {
+function codeCell(semaineId, jour, codeId, extraClass) {
   const codeById = new Map(state.data.codes.map((c) => [c.id, c]));
   const td = document.createElement("td");
-  td.className = "code-cell";
+  td.className = "code-cell" + (extraClass ? " " + extraClass : "");
 
   function renderText() {
     td.innerHTML = "";
