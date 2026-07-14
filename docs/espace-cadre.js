@@ -696,15 +696,28 @@ function renderEvaluationTab() {
   for (const p of periodes) {
     const row = el("div", "pending-row");
     const main = el("div", "pending-main");
-    main.appendChild(el("div", "sortie-title", `${p.Etudiant.prenom} ${p.Etudiant.nom}`.trim()));
+    const title = el("div", "sortie-title", `${p.Etudiant.prenom} ${p.Etudiant.nom}`.trim());
+    if (p.Evaluation_repondue) {
+      title.appendChild(badge("V — a répondu", "ok"));
+    } else if (p.Evaluation_envoyee) {
+      title.appendChild(badge("O — envoyé, en attente de réponse", "pending"));
+    }
+    main.appendChild(title);
     main.appendChild(el("div", "sortie-meta", `${frDate(p.Du)} → ${frDate(p.Au)}`));
     row.appendChild(main);
 
     if (p.Lien_evaluation && p.Etudiant.email) {
       const a = document.createElement("a");
       a.className = "btn btn-primary";
-      a.textContent = "Envoyer l'évaluation";
+      a.textContent = p.Evaluation_envoyee ? "Renvoyer l'évaluation" : "Envoyer l'évaluation";
       a.href = mailtoEvaluation(p);
+      a.addEventListener("click", () => {
+        if (!p.Evaluation_envoyee) {
+          api("PATCH", `/api/cadre/periodes/${p.id}`, { Evaluation_envoyee: true })
+            .then(refresh)
+            .catch(() => {});
+        }
+      });
       row.appendChild(a);
     } else if (!p.Lien_evaluation) {
       row.appendChild(badge("Lien non généré", "warn"));

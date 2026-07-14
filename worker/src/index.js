@@ -43,6 +43,7 @@ const T_SERVICES = "SERVICES";
 const T_SORTIES = "Sortie_de_stage";
 const T_UTILISATEURS = "UTILISATEURS";
 const T_FERIES = "JOURS_FERIES";
+const T_EVALUATIONS = "EVALUATION_STAGE_ETUDIANT";
 
 const DAY_COLUMNS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
@@ -374,11 +375,12 @@ async function listServices(env) {
 
 /** Payload complet des services/étudiants/planning rattachés au cadre. */
 async function buildCadrePayload(env, cadre) {
-  const [periodesAll, students, codes, feries] = await Promise.all([
+  const [periodesAll, students, codes, feries, evaluations] = await Promise.all([
     gristAll(env, T_PERIODES),
     gristAll(env, T_ETUDIANTS),
     gristAll(env, T_CODES),
     gristAll(env, T_FERIES),
+    gristAll(env, T_EVALUATIONS),
   ]);
 
   const periodes = periodesAll.filter((p) => cadre.serviceIds.has(p.fields.Service));
@@ -387,6 +389,19 @@ async function buildCadrePayload(env, cadre) {
   const etudiantsById = new Map(students.map((e) => [e.id, e]));
   const codesById = new Map(codes.map((c) => [c.id, c]));
   const feriesSet = new Set(feries.map((f) => epochToIso(f.fields.Date)).filter(Boolean));
+
+  // Une évaluation se rattache à une période soit par sa clé (Cle_lien ==
+  // PERIODES_DE_STAGE.UUID, cas normal du lien envoyé par mail), soit par la
+  // référence directe Periode_de_stage (repli).
+  const periodeIdByUuid = new Map(
+    periodesAll.map((p) => [p.fields.UUID, p.id]).filter(([uuid]) => uuid)
+  );
+  const periodesAvecReponse = new Set();
+  for (const e of evaluations) {
+    const periodeId = (e.fields.Cle_lien && periodeIdByUuid.get(e.fields.Cle_lien))
+      || e.fields.Periode_de_stage || null;
+    if (periodeId) periodesAvecReponse.add(periodeId);
+  }
 
   const studentIds = [...new Set(periodes.map((p) => p.fields.Etudiant).filter(Boolean))];
   const sortiesAll = studentIds.length ? await gristFilter(env, T_SORTIES, { Anonymat: studentIds }) : [];
@@ -450,6 +465,8 @@ async function buildCadrePayload(env, cadre) {
         FAIT: fait,
         Solde_heures: Math.round((fait - aFaire) * 100) / 100,
         Lien_evaluation: p.fields.Lien_evaluation || "",
+        Evaluation_envoyee: !!p.fields.Evaluation_envoyee,
+        Evaluation_repondue: periodesAvecReponse.has(p.id),
       };
     }),
     semaines: semainesData.map(({ s, jours }) => {
@@ -593,6 +610,7 @@ async function updatePeriode(request, env, cadre, periodeId) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(body.Au)) throw httpError(400, "Date de fin invalide");
     fields.Au = Date.parse(body.Au + "T00:00:00Z") / 1000;
   }
+  if (body.Evaluation_envoyee !== undefined) fields.Evaluation_envoyee = !!body.Evaluation_envoyee;
   const du = fields.Du !== undefined ? fields.Du : rows[0].fields.Du;
   const au = fields.Au !== undefined ? fields.Au : rows[0].fields.Au;
   if (typeof du === "number" && typeof au === "number" && du > au) {
