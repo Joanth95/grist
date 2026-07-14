@@ -466,13 +466,39 @@ select {
   .btn-primary { color: #0b0b0b; }
 }
 
+/* ---------- Pied de page ---------- */
+
+.app-footer {
+  text-align: center;
+  color: var(--texte-doux);
+  font-size: 0.78rem;
+  padding: 1.5rem 1rem 2rem;
+  line-height: 1.6;
+}
+
+.beta-tag {
+  display: inline-block;
+  font-weight: 700;
+  color: #b34000;
+  background: #fff3e0;
+  border: 1px solid #ffd9a0;
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+  margin-top: 0.4rem;
+  font-size: 0.75rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .beta-tag { background: #4a2f00; border-color: #7a5200; color: #ffcf87; }
+}
+
 /* ---------- Impression / export PDF ---------- */
 
 @media print {
   body { background: #fff; }
   .app-header { border-bottom-color: #000; }
   .header-actions, #add-sortie-btn, .sortie-delete, .periode-tabs,
-  #login-screen, dialog { display: none !important; }
+  #login-screen, dialog, .app-footer { display: none !important; }
   .periode-card, .week-card, .sortie-row { box-shadow: none; border: 1px solid #999; }
   .week-card { break-inside: avoid; }
   .content { max-width: none; margin: 0; }
