@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Planning de service — Widget cadre</title>
+<link rel="stylesheet" href="styles.css?v=18">
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<style>
+  :root { --accent: #000091; }
+  body { background: var(--gris-fond); padding: 0; }
+  .app-header { background: var(--blanc); border-bottom: 4px solid var(--bleu); padding: 1rem 1.25rem; }
+  .content { padding: 1.25rem; }
+  .planning-controls { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-bottom: 0.9rem; background: var(--blanc); padding: 0.9rem 1rem; border-radius: var(--radius); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  .planning-controls label { font-weight: 600; font-size: 0.85rem; color: var(--texte-doux); }
+  .planning-controls select, .planning-controls input[type="date"], .planning-controls input[type="text"] {
+    padding: 0.45rem 0.6rem; border: 1px solid var(--gris-bordure); border-radius: 4px; font-size: 0.9rem;
+  }
+  #status { margin: 0 0 0.75rem; color: var(--bleu); font-size: 0.9rem; }
+
+  table.service-planning { border-collapse: collapse; width: 100%; font-size: 0.85rem; background: var(--blanc); display: block; overflow-x: auto; white-space: nowrap; border-radius: var(--radius); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  table.service-planning th, table.service-planning td { border: 1px solid var(--gris-bordure); padding: 0.4rem 0.5rem; text-align: center; }
+  table.service-planning th.student-col, table.service-planning td.student-col {
+    position: sticky; left: 0; background: var(--blanc); text-align: left; min-width: 180px; z-index: 1;
+  }
+  table.service-planning thead th { background: var(--gris-fond); }
+  .etu-meta-small { font-size: 0.75rem; color: var(--texte-doux); font-weight: 400; }
+  td.hors-periode { background: var(--gris-fond); }
+  td.code-cell { cursor: pointer; }
+  td.code-cell:hover { outline: 2px solid var(--bleu); outline-offset: -2px; }
+  td.code-cell select { width: 100%; padding: 0.2rem; font-size: 0.85rem; }
+  .empty { color: var(--texte-doux); font-style: italic; padding: 1rem; }
+
+  #print-header, #print-footer { display: none; }
+  @media print {
+    .app-header, .planning-controls, #status { display: none !important; }
+    #print-header { display: block; margin-bottom: 1rem; }
+    #print-footer {
+      display: block; margin-top: 16px; padding-top: 6px; border-top: 1px solid #ccc;
+      text-align: center; font-size: 8pt; color: #555;
+    }
+    table.service-planning { display: table; overflow: visible; white-space: normal; }
+    table.service-planning th.student-col, table.service-planning td.student-col { position: static; }
+    td.code-cell { cursor: default; }
+    body { padding: 5mm; background: white; }
+    @page { size: landscape; margin: 4mm; }
+  }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <h1 style="margin:0;">📋 Planning de service</h1>
+  <p class="subtitle" style="margin:0.2rem 0 0;">Widget Grist — même grille que l'espace cadre en ligne</p>
+</header>
+
+<div class="content">
+  <div id="status"></div>
+  <div id="print-header"></div>
+
+  <div class="planning-controls no-print">
+    <label>Service</label>
+    <select id="service-select"></select>
+    <label>Début de fenêtre</label>
+    <input type="date" id="date-input">
+    <button id="today-btn" class="btn btn-ghost" type="button">Aujourd'hui</button>
+    <button id="prev-btn" class="btn btn-ghost" type="button">◀ Préc. 30j</button>
+    <button id="next-btn" class="btn btn-ghost" type="button">Suiv. 30j ▶</button>
+    <button id="refresh-btn" class="btn btn-ghost" type="button">Actualiser</button>
+    <label>Imprimé par</label>
+    <input type="text" id="imprime-par-input" placeholder="Votre nom" style="min-width:160px;">
+    <button id="print-btn" class="btn btn-primary" type="button">🖨 Imprimer</button>
+  </div>
+
+  <div id="planning-service"></div>
+
+  <div id="print-footer"></div>
+</div>
+
+<script>
+grist.ready({ requiredAccess: 'full' });
+
+/* ------------------------------------------------------------------ */
+/* Reprend telle quelle la logique de l'onglet "Planning de service"    */
+/* de docs/espace-cadre.js, adaptée pour lire/écrire directement via     */
+/* grist.docApi au lieu du proxy Cloudflare Worker.                      */
+/* ------------------------------------------------------------------ */
+
+const WIDGET_VERSION = "v1";
+const $ = (id) => document.getElementById(id);
+const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+
+const state = {
+  data: null, // { services, periodes, semaines, codes }
+  selectedServiceId: null,
+  planningStart: null, // ISO date : début de la fenêtre de 30 jours affichée
+};
+
+/* ------------------------------------------------------------------ */
+/* Chargement des données Grist                                        */
+/* ------------------------------------------------------------------ */
+
+async function loadData() {
+  $("status").textContent = "Chargement des données...";
+  const [SERVICES, PERIODES, ETUDIANTS, PLANNING, CODES] = await Promise.all([
+    grist.docApi.fetchTable("SERVICES"),
+    grist.docApi.fetchTable("PERIODES_DE_STAGE"),
+    grist.docApi.fetchTable("LISTE_DES_ETUDIANTS"),
+    grist.docApi.fetchTable("PLANNING_HEBDO"),
+    grist.docApi.fetchTable("CODES_HORAIRES"),
+  ]);
+  $("status").textContent = "";
+
+  const etudiantsById = new Map();
+  for (let i = 0; i < ETUDIANTS.id.length; i++) {
+    etudiantsById.set(ETUDIANTS.id[i], { nom: ETUDIANTS.NOM[i] || "", prenom: ETUDIANTS.PRENOM[i] || "" });
+  }
+
+  const periodes = [];
+  for (let i = 0; i < PERIODES.id.length; i++) {
+    periodes.push({
+      id: PERIODES.id[i],
+      Service: PERIODES.Service[i],
+      Etudiant: etudiantsById.get(PERIODES.Etudiant[i]) || { nom: "", prenom: "" },
+      Du: epochToIso(PERIODES.Du[i]),
+      Au: epochToIso(PERIODES.Au[i]),
+      Niveau: PERIODES.Niveau[i] || "",
+      Tuteur: PERIODES.Tuteur[i] || "",
+    });
+  }
+
+  const semaines = [];
+  for (let i = 0; i < PLANNING.id.length; i++) {
+    semaines.push({
+      id: PLANNING.id[i],
+      Periode: PLANNING.Periode[i],
+      Semaine_debut: epochToIso(PLANNING.Semaine_debut[i]),
+      Lundi: PLANNING.Lundi[i] || null,
+      Mardi: PLANNING.Mardi[i] || null,
+      Mercredi: PLANNING.Mercredi[i] || null,
+      Jeudi: PLANNING.Jeudi[i] || null,
+      Vendredi: PLANNING.Vendredi[i] || null,
+      Samedi: PLANNING.Samedi[i] || null,
+      Dimanche: PLANNING.Dimanche[i] || null,
+    });
+  }
+
+  const codes = [];
+  for (let i = 0; i < CODES.id.length; i++) {
+    codes.push({ id: CODES.id[i], Code: CODES.Code[i] || "", Libelle: CODES.Libelle[i] || "" });
+  }
+
+  const services = [];
+  for (let i = 0; i < SERVICES.id.length; i++) {
+    if (SERVICES.Recoit_des_etudiant[i]) {
+      services.push({ id: SERVICES.id[i], Nom: SERVICES.Nom[i] || ("Service " + SERVICES.id[i]) });
+    }
+  }
+  services.sort((a, b) => a.Nom.localeCompare(b.Nom));
+
+  state.data = { services, periodes, semaines, codes };
+  render();
+}
+
+/* ------------------------------------------------------------------ */
+/* Rendu (repris de renderPlanningTab / buildDayMap / codeCell dans     */
+/* docs/espace-cadre.js — seule la lecture/écriture change)             */
+/* ------------------------------------------------------------------ */
+
+function render() {
+  renderServiceSelect();
+  renderPlanningTab();
+}
+
+function renderServiceSelect() {
+  const sel = $("service-select");
+  const services = state.data.services;
+  if (!services.some((s) => s.id === state.selectedServiceId)) {
+    state.selectedServiceId = services[0] ? services[0].id : null;
+  }
+  sel.innerHTML = services.map((s) => `<option value="${s.id}">${escapeHtml(s.Nom)}</option>`).join("");
+  sel.value = state.selectedServiceId;
+  sel.onchange = () => {
+    state.selectedServiceId = Number(sel.value);
+    renderPlanningTab();
+  };
+}
+
+function periodesDuService() {
+  return state.data.periodes.filter((p) => p.Service === state.selectedServiceId);
+}
+
+function renderPlanningTab() {
+  const container = $("planning-service");
+  container.innerHTML = "";
+
+  const startKey = state.planningStart || isoDate(new Date());
+  $("date-input").value = startKey;
+  const days = [];
+  for (let i = 0; i < 30; i++) days.push(addDaysIso(startKey, i));
+  const endKey = days[days.length - 1];
+
+  updatePrintHeader(startKey, endKey);
+
+  const periodes = periodesDuService()
+    .filter((p) => !(p.Au && p.Au < startKey) && !(p.Du && p.Du > endKey))
+    .sort((a, b) => `${a.Etudiant.nom}${a.Etudiant.prenom}`.localeCompare(`${b.Etudiant.nom}${b.Etudiant.prenom}`));
+
+  if (!periodes.length) {
+    container.appendChild(el("p", "empty", "Aucun étudiant sur ce service pour cette période."));
+    return;
+  }
+
+  const table = document.createElement("table");
+  table.className = "service-planning";
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  headRow.appendChild(el("th", "student-col", "Étudiant"));
+  for (const dk of days) {
+    headRow.appendChild(el("th", "", dayNum(dk)));
+  }
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  for (const p of periodes) {
+    const dayMap = buildDayMap(p.id);
+    const tr = document.createElement("tr");
+    const th = el("th", "student-col");
+    th.appendChild(el("div", "", `${p.Etudiant.prenom} ${p.Etudiant.nom}`.trim()));
+    th.appendChild(el("div", "etu-meta-small", [p.Niveau, p.Tuteur].filter(Boolean).join(" · ")));
+    tr.appendChild(th);
+    for (const dk of days) {
+      if ((p.Du && dk < p.Du) || (p.Au && dk > p.Au)) {
+        tr.appendChild(el("td", "hors-periode", ""));
+        continue;
+      }
+      const entry = dayMap.get(dk);
+      if (!entry) {
+        tr.appendChild(el("td", "", "—"));
+      } else {
+        tr.appendChild(codeCell(entry.semaineId, entry.jour, entry.codeId));
+      }
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  container.appendChild(table);
+}
+
+function shiftWindow(deltaDays) {
+  const cur = state.planningStart ? new Date(state.planningStart + "T00:00:00") : new Date();
+  cur.setDate(cur.getDate() + deltaDays);
+  state.planningStart = isoDate(cur);
+  renderPlanningTab();
+}
+
+function updatePrintHeader(startKey, endKey) {
+  const service = state.data.services.find((s) => s.id === state.selectedServiceId);
+  const serviceName = service ? service.Nom : "";
+  const now = new Date();
+  const genDate = now.toLocaleDateString("fr-FR") + " à "
+    + now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  const printedBy = $("imprime-par-input").value.trim();
+  $("print-header").innerHTML =
+    `<h2 style="margin:0 0 4px;">Planning de service — ${escapeHtml(serviceName)}</h2>`
+    + `<p style="margin:0;color:#555;font-size:0.85rem;">Du ${frDate(startKey)} au ${frDate(endKey)} · Généré le ${genDate}`
+    + (printedBy ? ` · Imprimé par ${escapeHtml(printedBy)}` : "") + `</p>`;
+
+  $("print-footer").innerHTML =
+    `Application développée par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant — `
+    + `Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville<br>`
+    + `Widget Grist — Version bêta ${WIDGET_VERSION} — vos retours sont les bienvenus`;
+}
+
+/** Associe chaque jour (ISO) d'une période à sa case de planning (semaine + colonne). */
+function buildDayMap(periodeId) {
+  const map = new Map();
+  const weeks = state.data.semaines.filter((s) => s.Periode === periodeId);
+  for (const week of weeks) {
+    DAYS.forEach((day, i) => {
+      const dayIso = addDaysIso(week.Semaine_debut, i);
+      map.set(dayIso, { semaineId: week.id, jour: day, codeId: week[day] || null });
+    });
+  }
+  return map;
+}
+
+/* ------------------------------------------------------------------ */
+/* Case de planning éditable (clic -> liste déroulante inline)          */
+/* Écriture directe via grist.docApi.applyUserActions (au lieu du PATCH */
+/* /api/cadre/planning/:semaineId de l'espace cadre en ligne).          */
+/* ------------------------------------------------------------------ */
+
+function codeCell(semaineId, jour, codeId) {
+  const codeById = new Map(state.data.codes.map((c) => [c.id, c]));
+  const td = document.createElement("td");
+  td.className = "code-cell";
+
+  function renderText() {
+    td.innerHTML = "";
+    const code = codeById.get(codeId);
+    td.textContent = code ? code.Code : "—";
+    if (code) td.title = code.Libelle;
+  }
+  renderText();
+
+  td.addEventListener("click", () => {
+    const select = document.createElement("select");
+    const options = ['<option value="">—</option>']
+      .concat(state.data.codes.map((c) => `<option value="${c.id}">${escapeHtml(c.Code)} — ${escapeHtml(c.Libelle)}</option>`));
+    select.innerHTML = options.join("");
+    select.value = codeId || "";
+    td.innerHTML = "";
+    td.appendChild(select);
+    select.focus();
+
+    let done = false;
+    async function commit() {
+      if (done) return;
+      done = true;
+      const value = select.value;
+      const newCodeId = value ? Number(value) : null;
+      if (newCodeId === codeId) { renderText(); return; }
+      select.disabled = true;
+      try {
+        await grist.docApi.applyUserActions([["UpdateRecord", "PLANNING_HEBDO", semaineId, { [jour]: newCodeId }]]);
+        await loadData();
+      } catch (err) {
+        alert(err.message || "Erreur lors de l'enregistrement");
+        renderText();
+      }
+    }
+    function cancel() {
+      if (done) return;
+      done = true;
+      renderText();
+    }
+    select.addEventListener("change", commit);
+    select.addEventListener("blur", () => setTimeout(cancel, 0));
+  });
+
+  return td;
+}
+
+/* ------------------------------------------------------------------ */
+/* Contrôles                                                            */
+/* ------------------------------------------------------------------ */
+
+$("date-input").addEventListener("change", () => {
+  state.planningStart = $("date-input").value;
+  renderPlanningTab();
+});
+$("today-btn").addEventListener("click", () => { state.planningStart = isoDate(new Date()); renderPlanningTab(); });
+$("prev-btn").addEventListener("click", () => shiftWindow(-30));
+$("next-btn").addEventListener("click", () => shiftWindow(30));
+$("refresh-btn").addEventListener("click", () => loadData());
+$("print-btn").addEventListener("click", () => window.print());
+
+$("imprime-par-input").value = localStorage.getItem("planningCadreImprimePar") || "";
+$("imprime-par-input").addEventListener("input", () => {
+  localStorage.setItem("planningCadreImprimePar", $("imprime-par-input").value);
+  const startKey = state.planningStart || isoDate(new Date());
+  updatePrintHeader(startKey, addDaysIso(startKey, 29));
+});
+
+/* ------------------------------------------------------------------ */
+/* Utilitaires (repris à l'identique de docs/espace-cadre.js)           */
+/* ------------------------------------------------------------------ */
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function escapeHtml(str) {
+  return String(str || "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+function isoDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function addDaysIso(iso, n) {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  return isoDate(d);
+}
+
+function dayNum(iso) {
+  return new Date(iso + "T00:00:00").toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+}
+
+function frDate(iso) {
+  if (!iso) return "?";
+  return new Date(iso + "T00:00:00").toLocaleDateString("fr-FR", {
+    day: "numeric", month: "long", year: "numeric",
+  });
+}
+
+/** Convertit un epoch Grist (secondes) en date ISO (jour). */
+function epochToIso(value) {
+  if (typeof value !== "number") return null;
+  return new Date(value * 1000).toISOString().slice(0, 10);
+}
+
+loadData();
+</script>
+</body>
+</html>
