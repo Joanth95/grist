@@ -861,9 +861,9 @@ function renderEvaluationTab() {
     const main = el("div", "pending-main");
     const title = el("div", "sortie-title", `${p.Etudiant.prenom} ${p.Etudiant.nom}`.trim());
     if (p.Evaluation_repondue) {
-      title.appendChild(badge("V — a répondu", "ok"));
+      title.appendChild(badge("✅ — a répondu", "ok"));
     } else if (p.Evaluation_envoyee) {
-      title.appendChild(badge("O — envoyé, en attente de réponse", "pending"));
+      title.appendChild(badge("⚠️ — envoyé, en attente de réponse", "pending"));
     }
     main.appendChild(title);
     main.appendChild(el("div", "sortie-meta", `${frDate(p.Du)} → ${frDate(p.Au)}`));
