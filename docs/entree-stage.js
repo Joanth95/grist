@@ -56,7 +56,7 @@ $("inscription-form").addEventListener("submit", async (e) => {
     website: $("f-website").value, // champ-piège
     periode: {
       Service: Number($("f-service").value),
-      Niveau: $("f-niveau").value,
+      Niveau: Number($("f-niveau").value),
       Du: du,
       Au: au,
       Tuteur: $("f-tuteur").value.trim(),
@@ -80,7 +80,7 @@ $("inscription-form").addEventListener("submit", async (e) => {
     $("code-display").textContent = data.code;
     if (data.dejaInscrit) {
       $("success-message").textContent =
-        "Vous étiez déjà connu du service : votre nouvelle période de stage a été ajoutée à votre dossier.";
+        "Vous étiez déjà connu du système : votre nouvelle période de stage a été ajoutée à votre dossier.";
     }
     renderCadreContact(Number($("f-service").value));
   } catch (err) {
