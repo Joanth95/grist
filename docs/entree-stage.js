@@ -59,7 +59,7 @@ $("inscription-form").addEventListener("submit", async (e) => {
       Niveau: $("f-niveau").value,
       Du: du,
       Au: au,
-      Tuteur: $("f-tuteur").value.trim(),
+      Referent_pedagogique: $("f-referent").value.trim(),
     },
   };
 
