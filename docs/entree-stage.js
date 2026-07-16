@@ -56,7 +56,7 @@ $("inscription-form").addEventListener("submit", async (e) => {
     website: $("f-website").value, // champ-piège
     periode: {
       Service: Number($("f-service").value),
-      Niveau: Number($("f-niveau").value),
+      Niveau: $("f-niveau").value,
       Du: du,
       Au: au,
       Tuteur: $("f-tuteur").value.trim(),
