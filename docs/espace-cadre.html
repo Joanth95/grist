@@ -346,7 +346,33 @@
     </form>
   </dialog>
 
+  <!-- Ajouter un rendez-vous formateur/tuteur -->
+  <dialog id="rdv-dialog">
+    <form id="rdv-form" method="dialog">
+      <h2>Ajouter un rendez-vous</h2>
+
+      <label for="rdv-type">Type de rendez-vous</label>
+      <select id="rdv-type" required></select>
+
+      <label for="rdv-date">Date</label>
+      <input type="date" id="rdv-date" required>
+
+      <label for="rdv-formateur">Formateur <span class="optional">(facultatif)</span></label>
+      <input type="text" id="rdv-formateur" maxlength="80" placeholder="Nom du formateur / tuteur">
+
+      <label for="rdv-commentaire">Commentaire <span class="optional">(facultatif)</span></label>
+      <input type="text" id="rdv-commentaire" maxlength="300" placeholder="Précisez si besoin">
+
+      <p id="rdv-error" class="error" hidden></p>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="rdv-cancel-btn">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="rdv-save-btn">Ajouter</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="config.js?v=18"></script>
-  <script src="espace-cadre.js?v=17"></script>
+  <script src="espace-cadre.js?v=18"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 /* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
-const APP_VERSION = "v17"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v18"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -460,10 +460,11 @@ function renderDossierTab() {
     if (metaParts.length) header.appendChild(el("div", "etu-meta", metaParts.join(" · ")));
     card.appendChild(header);
 
-    // Historique complet : toutes les périodes de l'étudiant visibles par le
-    // cadre (tous ses services confondus), pas seulement celles de la
-    // catégorie affichée.
-    const allPeriodes = state.data.periodes.filter((p) => p.Etudiant.id === st.id);
+    // Historique complet des périodes de l'étudiant dans le service
+    // actuellement sélectionné (pas les autres services accessibles au
+    // cadre), toutes catégories confondues.
+    const allPeriodes = state.data.periodes.filter(
+      (p) => p.Etudiant.id === st.id && p.Service === state.selectedServiceId);
 
     const subTabs = el("div", "sub-tabs");
     const current = state.dossierSubTab[st.id] || "stages";
@@ -488,8 +489,8 @@ function renderDossierTab() {
   }
 }
 
-/** Sous-onglet "Historique des stages" : toutes les périodes de l'étudiant
- *  visibles par le cadre, du plus récent au plus ancien ; seul le stage en
+/** Sous-onglet "Historique des stages" : les périodes de l'étudiant dans le
+ *  service sélectionné, du plus récent au plus ancien ; seul le stage en
  *  cours reste éditable, les autres s'affichent en lecture seule. */
 function renderStagesFaits(allPeriodes) {
   const wrap = el("div", "");
@@ -508,10 +509,8 @@ function renderStagesFaits(allPeriodes) {
       { cours: "info", avenir: "pending", passe: "neutral" }[cat]));
     item.appendChild(header);
 
-    // La fiche n'est éditable que pour un stage en cours dans l'un de MES
-    // services ; les stages des autres services sont en lecture seule.
-    const monService = state.data.services.some((s) => s.id === p.Service);
-    const editable = p.En_cours && monService;
+    // La fiche n'est éditable que pour le stage en cours du service sélectionné.
+    const editable = p.En_cours;
 
     const infoParts = [];
     if (!editable && p.Niveau) infoParts.push(p.Niveau);
@@ -523,8 +522,6 @@ function renderStagesFaits(allPeriodes) {
 
     if (editable) {
       item.appendChild(renderFiche(p));
-    } else if (!monService) {
-      item.appendChild(el("p", "save-hint", "Stage suivi par un autre service : fiche non modifiable ici."));
     } else if (cat === "passe") {
       item.appendChild(el("p", "save-hint", "Stage terminé : la fiche n'est plus modifiable."));
     }
@@ -616,13 +613,108 @@ function renderPlanningPersonnel(st) {
   const p = periodes.find((x) => x.id === selectedId);
   wrap.appendChild(renderMiniPlanning(p));
 
+  const actions = el("div", "");
+  actions.style.display = "flex";
+  actions.style.flexWrap = "wrap";
+  actions.style.gap = "0.5rem";
+  actions.style.marginTop = "0.6rem";
+
   const declareBtn = el("button", "btn btn-primary", "+ Déclarer");
   declareBtn.type = "button";
-  declareBtn.style.marginTop = "0.6rem";
   declareBtn.addEventListener("click", () => openSortieDialog(periodes, selectedId));
-  wrap.appendChild(declareBtn);
+  actions.appendChild(declareBtn);
+
+  const printBtn = el("button", "btn btn-ghost", "🖨 Imprimer le planning");
+  printBtn.type = "button";
+  printBtn.addEventListener("click", () => imprimerPlanning(p, printBtn));
+  actions.appendChild(printBtn);
+
+  wrap.appendChild(actions);
 
   wrap.appendChild(renderSortiesList(p));
+  wrap.appendChild(renderRdvsSection(p));
+  return wrap;
+}
+
+/** Ouvre le planning de stage imprimable (HTML généré par Grist) dans une
+ *  nouvelle fenêtre et lance l'impression. */
+async function imprimerPlanning(p, btn) {
+  const win = window.open("", "_blank");
+  if (!win) {
+    alert("Autorisez les fenêtres pop-up pour imprimer le planning.");
+    return;
+  }
+  win.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">'
+    + "<title>Planning de stage</title></head><body>Préparation du planning…</body></html>");
+  win.document.close();
+  if (btn) btn.disabled = true;
+  try {
+    const { html } = await api("GET", `/api/cadre/periodes/${p.id}/planning-imprimable`);
+    win.document.open();
+    win.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">'
+      + "<title>Planning de stage</title></head><body>" + html
+      + "<script>window.onload=function(){setTimeout(function(){window.print();},250);};<\/script>"
+      + "</body></html>");
+    win.document.close();
+  } catch (err) {
+    win.close();
+    alert(err.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+/** Section « Rendez-vous formateurs » d'une période : liste + bouton d'ajout. */
+function renderRdvsSection(p) {
+  const wrap = el("div", "");
+  wrap.style.marginTop = "1rem";
+
+  const head = el("div", "");
+  head.style.display = "flex";
+  head.style.alignItems = "center";
+  head.style.justifyContent = "space-between";
+  head.style.gap = "0.5rem";
+  head.appendChild(el("div", "dual-list-title", "Rendez-vous formateurs / tuteur"));
+  const addBtn = el("button", "btn btn-ghost", "+ Rendez-vous");
+  addBtn.type = "button";
+  addBtn.addEventListener("click", () => openRdvDialog(p));
+  head.appendChild(addBtn);
+  wrap.appendChild(head);
+
+  const rdvs = (state.data.rdvs || []).filter((r) => r.Periode === p.id)
+    .sort((a, b) => (a.Date_rdv || "").localeCompare(b.Date_rdv || ""));
+
+  if (!rdvs.length) {
+    wrap.appendChild(el("p", "empty", "Aucun rendez-vous pour cette période."));
+    return wrap;
+  }
+
+  for (const r of rdvs) {
+    const row = el("div", "pending-row");
+    const main = el("div", "pending-main");
+    main.appendChild(el("div", "sortie-title", r.Type_de_rendez_vous || "Rendez-vous"));
+    const meta = [frDate(r.Date_rdv)];
+    if (r.Formateur) meta.push(r.Formateur);
+    if (r.Commentaire) meta.push(r.Commentaire);
+    main.appendChild(el("div", "sortie-meta", meta.join(" · ")));
+    row.appendChild(main);
+
+    const delBtn = el("button", "btn btn-ghost", "Supprimer");
+    delBtn.type = "button";
+    delBtn.addEventListener("click", async () => {
+      if (!confirm("Supprimer ce rendez-vous ?")) return;
+      delBtn.disabled = true;
+      try {
+        await api("DELETE", `/api/cadre/rdv/${r.id}`);
+        await refresh();
+      } catch (err) {
+        alert(err.message);
+        delBtn.disabled = false;
+      }
+    });
+    row.appendChild(delBtn);
+    wrap.appendChild(row);
+  }
   return wrap;
 }
 
@@ -751,6 +843,54 @@ $("sortie-form").addEventListener("submit", async (e) => {
   try {
     await api("POST", "/api/cadre/sorties", body);
     sortieDialog.close();
+    await refresh();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Dialogue : ajouter un rendez-vous formateur/tuteur                  */
+/* ------------------------------------------------------------------ */
+
+const rdvDialog = $("rdv-dialog");
+let rdvDialogPeriodeId = null;
+
+function openRdvDialog(p) {
+  rdvDialogPeriodeId = p.id;
+  const typeSel = $("rdv-type");
+  typeSel.innerHTML = (state.data.rdvTypes || []).map((t) =>
+    `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("");
+  $("rdv-date").value = isoDate(new Date());
+  $("rdv-formateur").value = "";
+  $("rdv-commentaire").value = "";
+  $("rdv-error").hidden = true;
+  rdvDialog.showModal();
+}
+
+$("rdv-cancel-btn").addEventListener("click", () => rdvDialog.close());
+
+$("rdv-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = $("rdv-error");
+  errEl.hidden = true;
+
+  const body = {
+    periodeId: rdvDialogPeriodeId,
+    Type_de_rendez_vous: $("rdv-type").value,
+    Date_rdv: $("rdv-date").value,
+    Formateur: $("rdv-formateur").value.trim(),
+    Commentaire: $("rdv-commentaire").value.trim(),
+  };
+
+  const btn = $("rdv-save-btn");
+  btn.disabled = true;
+  try {
+    await api("POST", "/api/cadre/rdv", body);
+    rdvDialog.close();
     await refresh();
   } catch (err) {
     errEl.textContent = err.message;

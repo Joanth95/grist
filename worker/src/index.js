@@ -40,6 +40,10 @@
  *                                                                (SERVICES.Codes_horaires ; vide = tous)
  *   POST   /api/cadre/codes  { Code, Libelle, ... }           -> crée un code horaire (pas de doublon,
  *                                                                pas de suppression possible)
+ *   GET    /api/cadre/periodes/:id/planning-imprimable        -> HTML du planning de stage imprimable
+ *                                                                (colonne formule PERIODES_DE_STAGE.Planning_HTML)
+ *   POST   /api/cadre/rdv  { periodeId, Date_rdv, ... }        -> ajoute un rendez-vous formateur/tuteur
+ *   DELETE /api/cadre/rdv/:id                                  -> supprime un rendez-vous formateur
  */
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
@@ -54,6 +58,7 @@ const T_SORTIES = "Sortie_de_stage";
 const T_UTILISATEURS = "UTILISATEURS";
 const T_FERIES = "JOURS_FERIES";
 const T_EVALUATIONS = "EVALUATION_STAGE_ETUDIANT";
+const T_RDV = "RDV_FORMATEUR";
 
 const DAY_COLUMNS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
@@ -63,6 +68,18 @@ const NIVEAUX = ["ESI L1", "ESI L2", "ESI L3", "M1", "M2", "Aide-Soignant"];
 // Motifs proposés à l'étudiant ; « Retard » est déduit par la formule Grist
 // Ajustement_h ; « Sortie de stage » compte ou non selon la case Compte_stage
 const MOTIFS = ["Rattrapage", "Retard", "Sortie de stage"];
+
+// Types de rendez-vous proposés au cadre (colonne Choice RDV_FORMATEUR.Type_de_rendez_vous).
+// La colonne Grist reste un Choice libre : d'autres valeurs saisies dans Grist
+// sont tolérées, ces valeurs ne sont que les propositions de l'espace cadre.
+const RDV_TYPES = [
+  "Mi-stage avec formateur",
+  "Bilan final avec formateur",
+  "Visite de stage formateur",
+  "Entretien tuteur",
+  "Point intermédiaire tuteur",
+  "Autre",
+];
 
 // Nombre maximal de semaines générées automatiquement pour une période
 const MAX_SEMAINES_GENEREES = 30;
@@ -151,6 +168,17 @@ async function route(request, env) {
     const pm = path.match(/^\/api\/cadre\/periodes\/(\d+)$/);
     if (request.method === "PATCH" && pm) {
       return updatePeriode(request, env, cadre, Number(pm[1]));
+    }
+    const im = path.match(/^\/api\/cadre\/periodes\/(\d+)\/planning-imprimable$/);
+    if (request.method === "GET" && im) {
+      return planningImprimable(env, cadre, Number(im[1]));
+    }
+    if (request.method === "POST" && path === "/api/cadre/rdv") {
+      return creerRdv(request, env, cadre);
+    }
+    const rm = path.match(/^\/api\/cadre\/rdv\/(\d+)$/);
+    if (request.method === "DELETE" && rm) {
+      return supprimerRdv(env, cadre, Number(rm[1]));
     }
     if (request.method === "PATCH" && path === "/api/cadre/profil") {
       return updateProfilCadre(request, env, cadre);
@@ -422,7 +450,7 @@ function siteName(service, sitesById) {
 
 /** Payload complet des services/étudiants/planning rattachés au cadre. */
 async function buildCadrePayload(env, cadre) {
-  const [periodesAll, students, codes, feries, evaluations, servicesAll, sites] = await Promise.all([
+  const [periodesAll, students, codes, feries, evaluations, servicesAll, sites, rdvsAll] = await Promise.all([
     gristAll(env, T_PERIODES),
     gristAll(env, T_ETUDIANTS),
     gristAll(env, T_CODES),
@@ -430,6 +458,7 @@ async function buildCadrePayload(env, cadre) {
     gristAll(env, T_EVALUATIONS),
     gristAll(env, T_SERVICES),
     gristAll(env, T_SITES),
+    gristAll(env, T_RDV),
   ]);
 
   const servicesById = new Map(servicesAll.map((s) => [s.id, s]));
@@ -489,6 +518,9 @@ async function buildCadrePayload(env, cadre) {
     return { s, jours };
   });
 
+  // Rendez-vous formateur/tuteur des seules périodes rattachées au cadre.
+  const rdvs = rdvsAll.filter((r) => periodeIdSet.has(r.fields.Periode));
+
   return {
     services: cadre.services.map((s) => ({
       id: s.id,
@@ -499,6 +531,7 @@ async function buildCadrePayload(env, cadre) {
     })),
     niveaux: NIVEAUX,
     motifs: MOTIFS,
+    rdvTypes: RDV_TYPES,
     moi: {
       nom: cadreNomComplet(cadre),
       prenom: cadre.fields.Prenom || "",
@@ -570,6 +603,15 @@ async function buildCadrePayload(env, cadre) {
       Valide: !!s.fields.Valide,
       Duree_heures: s.fields.Duree_heures ?? 0,
       Ajustement_h: s.fields.Ajustement_h ?? 0,
+    })),
+    rdvs: rdvs.map((r) => ({
+      id: r.id,
+      Periode: r.fields.Periode || null,
+      Date_rdv: epochToIso(r.fields.Date_rdv),
+      Type_de_rendez_vous: r.fields.Type_de_rendez_vous || "",
+      Formateur: r.fields.Formateur || "",
+      Commentaire: r.fields.Commentaire || "",
+      Cree_par: r.fields.Cree_par || "",
     })),
   };
 }
@@ -740,6 +782,48 @@ async function updatePeriode(request, env, cadre, periodeId) {
   if (!Object.keys(fields).length) throw httpError(400, "Aucune modification fournie");
 
   await gristUpdate(env, T_PERIODES, periodeId, fields);
+  return json({ ok: true });
+}
+
+/** Renvoie le HTML du planning de stage imprimable (colonne formule
+ * PERIODES_DE_STAGE.Planning_HTML) pour une période d'un service du cadre. */
+async function planningImprimable(env, cadre, periodeId) {
+  const periode = await ensurePeriodeInScope(env, cadre, periodeId);
+  const html = periode.fields.Planning_HTML;
+  if (!html) throw httpError(404, "Le planning imprimable n'est pas disponible pour ce stage");
+  return json({ html });
+}
+
+/** Le cadre ajoute un rendez-vous formateur/tuteur pour un étudiant de son service. */
+async function creerRdv(request, env, cadre) {
+  const body = await request.json().catch(() => ({}));
+  const periodeId = Number(body.periodeId);
+  const periode = await ensurePeriodeInScope(env, cadre, periodeId);
+
+  const type = cleanText(body.Type_de_rendez_vous, 80);
+  const date = String(body.Date_rdv || "");
+  if (!type) throw httpError(400, "Le type de rendez-vous est obligatoire");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw httpError(400, "Date de rendez-vous invalide");
+
+  const fields = {
+    Periode: periodeId,
+    Date_rdv: Date.parse(date + "T00:00:00Z") / 1000,
+    Type_de_rendez_vous: type,
+    Formateur: cleanText(body.Formateur, 80),
+    Commentaire: cleanText(body.Commentaire, 300),
+    Cree_par: cadreNomComplet(cadre),
+  };
+
+  const data = await grist(env, "POST", `/tables/${T_RDV}/records`, { records: [{ fields }] });
+  return json({ id: data.records[0].id }, 201);
+}
+
+/** Le cadre supprime un rendez-vous formateur d'un étudiant de son service. */
+async function supprimerRdv(env, cadre, rowId) {
+  const rows = await gristFilter(env, T_RDV, { id: [rowId] });
+  if (!rows.length) throw httpError(404, "Rendez-vous introuvable");
+  await ensurePeriodeInScope(env, cadre, rows[0].fields.Periode);
+  await grist(env, "POST", `/tables/${T_RDV}/data/delete`, [rowId]);
   return json({ ok: true });
 }
 
