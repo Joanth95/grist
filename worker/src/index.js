@@ -36,6 +36,8 @@
  *   PATCH  /api/cadre/planning/:semaineId { jour, codeId } -> édite une case du planning
  *   PATCH  /api/cadre/periodes/:id  { Tuteur, Niveau, Du, Au } -> édite une fiche de période
  *   PATCH  /api/cadre/profil  { Telephone }                   -> modifie son propre numéro de téléphone
+ *   PATCH  /api/cadre/services/:id  { codes: [ids] }          -> codes horaires actifs du service
+ *                                                                (SERVICES.Codes_horaires ; vide = tous)
  */
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
@@ -150,6 +152,10 @@ async function route(request, env) {
     }
     if (request.method === "PATCH" && path === "/api/cadre/profil") {
       return updateProfilCadre(request, env, cadre);
+    }
+    const svm = path.match(/^\/api\/cadre\/services\/(\d+)$/);
+    if (request.method === "PATCH" && svm) {
+      return updateCodesService(request, env, cadre, Number(svm[1]));
     }
     throw httpError(404, "Route inconnue");
   }
@@ -479,7 +485,13 @@ async function buildCadrePayload(env, cadre) {
   });
 
   return {
-    services: cadre.services.map((s) => ({ id: s.id, Nom: s.fields.Nom || "", Site: siteName(s, sitesById) })),
+    services: cadre.services.map((s) => ({
+      id: s.id,
+      Nom: s.fields.Nom || "",
+      Site: siteName(s, sitesById),
+      // Codes horaires activés pour ce service (liste vide = tous les codes)
+      Codes: refIds(s.fields.Codes_horaires),
+    })),
     niveaux: NIVEAUX,
     motifs: MOTIFS,
     moi: {
@@ -666,11 +678,17 @@ async function updatePlanningJour(request, env, cadre, semaineId) {
 
   const rows = await gristFilter(env, T_HEBDO, { id: [semaineId] });
   if (!rows.length) throw httpError(404, "Semaine introuvable");
-  await ensurePeriodeInScope(env, cadre, rows[0].fields.Periode);
+  const periode = await ensurePeriodeInScope(env, cadre, rows[0].fields.Periode);
 
   if (codeId !== null) {
     const codes = await gristFilter(env, T_CODES, { id: [codeId] });
     if (!codes.length) throw httpError(400, "Code horaire introuvable");
+    // Codes limités au service (SERVICES.Codes_horaires ; liste vide = tous)
+    const service = cadre.services.find((s) => s.id === periode.fields.Service);
+    const actifs = service ? refIds(service.fields.Codes_horaires) : [];
+    if (actifs.length && !actifs.includes(codeId)) {
+      throw httpError(400, "Ce code horaire n'est pas activé pour ce service");
+    }
   }
 
   await gristUpdate(env, T_HEBDO, semaineId, { [jour]: codeId });
@@ -718,6 +736,28 @@ async function updatePeriode(request, env, cadre, periodeId) {
 
   await gristUpdate(env, T_PERIODES, periodeId, fields);
   return json({ ok: true });
+}
+
+/** Le cadre choisit les codes horaires actifs de son service
+ * (SERVICES.Codes_horaires, liste de références ; vide = tous les codes). */
+async function updateCodesService(request, env, cadre, serviceId) {
+  if (!cadre.serviceIds.has(serviceId)) {
+    throw httpError(403, "Ce service ne vous est pas rattaché");
+  }
+  const body = await request.json().catch(() => ({}));
+  if (!Array.isArray(body.codes)) throw httpError(400, "Liste de codes invalide");
+  const ids = [...new Set(body.codes.map(Number))];
+  if (ids.some((id) => !Number.isInteger(id) || id <= 0)) {
+    throw httpError(400, "Liste de codes invalide");
+  }
+  if (ids.length) {
+    const codes = await gristFilter(env, T_CODES, { id: ids });
+    if (codes.length !== ids.length) throw httpError(400, "Code horaire introuvable");
+  }
+  await gristUpdate(env, T_SERVICES, serviceId, {
+    Codes_horaires: ids.length ? ["L", ...ids] : null,
+  });
+  return json({ ok: true, codes: ids });
 }
 
 /** Le cadre modifie son propre numéro de téléphone (UTILISATEURS.Telephone). */

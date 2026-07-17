@@ -1,7 +1,7 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 /* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
-const APP_VERSION = "v14"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v15"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -10,6 +10,7 @@ const TABS = [
   { id: "dossier", label: "Dossier étudiants" },
   { id: "planning", label: "Planning de service" },
   { id: "evaluation", label: "Envoi des évaluations" },
+  { id: "codes", label: "Codes horaires" },
 ];
 
 // Lien direct (?email=...&code=...) : permet d'ouvrir l'espace cadre déjà
@@ -219,6 +220,26 @@ function periodesDuService() {
   return state.data.periodes.filter((p) => p.Service === state.selectedServiceId);
 }
 
+/** Codes horaires proposés pour le service sélectionné (SERVICES.Codes ;
+ *  liste vide = tous les codes). */
+function codesDuService() {
+  const service = state.data.services.find((s) => s.id === state.selectedServiceId);
+  const actifs = service && Array.isArray(service.Codes) ? service.Codes : [];
+  if (!actifs.length) return state.data.codes;
+  return state.data.codes.filter((c) => actifs.includes(c.id));
+}
+
+/** Codes à proposer dans une liste déroulante : ceux du service, plus le code
+ *  déjà posé sur la case s'il n'y figure pas (pour ne pas le perdre à l'écran). */
+function codesPourSelect(currentCodeId) {
+  const codes = codesDuService();
+  if (currentCodeId && !codes.some((c) => c.id === currentCodeId)) {
+    const cur = state.data.codes.find((c) => c.id === currentCodeId);
+    if (cur) return [...codes, cur];
+  }
+  return codes;
+}
+
 /** Regroupe par étudiant les périodes du service appartenant à une catégorie
  *  donnée ('passe' | 'cours' | 'avenir'). Sans catégorie, prend tout. */
 function studentsDuService(category) {
@@ -253,10 +274,12 @@ function renderActiveTab() {
   $("tab-dossier").hidden = state.activeTab !== "dossier";
   $("tab-planning").hidden = state.activeTab !== "planning";
   $("tab-evaluation").hidden = state.activeTab !== "evaluation";
+  $("tab-codes").hidden = state.activeTab !== "codes";
   if (state.activeTab === "declarations") renderDeclarationsTab();
   if (state.activeTab === "dossier") renderDossierTab();
   if (state.activeTab === "planning") renderPlanningTab();
   if (state.activeTab === "evaluation") renderEvaluationTab();
+  if (state.activeTab === "codes") renderCodesTab();
 }
 
 /* ------------------------------------------------------------------ */
@@ -865,7 +888,7 @@ function renderCodePalette() {
     return btn;
   };
   wrap.appendChild(mkChip("🖱 Sélection", undefined, "Sélectionner des cases pour copier-coller"));
-  for (const c of state.data.codes) {
+  for (const c of codesDuService()) {
     const horaire = (c.Heure_debut && c.Heure_fin) ? ` (${c.Heure_debut}–${c.Heure_fin})` : "";
     wrap.appendChild(mkChip(c.Code, c.id, `${c.Libelle}${horaire}`));
   }
@@ -1087,7 +1110,7 @@ function openPlanningCellEditor(cell) {
   if (!cell) return;
   const select = document.createElement("select");
   select.innerHTML = ['<option value="">—</option>']
-    .concat(state.data.codes.map((c) =>
+    .concat(codesPourSelect(cell.codeId).map((c) =>
       `<option value="${c.id}">${escapeHtml(c.Code)} — ${escapeHtml(c.Libelle)}</option>`)).join("");
   select.value = cell.codeId || "";
   cell.td.innerHTML = "";
@@ -1115,7 +1138,7 @@ function renderCodesLegend() {
   const wrap = el("div", "codes-legend");
   wrap.appendChild(el("div", "codes-legend-title", "Codes horaires"));
   const list = el("div", "codes-legend-list");
-  for (const c of state.data.codes) {
+  for (const c of codesDuService()) {
     const horaire = (c.Heure_debut && c.Heure_fin) ? ` (${c.Heure_debut}–${c.Heure_fin})` : "";
     list.appendChild(el("span", "codes-legend-item", `${c.Code} — ${c.Libelle}${horaire}`));
   }
@@ -1190,7 +1213,7 @@ function codeCell(semaineId, jour, codeId, extraClass) {
   td.addEventListener("click", () => {
     const select = document.createElement("select");
     const options = ['<option value="">—</option>']
-      .concat(state.data.codes.map((c) => `<option value="${c.id}">${escapeHtml(c.Code)} — ${escapeHtml(c.Libelle)}</option>`));
+      .concat(codesPourSelect(codeId).map((c) => `<option value="${c.id}">${escapeHtml(c.Code)} — ${escapeHtml(c.Libelle)}</option>`));
     select.innerHTML = options.join("");
     select.value = codeId || "";
     td.innerHTML = "";
@@ -1283,6 +1306,64 @@ function renderEvaluationTab() {
     }
     container.appendChild(row);
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Onglet Codes horaires (codes actifs du service)                     */
+/* ------------------------------------------------------------------ */
+
+function renderCodesTab() {
+  const container = $("codes-service-list");
+  container.innerHTML = "";
+  const service = state.data.services.find((s) => s.id === state.selectedServiceId);
+  if (!service) return;
+
+  const actifs = new Set(Array.isArray(service.Codes) ? service.Codes : []);
+  const tousActifs = !actifs.size; // liste vide = tous les codes proposés
+
+  const checkboxes = new Map();
+  for (const c of state.data.codes) {
+    const row = el("label", "code-toggle-row");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = tousActifs || actifs.has(c.id);
+    checkboxes.set(c.id, cb);
+    row.appendChild(cb);
+    const horaire = (c.Heure_debut && c.Heure_fin) ? ` (${c.Heure_debut}–${c.Heure_fin})` : "";
+    const text = el("span", "");
+    text.appendChild(el("strong", "", c.Code));
+    text.appendChild(document.createTextNode(` — ${c.Libelle}${horaire}`));
+    row.appendChild(text);
+    container.appendChild(row);
+  }
+
+  const hint = el("p", "save-hint", "");
+  const saveBtn = el("button", "btn btn-primary", "Enregistrer");
+  saveBtn.type = "button";
+  saveBtn.style.marginTop = "0.75rem";
+  saveBtn.addEventListener("click", async () => {
+    const coches = [...checkboxes.entries()].filter(([, cb]) => cb.checked).map(([id]) => id);
+    if (!coches.length) {
+      hint.textContent = "Sélectionnez au moins un code horaire.";
+      return;
+    }
+    // Tous coches = on enregistre « tous » (liste vide) : les codes créés
+    // plus tard dans Grist seront alors proposés automatiquement.
+    const codes = coches.length === state.data.codes.length ? [] : coches;
+    saveBtn.disabled = true;
+    hint.textContent = "";
+    try {
+      await api("PATCH", `/api/cadre/services/${service.id}`, { codes });
+      hint.textContent = "Enregistré.";
+      await refresh();
+    } catch (err) {
+      hint.textContent = err.message;
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+  container.appendChild(saveBtn);
+  container.appendChild(hint);
 }
 
 function mailtoEvaluation(p) {

@@ -28,6 +28,9 @@
     .pending-row:last-child { border-bottom: none; }
     .pending-main { flex: 1; }
     .save-hint { font-size: 0.8rem; color: var(--texte-doux); margin-top: 0.25rem; }
+    .code-toggle-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0; border-bottom: 1px solid var(--gris-bordure); cursor: pointer; font-size: 0.92rem; }
+    .code-toggle-row:last-of-type { border-bottom: none; }
+    #codes-service-list { padding: 0.6rem 1rem 1rem; }
     .anonymat-badge { font-family: ui-monospace, monospace; font-weight: 700; background: var(--gris-fond); border: 1px solid var(--gris-bordure); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85rem; }
 
     .main-tabs { display: flex; gap: 0.5rem; border-bottom: 2px solid var(--gris-bordure); margin: 1.5rem 0 1rem; flex-wrap: wrap; }
@@ -105,7 +108,7 @@
     @media print {
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
       .app-header, .moi-info, .cadre-service-select, .main-tabs, .planning-controls, .code-palette, .app-footer,
-      #tab-declarations, #tab-dossier, #tab-evaluation, .section-note { display: none !important; }
+      #tab-declarations, #tab-dossier, #tab-evaluation, #tab-codes, .section-note { display: none !important; }
       #print-header { display: block; margin-bottom: 1rem; }
       #print-footer {
         display: block; margin-top: 16px; padding-top: 6px; border-top: 1px solid #ccc;
@@ -210,6 +213,11 @@
         <div id="tab-evaluation" hidden>
           <p class="section-note">Étudiants éligibles à l'envoi du questionnaire (de 10 jours avant la fin du stage jusqu'à 40 jours après).</p>
           <div id="evaluation-list"></div>
+        </div>
+
+        <div id="tab-codes" hidden>
+          <p class="section-note">Choisissez les codes horaires utilisés dans ce service : seuls les codes cochés seront proposés dans le planning. Si tous les codes sont cochés, les nouveaux codes créés plus tard seront proposés automatiquement.</p>
+          <div id="codes-service-list" class="decl-card"></div>
         </div>
       </section>
 
@@ -326,6 +334,6 @@
   </dialog>
 
   <script src="config.js?v=18"></script>
-  <script src="espace-cadre.js?v=14"></script>
+  <script src="espace-cadre.js?v=15"></script>
 </body>
 </html>
