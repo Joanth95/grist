@@ -1,6 +1,6 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 
-const APP_VERSION = "v10"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v11"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -32,6 +32,8 @@ const state = {
   dossierSubTab: {}, // studentId -> 'stages' | 'planning'
   dossierSelectedPeriode: {}, // studentId -> periodeId
   planningStart: null, // ISO date : début de la fenêtre de 30 jours affichée
+  planningPaintCode: undefined, // code "armé" dans la palette (id, null = gomme, undefined = mode sélection)
+  planningSel: null, // rectangle sélectionné dans la grille : { r1, c1, r2, c2 }
 };
 
 const DOSSIER_CATEGORIES = [
@@ -694,7 +696,18 @@ $("sortie-form").addEventListener("submit", async (e) => {
 
 /* ------------------------------------------------------------------ */
 /* Onglet Planning de service (grille 30 jours + impression)          */
+/* Édition façon tableur : palette de codes à "peindre", sélection à  */
+/* la souris, copier-coller (Ctrl+C / Ctrl+V), Suppr pour effacer.    */
 /* ------------------------------------------------------------------ */
+
+// Grille courante : rows[r].cells[c] = { td, semaineId, jour, codeId } ou null
+// (case hors période / sans semaine générée, non éditable).
+let planningGrid = null;
+let planningCodeById = new Map();
+let planningDrag = null; // 'paint' | 'select' | null pendant un glisser
+const planningPendingPaint = new Map(); // "semaineId|jour" -> changement à envoyer
+let planningClipboard = null; // tableau 2D de codeId copiés
+let planningStatusEl = null;
 
 function renderPlanningTab() {
   const container = $("planning-service");
@@ -742,8 +755,11 @@ function renderPlanningTab() {
   const feriesSet = new Set(state.data.feries || []);
   const isJourOff = (dk) => isWeekendIso(dk) || feriesSet.has(dk);
 
+  planningCodeById = new Map(state.data.codes.map((c) => [c.id, c]));
+  container.appendChild(renderCodePalette());
+
   const table = document.createElement("table");
-  table.className = "service-planning";
+  table.className = "service-planning" + (state.planningPaintCode !== undefined ? " painting" : "");
   const thead = document.createElement("thead");
   const headRow = document.createElement("tr");
   headRow.appendChild(el("th", "student-col", "Étudiant"));
@@ -753,32 +769,311 @@ function renderPlanningTab() {
   thead.appendChild(headRow);
   table.appendChild(thead);
 
+  planningGrid = { rows: [] };
   const tbody = document.createElement("tbody");
-  for (const p of periodes) {
+  periodes.forEach((p, r) => {
     const dayMap = buildDayMap(p.id);
     const tr = document.createElement("tr");
     const th = el("th", "student-col");
     th.appendChild(el("div", "", `${p.Etudiant.prenom} ${p.Etudiant.nom}`.trim()));
+    th.appendChild(el("div", "etu-meta-small", `${frDateCourt(p.Du)} → ${frDateCourt(p.Au)}`));
     th.appendChild(el("div", "etu-meta-small", [p.Niveau, p.Tuteur].filter(Boolean).join(" · ")));
     tr.appendChild(th);
-    for (const dk of days) {
+
+    const cells = [];
+    days.forEach((dk, c) => {
       const off = isJourOff(dk);
       if ((p.Du && dk < p.Du) || (p.Au && dk > p.Au)) {
         tr.appendChild(el("td", "hors-periode" + (off ? " jour-off" : ""), ""));
-        continue;
+        cells.push(null);
+        return;
       }
       const entry = dayMap.get(dk);
       if (!entry) {
         tr.appendChild(el("td", off ? "jour-off" : "", "—"));
-      } else {
-        tr.appendChild(codeCell(entry.semaineId, entry.jour, entry.codeId, off ? "jour-off" : ""));
+        cells.push(null);
+        return;
       }
-    }
+      const td = el("td", "code-cell" + (off ? " jour-off" : ""));
+      const code = planningCodeById.get(entry.codeId);
+      td.textContent = code ? code.Code : "—";
+      if (code) td.title = code.Libelle;
+      td.dataset.r = r;
+      td.dataset.c = c;
+      tr.appendChild(td);
+      cells.push({ td, semaineId: entry.semaineId, jour: entry.jour, codeId: entry.codeId });
+    });
+    planningGrid.rows.push({ cells });
     tbody.appendChild(tr);
-  }
+  });
   table.appendChild(tbody);
+
+  table.addEventListener("mousedown", onPlanningMouseDown);
+  table.addEventListener("mouseover", onPlanningMouseOver);
+  table.addEventListener("dblclick", onPlanningDblClick);
+
   container.appendChild(table);
   container.appendChild(renderCodesLegend());
+  updateSelHighlight();
+}
+
+/** Palette : un chip par code à "peindre", plus le mode Sélection et la gomme. */
+function renderCodePalette() {
+  const wrap = el("div", "code-palette");
+  const mkChip = (label, value, title) => {
+    const btn = el("button", "sub-tab" + (state.planningPaintCode === value ? " active" : ""), label);
+    btn.type = "button";
+    if (title) btn.title = title;
+    btn.addEventListener("click", () => {
+      state.planningPaintCode = value;
+      renderPlanningTab();
+    });
+    return btn;
+  };
+  wrap.appendChild(mkChip("🖱 Sélection", undefined, "Sélectionner des cases pour copier-coller"));
+  for (const c of state.data.codes) {
+    const horaire = (c.Heure_debut && c.Heure_fin) ? ` (${c.Heure_debut}–${c.Heure_fin})` : "";
+    wrap.appendChild(mkChip(c.Code, c.id, `${c.Libelle}${horaire}`));
+  }
+  wrap.appendChild(mkChip("Gomme", null, "Effacer les cases cliquées"));
+
+  const hint = el("p", "palette-hint",
+    state.planningPaintCode !== undefined
+      ? "Cliquez ou glissez sur les cases pour appliquer ce code. "
+      : "Glissez (ou Maj+clic) pour sélectionner · Ctrl+C copier · Ctrl+V coller · Suppr effacer · double-clic : liste des codes. ");
+  planningStatusEl = el("span", "palette-status", "");
+  hint.appendChild(planningStatusEl);
+  wrap.appendChild(hint);
+  return wrap;
+}
+
+function planningCellFromEvent(e) {
+  if (e.target.tagName === "SELECT") return null;
+  const td = e.target.closest("td.code-cell");
+  if (!td || td.dataset.r === undefined) return null;
+  return { r: Number(td.dataset.r), c: Number(td.dataset.c) };
+}
+
+function onPlanningMouseDown(e) {
+  if (e.button !== 0) return;
+  const pos = planningCellFromEvent(e);
+  if (!pos) return;
+  e.preventDefault();
+  if (state.planningPaintCode !== undefined) {
+    planningDrag = "paint";
+    paintCellAt(pos.r, pos.c);
+  } else {
+    planningDrag = "select";
+    if (e.shiftKey && state.planningSel) {
+      state.planningSel.r2 = pos.r;
+      state.planningSel.c2 = pos.c;
+    } else {
+      state.planningSel = { r1: pos.r, c1: pos.c, r2: pos.r, c2: pos.c };
+    }
+    updateSelHighlight();
+  }
+}
+
+function onPlanningMouseOver(e) {
+  if (!(e.buttons & 1)) return; // bouton gauche relâché : pas un glisser
+  const pos = planningCellFromEvent(e);
+  if (!pos) return;
+  if (state.planningPaintCode !== undefined) {
+    planningDrag = "paint"; // garantit l'envoi au mouseup même si le mousedown a été manqué
+    paintCellAt(pos.r, pos.c);
+  } else if (state.planningSel) {
+    state.planningSel.r2 = pos.r;
+    state.planningSel.c2 = pos.c;
+    updateSelHighlight();
+  }
+}
+
+document.addEventListener("mouseup", () => {
+  if (planningDrag === "paint") commitPendingPaint();
+  planningDrag = null;
+});
+
+function onPlanningDblClick(e) {
+  if (state.planningPaintCode !== undefined) return;
+  const pos = planningCellFromEvent(e);
+  if (!pos) return;
+  openPlanningCellEditor(planningGrid.rows[pos.r].cells[pos.c]);
+}
+
+/** Applique le code "armé" à la case (r, c) ; l'envoi est différé au mouseup. */
+function paintCellAt(r, c) {
+  const cell = planningGrid && planningGrid.rows[r] && planningGrid.rows[r].cells[c];
+  if (!cell) return;
+  const codeId = state.planningPaintCode; // null = effacer
+  if (cell.codeId === codeId) return;
+  cell.codeId = codeId;
+  const code = planningCodeById.get(codeId);
+  cell.td.textContent = code ? code.Code : "—";
+  cell.td.title = code ? code.Libelle : "";
+  planningPendingPaint.set(`${cell.semaineId}|${cell.jour}`,
+    { semaineId: cell.semaineId, jour: cell.jour, codeId });
+}
+
+function commitPendingPaint() {
+  const changes = [...planningPendingPaint.values()];
+  planningPendingPaint.clear();
+  if (changes.length) patchPlanningBatch(changes);
+}
+
+async function patchPlanningBatch(changes) {
+  try {
+    await Promise.all(changes.map((ch) =>
+      api("PATCH", `/api/cadre/planning/${ch.semaineId}`, { jour: ch.jour, codeId: ch.codeId })));
+  } catch (err) {
+    alert(err.message);
+  }
+  try { await refresh(); } catch (err) { alert(err.message); }
+}
+
+function selRect() {
+  const s = state.planningSel;
+  return {
+    rMin: Math.min(s.r1, s.r2), rMax: Math.max(s.r1, s.r2),
+    cMin: Math.min(s.c1, s.c2), cMax: Math.max(s.c1, s.c2),
+  };
+}
+
+function updateSelHighlight() {
+  if (!planningGrid) return;
+  const rect = state.planningSel ? selRect() : null;
+  planningGrid.rows.forEach((row, r) => row.cells.forEach((cell, c) => {
+    if (!cell) return;
+    const on = rect && r >= rect.rMin && r <= rect.rMax && c >= rect.cMin && c <= rect.cMax;
+    cell.td.classList.toggle("sel", !!on);
+  }));
+}
+
+function copySelection() {
+  if (!state.planningSel || !planningGrid) return;
+  const { rMin, rMax, cMin, cMax } = selRect();
+  planningClipboard = [];
+  const lines = [];
+  for (let r = rMin; r <= rMax; r++) {
+    const rowIds = [];
+    const rowTxt = [];
+    for (let c = cMin; c <= cMax; c++) {
+      const cell = planningGrid.rows[r] && planningGrid.rows[r].cells[c];
+      const codeId = cell ? cell.codeId : null;
+      rowIds.push(codeId);
+      const code = planningCodeById.get(codeId);
+      rowTxt.push(code ? code.Code : "");
+    }
+    planningClipboard.push(rowIds);
+    lines.push(rowTxt.join("\t"));
+  }
+  // Copie aussi en texte (tabulations) : collable dans Excel ou ailleurs.
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(lines.join("\n")).catch(() => {});
+  }
+  const n = (rMax - rMin + 1) * (cMax - cMin + 1);
+  if (planningStatusEl) planningStatusEl.textContent = `✓ ${n} case${n > 1 ? "s copiées" : " copiée"}.`;
+}
+
+function pasteSelection() {
+  if (!planningClipboard || !state.planningSel || !planningGrid) return;
+  const { rMin, rMax, cMin, cMax } = selRect();
+  const ch = planningClipboard.length;
+  const cw = planningClipboard[0].length;
+  // Une seule case sélectionnée : on colle le bloc entier à partir d'elle.
+  // Sélection plus grande : on la remplit en répétant le bloc copié.
+  const single = rMin === rMax && cMin === cMax;
+  const destH = single ? ch : rMax - rMin + 1;
+  const destW = single ? cw : cMax - cMin + 1;
+  const changes = [];
+  for (let dr = 0; dr < destH; dr++) {
+    for (let dc = 0; dc < destW; dc++) {
+      const row = planningGrid.rows[rMin + dr];
+      const cell = row && row.cells[cMin + dc];
+      if (!cell) continue;
+      const codeId = planningClipboard[dr % ch][dc % cw];
+      if (codeId !== cell.codeId) {
+        changes.push({ semaineId: cell.semaineId, jour: cell.jour, codeId });
+      }
+    }
+  }
+  if (changes.length) patchPlanningBatch(changes);
+}
+
+function clearSelectionCells() {
+  if (!state.planningSel || !planningGrid) return;
+  const { rMin, rMax, cMin, cMax } = selRect();
+  const changes = [];
+  for (let r = rMin; r <= rMax; r++) {
+    for (let c = cMin; c <= cMax; c++) {
+      const cell = planningGrid.rows[r] && planningGrid.rows[r].cells[c];
+      if (cell && cell.codeId) changes.push({ semaineId: cell.semaineId, jour: cell.jour, codeId: null });
+    }
+  }
+  if (changes.length) patchPlanningBatch(changes);
+}
+
+document.addEventListener("keydown", (e) => {
+  if (state.activeTab !== "planning" || !planningGrid || !state.planningSel) return;
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+  const sel = state.planningSel;
+  const clamp = (v, max) => Math.max(0, Math.min(max, v));
+  const maxR = planningGrid.rows.length - 1;
+  const maxC = 29;
+  const dr = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
+  const dc = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+  if (dr || dc) {
+    if (e.shiftKey) {
+      sel.r2 = clamp(sel.r2 + dr, maxR);
+      sel.c2 = clamp(sel.c2 + dc, maxC);
+    } else {
+      const r = clamp(sel.r2 + dr, maxR);
+      const c = clamp(sel.c2 + dc, maxC);
+      sel.r1 = sel.r2 = r;
+      sel.c1 = sel.c2 = c;
+    }
+    e.preventDefault();
+    updateSelHighlight();
+  } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
+    e.preventDefault();
+    copySelection();
+  } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") {
+    e.preventDefault();
+    pasteSelection();
+  } else if (e.key === "Delete" || e.key === "Backspace") {
+    e.preventDefault();
+    clearSelectionCells();
+  } else if (e.key === "Escape") {
+    state.planningSel = null;
+    updateSelHighlight();
+  }
+});
+
+/** Repli : double-clic sur une case ouvre la liste déroulante des codes. */
+function openPlanningCellEditor(cell) {
+  if (!cell) return;
+  const select = document.createElement("select");
+  select.innerHTML = ['<option value="">—</option>']
+    .concat(state.data.codes.map((c) =>
+      `<option value="${c.id}">${escapeHtml(c.Code)} — ${escapeHtml(c.Libelle)}</option>`)).join("");
+  select.value = cell.codeId || "";
+  cell.td.innerHTML = "";
+  cell.td.appendChild(select);
+  select.focus();
+  let done = false;
+  const restore = () => {
+    const code = planningCodeById.get(cell.codeId);
+    cell.td.innerHTML = "";
+    cell.td.textContent = code ? code.Code : "—";
+  };
+  select.addEventListener("change", () => {
+    if (done) return;
+    done = true;
+    const codeId = select.value ? Number(select.value) : null;
+    if (codeId === cell.codeId) { restore(); return; }
+    select.disabled = true;
+    patchPlanningBatch([{ semaineId: cell.semaineId, jour: cell.jour, codeId }]);
+  });
+  select.addEventListener("blur", () => setTimeout(() => { if (!done) { done = true; restore(); } }, 0));
 }
 
 /** Légende affichée sous le planning : horaires de chaque code + repère week-end/férié. */
@@ -1017,6 +1312,13 @@ function frDate(iso) {
   if (!iso) return "?";
   return new Date(iso + "T00:00:00").toLocaleDateString("fr-FR", {
     day: "numeric", month: "long", year: "numeric",
+  });
+}
+
+function frDateCourt(iso) {
+  if (!iso) return "?";
+  return new Date(iso + "T00:00:00").toLocaleDateString("fr-FR", {
+    day: "2-digit", month: "2-digit", year: "numeric",
   });
 }
 

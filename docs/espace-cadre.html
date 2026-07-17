@@ -82,6 +82,14 @@
     .planning-controls { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-bottom: 0.75rem; }
     .planning-controls input[type="date"] { padding: 0.4rem 0.5rem; border: 1px solid var(--gris-bordure); border-radius: 4px; }
 
+    /* Palette de codes + sélection façon tableur */
+    .code-palette { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; margin: 0 0 0.4rem; }
+    .code-palette .palette-hint { flex-basis: 100%; font-size: 0.78rem; color: var(--texte-doux); margin: 0.2rem 0 0; }
+    .code-palette .palette-status { color: #18753c; font-weight: 600; }
+    table.service-planning { user-select: none; -webkit-user-select: none; }
+    td.code-cell.sel { outline: 2px solid var(--bleu); outline-offset: -2px; background: rgba(0, 0, 145, 0.10); }
+    table.service-planning.painting td.code-cell { cursor: crosshair; }
+
     .codes-legend { margin-top: 0.9rem; font-size: 0.8rem; color: var(--texte-doux); }
     .codes-legend-title { margin: 0 0 0.35rem; font-size: 0.85rem; font-weight: 700; color: var(--texte); }
     .codes-legend-list { display: flex; flex-wrap: wrap; gap: 0.3rem 1.1rem; }
@@ -92,7 +100,7 @@
     #print-header, #print-footer { display: none; }
     @media print {
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
-      .app-header, .moi-info, .cadre-service-select, .main-tabs, .planning-controls, .app-footer,
+      .app-header, .moi-info, .cadre-service-select, .main-tabs, .planning-controls, .code-palette, .app-footer,
       #tab-declarations, #tab-dossier, #tab-evaluation, .section-note { display: none !important; }
       #print-header { display: block; margin-bottom: 1rem; }
       #print-footer {
@@ -183,7 +191,7 @@
         </div>
 
         <div id="tab-planning" hidden>
-          <p class="section-note">Planning de l'ensemble du service sur 30 jours. Cliquez sur une case pour changer le code du jour.</p>
+          <p class="section-note">Planning de l'ensemble du service sur 30 jours. Choisissez un code dans la palette puis peignez les cases ; ou restez en mode Sélection pour copier-coller des blocs (double-clic sur une case : liste des codes).</p>
           <div id="planning-service"></div>
         </div>
 
@@ -306,6 +314,6 @@
   </dialog>
 
   <script src="config.js?v=18"></script>
-  <script src="espace-cadre.js?v=10"></script>
+  <script src="espace-cadre.js?v=11"></script>
 </body>
 </html>
