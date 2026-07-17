@@ -572,7 +572,7 @@ async function buildCadrePayload(env, cadre) {
         Lien_evaluation: p.fields.Lien_evaluation || "",
         Evaluation_envoyee: !!p.fields.Evaluation_envoyee,
         Evaluation_repondue: periodesAvecReponse.has(p.id),
-        Alertes: computeAlertesPeriode(p.id, semaines, codesById),
+        Alertes: computeAlertesPeriode(p.id, semaines, codesById, epochToIso(p.fields.Du), epochToIso(p.fields.Au)),
       };
     }),
     semaines: semainesData.map(({ s, jours }) => {
@@ -961,16 +961,22 @@ function formatH(hours) {
   return (neg ? "-" : "") + hh + "h" + (mm ? String(mm).padStart(2, "0") : "");
 }
 
-/** Jours (ISO, triés) d'une période avec le code horaire posé ce jour-là. */
-function joursDetailPeriode(periodeId, semaines, codesById) {
+/** Jours (ISO, triés) d'une période avec le code horaire posé ce jour-là, limités
+ *  aux dates réelles du stage (duIso/auIso) : PLANNING_HEBDO pré-génère des
+ *  semaines bien au-delà de la fin du stage (MAX_SEMAINES_GENEREES), il ne
+ *  faut pas générer d'alerte sur des jours où l'étudiant n'est pas présent. */
+function joursDetailPeriode(periodeId, semaines, codesById, duIso, auIso) {
   const jours = [];
   for (const s of semaines) {
     if (s.fields.Periode !== periodeId) continue;
     const debut = s.fields.Semaine_debut;
     if (!debut) continue;
     DAY_COLUMNS.forEach((d, i) => {
+      const iso = epochToIso(debut + i * 86400);
+      if (duIso && iso < duIso) return;
+      if (auIso && iso > auIso) return;
       const codeRec = codesById.get(s.fields[d]);
-      jours.push({ iso: epochToIso(debut + i * 86400), code: codeRec ? codeRec.fields : null });
+      jours.push({ iso, code: codeRec ? codeRec.fields : null });
     });
   }
   return jours.sort((a, b) => a.iso.localeCompare(b.iso));
@@ -978,9 +984,9 @@ function joursDetailPeriode(periodeId, semaines, codesById) {
 
 /** Calcule les alertes de conformité d'une période : repos entre deux postes,
  *  durée hebdomadaire max, présence d'un repos hebdomadaire. */
-function computeAlertesPeriode(periodeId, semaines, codesById) {
+function computeAlertesPeriode(periodeId, semaines, codesById, duIso, auIso) {
   const alertes = [];
-  const jours = joursDetailPeriode(periodeId, semaines, codesById);
+  const jours = joursDetailPeriode(periodeId, semaines, codesById, duIso, auIso);
 
   // 1) Repos minimal entre deux postes travaillés consécutifs (jours calendaires successifs).
   let prev = null;

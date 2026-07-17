@@ -1,7 +1,7 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 /* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
-const APP_VERSION = "v20"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v22"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -917,12 +917,14 @@ let planningStatusEl = null;
 
 function renderPlanningTab() {
   const container = $("planning-service");
+  const prevTable = container.querySelector("table.service-planning");
+  const savedScrollLeft = prevTable ? prevTable.scrollLeft : 0;
   container.innerHTML = "";
 
   const controls = el("div", "planning-controls");
   const dateInput = document.createElement("input");
   dateInput.type = "date";
-  dateInput.value = state.planningStart || isoDate(new Date());
+  dateInput.value = state.planningStart || firstDayOfMonthIso();
   dateInput.addEventListener("change", () => {
     state.planningStart = dateInput.value;
     renderPlanningTab();
@@ -942,7 +944,7 @@ function renderPlanningTab() {
   controls.append(dateInput, todayBtn, prevBtn, nextBtn, printBtn);
   container.appendChild(controls);
 
-  const startKey = state.planningStart || isoDate(new Date());
+  const startKey = state.planningStart || firstDayOfMonthIso();
   const days = [];
   for (let i = 0; i < 30; i++) days.push(addDaysIso(startKey, i));
   const endKey = days[days.length - 1];
@@ -1038,6 +1040,7 @@ function renderPlanningTab() {
 
   container.appendChild(table);
   container.appendChild(renderCodesLegend());
+  table.scrollLeft = savedScrollLeft;
   updateSelHighlight();
 }
 
@@ -1323,7 +1326,7 @@ function isWeekendIso(iso) {
 }
 
 function shiftWindow(deltaDays) {
-  const cur = state.planningStart ? new Date(state.planningStart + "T00:00:00") : new Date();
+  const cur = new Date((state.planningStart || firstDayOfMonthIso()) + "T00:00:00");
   cur.setDate(cur.getDate() + deltaDays);
   state.planningStart = isoDate(cur);
   renderPlanningTab();
@@ -1666,6 +1669,11 @@ function isoDate(date) {
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+function firstDayOfMonthIso() {
+  const d = new Date();
+  return isoDate(new Date(d.getFullYear(), d.getMonth(), 1));
 }
 
 function addDaysIso(iso, n) {
