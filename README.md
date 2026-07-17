@@ -1,8 +1,16 @@
 # Espace étudiant — Planning de stage
 
-> Vous voulez déployer une copie de cette application pour un autre
-> service/établissement (document Grist, worker et site propres) ? Voir le
-> [guide d'installation](INSTALL.md).
+> ## ⚠️ © Joan Thuillier — Tous droits réservés
+>
+> Ce dépôt est **public à titre de consultation/démonstration uniquement**.
+> Il n'autorise **ni copie, ni déploiement, ni réutilisation** (même
+> partielle) sans **accord écrit préalable de l'auteur**, et **la mention de
+> Joan Thuillier comme auteur original est obligatoire dans tous les cas**,
+> y compris en cas d'autorisation accordée. Voir le fichier [LICENSE](LICENSE).
+>
+> Pour demander une copie pour un autre service/établissement, **contactez
+> d'abord l'auteur** — le [guide d'installation](INSTALL.md) ne s'applique
+> qu'après accord.
 
 Un espace web permettant aux étudiants du service de **s'enregistrer à leur
 entrée en stage, consulter leur planning et déclarer leurs heures**

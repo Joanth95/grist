@@ -1,4 +1,6 @@
 /**
+ * © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt.
+ *
  * Proxy API entre l'espace étudiant (GitHub Pages) et le document Grist
  * GESTION-ETUDIANT (instance DINUM).
  *

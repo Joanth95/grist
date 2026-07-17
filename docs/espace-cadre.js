@@ -1,4 +1,5 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
+/* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
 const APP_VERSION = "v14"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");

@@ -1,4 +1,5 @@
 /* Espace étudiant — consultation du planning + déclarations d'heures */
+/* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);

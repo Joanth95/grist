@@ -1,5 +1,11 @@
 # Guide d'installation — déployer une copie sur un autre site
 
+> ⚠️ Ce projet est protégé par tous droits réservés (voir [LICENSE](LICENSE)) :
+> ce guide ne vous autorise pas, à lui seul, à déployer une copie. Contactez
+> d'abord l'auteur (Joan Thuillier, CHR Metz-Thionville) pour obtenir son
+> accord écrit ; ce n'est qu'après cet accord que les étapes ci-dessous
+> s'appliquent.
+
 Ce guide sert à remonter **une instance indépendante** de l'application
 (document Grist propre + Worker Cloudflare propre + site propre) pour un
 autre service, un autre pôle ou un autre établissement. Il ne modifie pas
