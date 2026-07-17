@@ -33,6 +33,7 @@
  *   POST   /api/cadre/sorties  { periodeId, ... }      -> déclarer des heures pour un étudiant (en attente)
  *   PATCH  /api/cadre/planning/:semaineId { jour, codeId } -> édite une case du planning
  *   PATCH  /api/cadre/periodes/:id  { Tuteur, Niveau, Du, Au } -> édite une fiche de période
+ *   PATCH  /api/cadre/profil  { Telephone }                   -> modifie son propre numéro de téléphone
  */
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
@@ -144,6 +145,9 @@ async function route(request, env) {
     const pm = path.match(/^\/api\/cadre\/periodes\/(\d+)$/);
     if (request.method === "PATCH" && pm) {
       return updatePeriode(request, env, cadre, Number(pm[1]));
+    }
+    if (request.method === "PATCH" && path === "/api/cadre/profil") {
+      return updateProfilCadre(request, env, cadre);
     }
     throw httpError(404, "Route inconnue");
   }
@@ -450,7 +454,11 @@ async function buildCadrePayload(env, cadre) {
     services: cadre.services.map((s) => ({ id: s.id, Nom: s.fields.Nom || "" })),
     niveaux: NIVEAUX,
     motifs: MOTIFS,
-    moi: { nom: cadreNomComplet(cadre) },
+    moi: {
+      nom: cadreNomComplet(cadre),
+      prenom: cadre.fields.Prenom || "",
+      telephone: cadre.fields.Telephone || "",
+    },
     feries: feriesIso,
     periodes: periodes.map((p) => {
       // Volontairement PAS de date de naissance ni de numéro de téléphone
@@ -679,6 +687,15 @@ async function updatePeriode(request, env, cadre, periodeId) {
 
   await gristUpdate(env, T_PERIODES, periodeId, fields);
   return json({ ok: true });
+}
+
+/** Le cadre modifie son propre numéro de téléphone (UTILISATEURS.Telephone). */
+async function updateProfilCadre(request, env, cadre) {
+  const body = await request.json().catch(() => ({}));
+  if (body.Telephone === undefined) throw httpError(400, "Aucune modification fournie");
+  const telephone = cleanText(body.Telephone, 30);
+  await gristUpdate(env, T_UTILISATEURS, cadre.rowId, { Telephone: telephone });
+  return json({ ok: true, telephone });
 }
 
 /** Heures comptabilisées un jour donné (réplique la formule Grist Total_h_semaine). */

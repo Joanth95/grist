@@ -6,6 +6,11 @@
   <title>Espace cadre</title>
   <link rel="stylesheet" href="styles.css?v=18">
   <style>
+    .moi-info { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin: 0 0 1rem; padding: 0.5rem 0.75rem; background: var(--gris-fond); border-radius: var(--radius); font-size: 0.9rem; }
+    .moi-info .moi-nom { font-weight: 700; }
+    .moi-info .moi-tel { color: var(--texte-doux); }
+    .moi-info input[type="tel"] { padding: 0.3rem 0.5rem; border: 1px solid var(--gris-bordure); border-radius: 4px; font-size: 0.9rem; width: 12rem; }
+    .moi-info .btn-small { padding: 0.25rem 0.6rem; font-size: 0.82rem; }
     .cadre-service-select { margin: 0 0 1rem; }
     .cadre-service-select select { padding: 0.5rem 0.75rem; border: 1px solid var(--gris-bordure); border-radius: 4px; min-width: 260px; }
     .etu-card { background: var(--blanc); border-radius: var(--radius); box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 1rem 1.25rem; margin-bottom: 1rem; }
@@ -74,7 +79,7 @@
     #print-header, #print-footer { display: none; }
     @media print {
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
-      .app-header, .cadre-service-select, .main-tabs, .planning-controls, .app-footer,
+      .app-header, .moi-info, .cadre-service-select, .main-tabs, .planning-controls, .app-footer,
       #tab-declarations, #tab-dossier, #tab-evaluation, .section-note { display: none !important; }
       #print-header { display: block; margin-bottom: 1rem; }
       #print-footer {
@@ -132,6 +137,8 @@
     </header>
 
     <main class="content">
+      <div id="moi-info" class="moi-info"></div>
+
       <div class="cadre-service-select">
         <label for="service-select"><strong>Service</strong></label><br>
         <select id="service-select"></select>
@@ -286,6 +293,6 @@
   </dialog>
 
   <script src="config.js?v=18"></script>
-  <script src="espace-cadre.js?v=7"></script>
+  <script src="espace-cadre.js?v=8"></script>
 </body>
 </html>

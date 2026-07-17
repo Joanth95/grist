@@ -1,6 +1,6 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 
-const APP_VERSION = "v7"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v8"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -118,9 +118,51 @@ async function refresh() {
 /* ------------------------------------------------------------------ */
 
 function render() {
+  renderMoiInfo();
   renderServiceSelect();
   renderMainTabs();
   renderActiveTab();
+}
+
+let moiEditing = false;
+
+function renderMoiInfo() {
+  const moi = state.data.moi || {};
+  const el = $("moi-info");
+  if (moiEditing) {
+    el.innerHTML = `
+      <span class="moi-nom">${escapeHtml(moi.nom || "")}</span>
+      <input type="tel" id="moi-tel-input" value="${escapeHtml(moi.telephone || "")}" placeholder="Numéro de téléphone" maxlength="30">
+      <button type="button" class="btn btn-primary btn-small" id="moi-save-btn">Enregistrer</button>
+      <button type="button" class="btn btn-ghost btn-small" id="moi-cancel-btn">Annuler</button>
+      <span id="moi-error" class="error" hidden></span>
+    `;
+    $("moi-cancel-btn").addEventListener("click", () => { moiEditing = false; renderMoiInfo(); });
+    $("moi-save-btn").addEventListener("click", async () => {
+      const btn = $("moi-save-btn");
+      const errEl = $("moi-error");
+      errEl.hidden = true;
+      btn.disabled = true;
+      try {
+        const telephone = $("moi-tel-input").value.trim();
+        await api("PATCH", "/api/cadre/profil", { Telephone: telephone });
+        state.data.moi.telephone = telephone;
+        moiEditing = false;
+        renderMoiInfo();
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.hidden = false;
+        btn.disabled = false;
+      }
+    });
+  } else {
+    el.innerHTML = `
+      <span class="moi-nom">${escapeHtml(moi.nom || "")}</span>
+      <span class="moi-tel">${moi.telephone ? escapeHtml(moi.telephone) : "Aucun numéro de téléphone renseigné"}</span>
+      <button type="button" class="btn btn-ghost btn-small" id="moi-edit-btn">Modifier le numéro</button>
+    `;
+    $("moi-edit-btn").addEventListener("click", () => { moiEditing = true; renderMoiInfo(); });
+  }
 }
 
 function renderServiceSelect() {
