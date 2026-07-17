@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Entrée en stage — Espace étudiant</title>
-  <link rel="stylesheet" href="styles.css?v=18">
+  <link rel="stylesheet" href="styles.css?v=19">
 </head>
 <body>
 
@@ -62,14 +62,17 @@
 
         <div class="row">
           <div>
-            <label for="f-service">Service</label>
-            <select id="f-service" required></select>
+            <label for="f-site">Site</label>
+            <select id="f-site" required></select>
           </div>
           <div>
-            <label for="f-niveau">Niveau</label>
-            <select id="f-niveau" required></select>
+            <label for="f-service">Service</label>
+            <select id="f-service" required disabled></select>
           </div>
         </div>
+
+        <label for="f-niveau">Niveau</label>
+        <select id="f-niveau" required></select>
 
         <div class="row">
           <div>
@@ -120,7 +123,7 @@
     </footer>
   </section>
 
-  <script src="config.js?v=18"></script>
-  <script src="entree-stage.js?v=18"></script>
+  <script src="config.js?v=19"></script>
+  <script src="entree-stage.js?v=19"></script>
 </body>
 </html>

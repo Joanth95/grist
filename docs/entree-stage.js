@@ -15,7 +15,12 @@ async function init() {
     fillSelect("f-civilite", ref.civilites.map((c) => [c, c]));
     fillSelect("f-formation", ref.formations.map((f) => [f, f]));
     fillSelect("f-niveau", ref.niveaux.map((n) => [n, n]));
-    fillSelect("f-service", ref.services.map((s) => [s.id, s.Nom]));
+
+    const sites = [...new Set(services.map((s) => s.Site || "Autre"))].sort((a, b) => a.localeCompare(b, "fr"));
+    fillSelect("f-site", sites.map((s) => [s, s]));
+    fillServicesForSite("");
+
+    $("f-site").addEventListener("change", () => fillServicesForSite($("f-site").value));
   } catch (err) {
     const errEl = $("form-error");
     errEl.textContent = "Impossible de charger le formulaire : " + err.message;
@@ -29,6 +34,19 @@ function fillSelect(id, pairs) {
   select.innerHTML = "";
   select.appendChild(new Option("— Choisir —", ""));
   for (const [value, label] of pairs) select.appendChild(new Option(label, value));
+}
+
+function fillServicesForSite(site) {
+  const select = $("f-service");
+  if (!site) {
+    select.innerHTML = "";
+    select.appendChild(new Option("— Choisissez d'abord un site —", ""));
+    select.disabled = true;
+    return;
+  }
+  const forSite = services.filter((s) => (s.Site || "Autre") === site);
+  select.disabled = false;
+  fillSelect("f-service", forSite.map((s) => [s.id, s.Nom]));
 }
 
 $("inscription-form").addEventListener("submit", async (e) => {

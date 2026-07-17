@@ -6,7 +6,9 @@
   <title>Espace cadre</title>
   <link rel="stylesheet" href="styles.css?v=19">
   <style>
-    .cadre-service-select { margin: 0 0 1.5rem; }
+    .cadre-service-select { margin: 0 0 1rem; }
+    .cadre-service-select:last-of-type { margin-bottom: 1.5rem; }
+    .cadre-service-select label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--gris-texte, #555); margin: 0 0 0.3rem; }
     .cadre-service-select select { padding: 0.6rem 0.75rem; border: 1px solid var(--gris-bordure); border-radius: 4px; min-width: 100%; font-size: 0.95rem; background: var(--blanc); }
 
     .moi-info { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; margin: 0 0 1.5rem; padding: 1rem; background: var(--blanc); border: 1px solid var(--gris-bordure); border-radius: var(--radius); font-size: 0.9rem; }
@@ -164,7 +166,12 @@
     </header>
 
     <main class="content">
+      <div class="cadre-service-select" id="cadre-site-select">
+        <label for="site-select">Site</label>
+        <select id="site-select"></select>
+      </div>
       <div class="cadre-service-select">
+        <label for="service-select">Service</label>
         <select id="service-select"></select>
       </div>
 
@@ -319,6 +326,6 @@
   </dialog>
 
   <script src="config.js?v=18"></script>
-  <script src="espace-cadre.js?v=12"></script>
+  <script src="espace-cadre.js?v=13"></script>
 </body>
 </html>

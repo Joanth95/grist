@@ -1,6 +1,6 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 
-const APP_VERSION = "v12"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v13"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -177,8 +177,33 @@ function updateServiceSubtitle() {
 }
 
 function renderServiceSelect() {
+  const siteSel = $("site-select");
+  const siteWrap = $("cadre-site-select");
+  const allServices = state.data.services;
+  const sites = [...new Set(allServices.map((s) => s.Site || "Autre"))].sort((a, b) => a.localeCompare(b, "fr"));
+
+  if (!sites.includes(state.selectedSite)) {
+    const current = allServices.find((s) => s.id === state.selectedServiceId);
+    state.selectedSite = (current && (current.Site || "Autre")) || sites[0] || null;
+  }
+  siteSel.innerHTML = sites.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
+  siteSel.value = state.selectedSite;
+  siteWrap.hidden = sites.length <= 1;
+  siteSel.onchange = () => {
+    state.selectedSite = siteSel.value;
+    state.selectedServiceId = null; // force la sélection du premier service du site choisi
+    renderServiceOptions();
+    updateServiceSubtitle();
+    renderActiveTab();
+  };
+
+  renderServiceOptions();
+  updateServiceSubtitle();
+}
+
+function renderServiceOptions() {
   const sel = $("service-select");
-  const services = state.data.services;
+  const services = state.data.services.filter((s) => (s.Site || "Autre") === state.selectedSite);
   if (!services.some((s) => s.id === state.selectedServiceId)) {
     state.selectedServiceId = services[0] ? services[0].id : null;
   }
@@ -189,7 +214,6 @@ function renderServiceSelect() {
     updateServiceSubtitle();
     renderActiveTab();
   };
-  updateServiceSubtitle();
 }
 
 function periodesDuService() {

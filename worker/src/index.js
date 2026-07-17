@@ -43,6 +43,7 @@ const T_PERIODES = "PERIODES_DE_STAGE";
 const T_HEBDO = "PLANNING_HEBDO";
 const T_CODES = "CODES_HORAIRES";
 const T_SERVICES = "SERVICES";
+const T_SITES = "SITES";
 const T_SORTIES = "Sortie_de_stage";
 const T_UTILISATEURS = "UTILISATEURS";
 const T_FERIES = "JOURS_FERIES";
@@ -374,19 +375,32 @@ async function buildPayload(env, student) {
 }
 
 async function listServices(env) {
-  const [services, users] = await Promise.all([
+  const [services, users, sites] = await Promise.all([
     gristAll(env, T_SERVICES),
     gristAll(env, T_UTILISATEURS),
+    gristAll(env, T_SITES),
   ]);
   const usersById = new Map(users.map((u) => [u.id, u]));
+  const sitesById = new Map(sites.map((s) => [s.id, s]));
   return json({
     services: services
       .filter((s) => s.fields.Recoit_des_etudiant)
-      .map((s) => ({ id: s.id, Nom: s.fields.Nom || "", cadre: cadreInfo(s, usersById) })),
+      .map((s) => ({
+        id: s.id,
+        Nom: s.fields.Nom || "",
+        Site: siteName(s, sitesById),
+        cadre: cadreInfo(s, usersById),
+      })),
     civilites: CIVILITES,
     formations: FORMATIONS,
     niveaux: NIVEAUX,
   });
+}
+
+/** Nom du site (table SITES) lié à un service. */
+function siteName(service, sitesById) {
+  const site = sitesById.get(service.fields.Site);
+  return (site && site.fields.NOM) || "";
 }
 
 /* ------------------------------------------------------------------ */
@@ -395,16 +409,18 @@ async function listServices(env) {
 
 /** Payload complet des services/étudiants/planning rattachés au cadre. */
 async function buildCadrePayload(env, cadre) {
-  const [periodesAll, students, codes, feries, evaluations, servicesAll] = await Promise.all([
+  const [periodesAll, students, codes, feries, evaluations, servicesAll, sites] = await Promise.all([
     gristAll(env, T_PERIODES),
     gristAll(env, T_ETUDIANTS),
     gristAll(env, T_CODES),
     gristAll(env, T_FERIES),
     gristAll(env, T_EVALUATIONS),
     gristAll(env, T_SERVICES),
+    gristAll(env, T_SITES),
   ]);
 
   const servicesById = new Map(servicesAll.map((s) => [s.id, s]));
+  const sitesById = new Map(sites.map((s) => [s.id, s]));
   const periodes = periodesAll.filter((p) => cadre.serviceIds.has(p.fields.Service));
   // Historique : les stages de ces mêmes étudiants dans d'autres services sont
   // aussi envoyés (lecture seule côté front) pour que le cadre voie le parcours
@@ -461,7 +477,7 @@ async function buildCadrePayload(env, cadre) {
   });
 
   return {
-    services: cadre.services.map((s) => ({ id: s.id, Nom: s.fields.Nom || "" })),
+    services: cadre.services.map((s) => ({ id: s.id, Nom: s.fields.Nom || "", Site: siteName(s, sitesById) })),
     niveaux: NIVEAUX,
     motifs: MOTIFS,
     moi: {
