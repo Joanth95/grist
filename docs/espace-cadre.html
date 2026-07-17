@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Espace cadre</title>
-  <link rel="stylesheet" href="styles.css?v=19">
+  <link rel="stylesheet" href="styles.css?v=20">
   <style>
     .cadre-service-select { margin: 0 0 1rem; }
     .cadre-service-select:last-of-type { margin-bottom: 1.5rem; }
@@ -42,10 +42,15 @@
     .nouveau-code-form .checkbox-label { flex-direction: row; align-items: center; gap: 0.4rem; }
     .anonymat-badge { font-family: ui-monospace, monospace; font-weight: 700; background: var(--gris-fond); border: 1px solid var(--gris-bordure); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85rem; }
 
-    .main-tabs { display: flex; gap: 0.5rem; border-bottom: 2px solid var(--gris-bordure); margin: 1.5rem 0 1rem; flex-wrap: wrap; }
-    .main-tab { background: none; border: none; padding: 0.6rem 1rem; font-weight: 600; color: var(--texte-doux); cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: color 0.15s; }
-    .main-tab:hover { color: var(--bleu); }
-    .main-tab.active { color: var(--bleu); border-bottom-color: var(--bleu); }
+    #cadre-info { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .cadre-nom { font-weight: 700; font-size: 0.95rem; }
+    .cadre-nom-edit { font-weight: 700; font-size: 0.95rem; }
+    .cadre-tel { color: var(--texte-doux); font-size: 0.9rem; }
+
+    .main-tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1.5rem 0 1rem; }
+    .main-tab { background: var(--blanc); border: 1px solid var(--gris-bordure); border-bottom: 3px solid transparent; border-radius: var(--radius) var(--radius) 0 0; padding: 0.5rem 0.9rem; font-weight: 600; color: var(--texte-doux); cursor: pointer; font-size: 0.95rem; transition: color 0.15s; }
+    .main-tab:hover { background: var(--gris-fond); }
+    .main-tab.active { color: var(--bleu); border-bottom-color: var(--bleu); background: var(--blanc); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06); }
 
     .sub-tabs { display: flex; gap: 0.4rem; margin: 0.75rem 0 0.5rem; }
     .sub-tab { background: var(--gris-fond); border: 1px solid var(--gris-bordure); border-radius: 999px; padding: 0.3rem 0.8rem; font-size: 0.82rem; font-weight: 600; color: var(--texte-doux); cursor: pointer; }
@@ -170,9 +175,10 @@
     <header class="app-header">
       <div>
         <h1>Espace cadre</h1>
-        <p class="subtitle" id="service-subtitle">Sélectionnez votre service</p>
+        <p id="cadre-info" class="subtitle"></p>
       </div>
       <div class="header-actions">
+        <button id="refresh-btn" class="btn btn-ghost" title="Actualiser">🔄</button>
         <button id="logout-btn" class="btn btn-ghost">Se déconnecter</button>
       </div>
     </header>
@@ -186,8 +192,6 @@
         <label for="service-select">Service</label>
         <select id="service-select"></select>
       </div>
-
-      <div id="moi-info" class="moi-info"></div>
 
       <div id="print-header"></div>
 
@@ -343,6 +347,6 @@
   </dialog>
 
   <script src="config.js?v=18"></script>
-  <script src="espace-cadre.js?v=16"></script>
+  <script src="espace-cadre.js?v=17"></script>
 </body>
 </html>
