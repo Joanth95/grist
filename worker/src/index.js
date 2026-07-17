@@ -120,7 +120,6 @@ async function route(request, env) {
     const cadre = await authenticateCadre(env, body.email, body.code);
     return json(await buildCadrePayload(env, cadre));
   }
-
   // --- Endpoints cadre authentifiés ---
   if (path.startsWith("/api/cadre/")) {
     const cadre = await authenticateCadre(
@@ -208,6 +207,9 @@ async function authenticateCadre(env, rawEmail, rawCode) {
       && (u.fields.Code_acces || "").trim() === code
   );
   if (!match) throw httpError(401, "Email ou code d'accès invalide");
+  if (!match.fields.Utilisateur_de_l_outil) {
+    throw httpError(403, "Ce compte a été désactivé : contactez l'administrateur");
+  }
 
   const services = await gristAll(env, T_SERVICES);
   const myServices = services.filter((s) => {
