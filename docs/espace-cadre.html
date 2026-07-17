@@ -38,6 +38,19 @@
     .stage-block { border-top: 1px solid var(--gris-bordure); padding-top: 0.6rem; margin-top: 0.6rem; }
     .stage-block:first-child { border-top: none; padding-top: 0; margin-top: 0.4rem; }
 
+    /* Historique des stages : une carte par période, liseré selon le statut */
+    .stage-item { border: 1px solid var(--gris-bordure); border-left: 4px solid var(--gris-bordure); border-radius: var(--radius); padding: 0.6rem 0.85rem; margin-top: 0.6rem; }
+    .stage-item.stage-cours { border-left-color: var(--bleu); }
+    .stage-item.stage-avenir { border-left-color: #ffb056; }
+    .stage-item-header { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+    .stage-service { font-weight: 700; }
+    .stage-dates { color: var(--texte-doux); font-size: 0.9rem; }
+    .badge.info { background: #e8edff; border-color: #c3cffa; color: var(--bleu); }
+    .badge.neutral { background: var(--gris-fond); border-color: var(--gris-bordure); color: var(--texte-doux); }
+    @media (prefers-color-scheme: dark) {
+      .badge.info { background: #1a2c5c; border-color: #2c4494; color: #9db4ff; }
+    }
+
     /* ---------- Déclarations à valider ---------- */
     .decl-section { margin-bottom: 1.25rem; }
     .decl-heading { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.5rem; }
@@ -293,6 +306,6 @@
   </dialog>
 
   <script src="config.js?v=18"></script>
-  <script src="espace-cadre.js?v=8"></script>
+  <script src="espace-cadre.js?v=9"></script>
 </body>
 </html>

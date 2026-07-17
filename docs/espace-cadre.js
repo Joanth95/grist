@@ -1,6 +1,6 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 
-const APP_VERSION = "v8"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v9"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -392,10 +392,15 @@ function renderDossierTab() {
     if (metaParts.length) header.appendChild(el("div", "etu-meta", metaParts.join(" · ")));
     card.appendChild(header);
 
+    // Historique complet : toutes les périodes de l'étudiant visibles par le
+    // cadre (tous ses services confondus), pas seulement celles de la
+    // catégorie affichée.
+    const allPeriodes = state.data.periodes.filter((p) => p.Etudiant.id === st.id);
+
     const subTabs = el("div", "sub-tabs");
     const current = state.dossierSubTab[st.id] || "stages";
     const subTabDefs = [
-      { id: "stages", label: "Stages effectués" },
+      { id: "stages", label: `Historique des stages (${allPeriodes.length})` },
       { id: "planning", label: "Planning personnel" },
     ];
     for (const t of subTabDefs) {
@@ -409,35 +414,45 @@ function renderDossierTab() {
     }
     card.appendChild(subTabs);
 
-    card.appendChild(current === "stages" ? renderStagesFaits(st) : renderPlanningPersonnel(st));
+    card.appendChild(current === "stages" ? renderStagesFaits(allPeriodes) : renderPlanningPersonnel(st));
 
     container.appendChild(card);
   }
 }
 
-/** Sous-onglet "Stages effectués" : liste des périodes de ce service ; seul le
- *  stage en cours reste éditable, les stages terminés s'affichent en lecture seule. */
-function renderStagesFaits(st) {
+/** Sous-onglet "Historique des stages" : toutes les périodes de l'étudiant
+ *  visibles par le cadre, du plus récent au plus ancien ; seul le stage en
+ *  cours reste éditable, les autres s'affichent en lecture seule. */
+function renderStagesFaits(allPeriodes) {
   const wrap = el("div", "");
-  const periodes = [...st.periodes].sort((a, b) => (b.Du || "").localeCompare(a.Du || ""));
+  const periodes = [...allPeriodes].sort((a, b) => (b.Du || "").localeCompare(a.Du || ""));
   for (const p of periodes) {
-    const block = el("div", "stage-block");
+    const cat = periodeCategory(p);
+    const item = el("div", `stage-item stage-${cat}`);
+
+    const header = el("div", "stage-item-header");
     const service = state.data.services.find((s) => s.id === p.Service);
-    const infoParts = [service ? service.Nom : "", `${frDate(p.Du)} → ${frDate(p.Au)}`];
-    if (!p.En_cours) {
-      if (p.Niveau) infoParts.push(p.Niveau);
-      if (p.Tuteur) infoParts.push(`Tuteur : ${p.Tuteur}`);
-    }
+    header.appendChild(el("span", "stage-service", service ? service.Nom : "Service inconnu"));
+    header.appendChild(el("span", "stage-dates", `${frDate(p.Du)} → ${frDate(p.Au)}`));
+    header.appendChild(badge(
+      { cours: "En cours", avenir: "À venir", passe: "Terminé" }[cat],
+      { cours: "info", avenir: "pending", passe: "neutral" }[cat]));
+    item.appendChild(header);
+
+    const infoParts = [];
+    if (!p.En_cours && p.Niveau) infoParts.push(p.Niveau);
+    if (p.Referent_pedagogique) infoParts.push(`Référent pédagogique : ${p.Referent_pedagogique}`);
+    if (!p.En_cours && p.Tuteur) infoParts.push(`Tuteur : ${p.Tuteur}`);
     infoParts.push(`${formatH(p.FAIT)} effectuées / ${formatH(p.A_FAIRE)} à réaliser`);
     infoParts.push(`Solde ${p.Solde_heures > 0 ? "+" : ""}${formatH(p.Solde_heures)}`);
-    block.appendChild(el("div", "etu-meta", infoParts.filter(Boolean).join(" · ")));
+    item.appendChild(el("div", "etu-meta", infoParts.join(" · ")));
 
     if (p.En_cours) {
-      block.appendChild(renderFiche(p));
-    } else {
-      block.appendChild(el("p", "save-hint", "Stage terminé : la fiche n'est plus modifiable."));
+      item.appendChild(renderFiche(p));
+    } else if (cat === "passe") {
+      item.appendChild(el("p", "save-hint", "Stage terminé : la fiche n'est plus modifiable."));
     }
-    wrap.appendChild(block);
+    wrap.appendChild(item);
   }
   return wrap;
 }

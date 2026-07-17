@@ -486,6 +486,7 @@ async function buildCadrePayload(env, cadre) {
         Au: epochToIso(p.fields.Au),
         Niveau: p.fields.Niveau || "",
         Tuteur: p.fields.Tuteur || "",
+        Referent_pedagogique: p.fields.Referent_pedagogique || "",
         En_cours: !!p.fields.En_cours,
         A_FAIRE: aFaire,
         FAIT: fait,
