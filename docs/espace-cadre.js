@@ -1,6 +1,6 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 
-const APP_VERSION = "v9"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v10"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -432,23 +432,31 @@ function renderStagesFaits(allPeriodes) {
 
     const header = el("div", "stage-item-header");
     const service = state.data.services.find((s) => s.id === p.Service);
-    header.appendChild(el("span", "stage-service", service ? service.Nom : "Service inconnu"));
+    header.appendChild(el("span", "stage-service",
+      p.Service_nom || (service ? service.Nom : "Service inconnu")));
     header.appendChild(el("span", "stage-dates", `${frDate(p.Du)} → ${frDate(p.Au)}`));
     header.appendChild(badge(
       { cours: "En cours", avenir: "À venir", passe: "Terminé" }[cat],
       { cours: "info", avenir: "pending", passe: "neutral" }[cat]));
     item.appendChild(header);
 
+    // La fiche n'est éditable que pour un stage en cours dans l'un de MES
+    // services ; les stages des autres services sont en lecture seule.
+    const monService = state.data.services.some((s) => s.id === p.Service);
+    const editable = p.En_cours && monService;
+
     const infoParts = [];
-    if (!p.En_cours && p.Niveau) infoParts.push(p.Niveau);
+    if (!editable && p.Niveau) infoParts.push(p.Niveau);
     if (p.Referent_pedagogique) infoParts.push(`Référent pédagogique : ${p.Referent_pedagogique}`);
-    if (!p.En_cours && p.Tuteur) infoParts.push(`Tuteur : ${p.Tuteur}`);
+    if (!editable && p.Tuteur) infoParts.push(`Tuteur : ${p.Tuteur}`);
     infoParts.push(`${formatH(p.FAIT)} effectuées / ${formatH(p.A_FAIRE)} à réaliser`);
     infoParts.push(`Solde ${p.Solde_heures > 0 ? "+" : ""}${formatH(p.Solde_heures)}`);
     item.appendChild(el("div", "etu-meta", infoParts.join(" · ")));
 
-    if (p.En_cours) {
+    if (editable) {
       item.appendChild(renderFiche(p));
+    } else if (!monService) {
+      item.appendChild(el("p", "save-hint", "Stage suivi par un autre service : fiche non modifiable ici."));
     } else if (cat === "passe") {
       item.appendChild(el("p", "save-hint", "Stage terminé : la fiche n'est plus modifiable."));
     }

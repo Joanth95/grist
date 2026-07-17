@@ -395,15 +395,23 @@ async function listServices(env) {
 
 /** Payload complet des services/étudiants/planning rattachés au cadre. */
 async function buildCadrePayload(env, cadre) {
-  const [periodesAll, students, codes, feries, evaluations] = await Promise.all([
+  const [periodesAll, students, codes, feries, evaluations, servicesAll] = await Promise.all([
     gristAll(env, T_PERIODES),
     gristAll(env, T_ETUDIANTS),
     gristAll(env, T_CODES),
     gristAll(env, T_FERIES),
     gristAll(env, T_EVALUATIONS),
+    gristAll(env, T_SERVICES),
   ]);
 
+  const servicesById = new Map(servicesAll.map((s) => [s.id, s]));
   const periodes = periodesAll.filter((p) => cadre.serviceIds.has(p.fields.Service));
+  // Historique : les stages de ces mêmes étudiants dans d'autres services sont
+  // aussi envoyés (lecture seule côté front) pour que le cadre voie le parcours
+  // complet. Planning, sorties et déclarations restent limités à ses services.
+  const etudiantIds = new Set(periodes.map((p) => p.fields.Etudiant).filter(Boolean));
+  const periodesAutres = periodesAll.filter((p) =>
+    !cadre.serviceIds.has(p.fields.Service) && etudiantIds.has(p.fields.Etudiant));
   const periodeIds = periodes.map((p) => p.id);
   const periodeIdSet = new Set(periodeIds);
   const etudiantsById = new Map(students.map((e) => [e.id, e]));
@@ -462,17 +470,19 @@ async function buildCadrePayload(env, cadre) {
       telephone: cadre.fields.Telephone || "",
     },
     feries: feriesIso,
-    periodes: periodes.map((p) => {
+    periodes: [...periodes, ...periodesAutres].map((p) => {
       // Volontairement PAS de date de naissance ni de numéro de téléphone
       // personnel : ces données sont trop sensibles pour ce niveau de sécurité.
       // Le code anonymat est en revanche nécessaire : c'est le cadre qui le
       // redonne à un étudiant qui l'aurait oublié.
       const etu = etudiantsById.get(p.fields.Etudiant);
+      const svc = servicesById.get(p.fields.Service);
       const fait = p.fields.FAIT ?? 0;
       const aFaire = p.fields.A_FAIRE ?? 0;
       return {
         id: p.id,
         Service: p.fields.Service,
+        Service_nom: (svc && svc.fields.Nom) || "",
         Etudiant: {
           id: p.fields.Etudiant,
           nom: etu ? etu.fields.NOM || "" : "",
