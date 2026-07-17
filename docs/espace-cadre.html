@@ -92,6 +92,12 @@
     table.service-planning th.student-col, table.service-planning td.student-col {
       position: sticky; left: 0; background: var(--blanc); text-align: left; min-width: 180px; z-index: 1;
     }
+    table.service-planning th.compteurs-col, table.service-planning td.compteurs-col {
+      position: sticky; right: 0; background: var(--blanc); text-align: left; min-width: 150px; z-index: 1;
+      border-left: 2px solid var(--gris-bordure); font-size: 0.78rem;
+    }
+    .compteur-solde-pos { color: #18753c; font-weight: 600; }
+    .compteur-solde-neg { color: var(--rouge); font-weight: 600; }
     table.service-planning thead th { background: var(--gris-fond); }
     .etu-meta-small { font-size: 0.75rem; color: var(--texte-doux); font-weight: 400; }
     td.hors-periode { background: var(--gris-fond); }
@@ -130,8 +136,8 @@
     @media print {
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
       .app-header, .moi-info, .cadre-service-select, .main-tabs, .planning-controls, .code-palette, .app-footer,
-      .planning-alertes, th.student-col .badge.warn, #tab-declarations, #tab-dossier, #tab-evaluation, #tab-codes,
-      .section-note { display: none !important; }
+      .planning-alertes, th.student-col .badge.warn, th.compteurs-col, td.compteurs-col, #tab-declarations,
+      #tab-dossier, #tab-evaluation, #tab-codes, .section-note { display: none !important; }
       #print-header { display: block; margin-bottom: 1rem; }
       #print-footer {
         display: block; margin-top: 16px; padding-top: 6px; border-top: 1px solid #ccc;
@@ -382,6 +388,6 @@
   </dialog>
 
   <script src="config.js?v=18"></script>
-  <script src="espace-cadre.js?v=22"></script>
+  <script src="espace-cadre.js?v=23"></script>
 </body>
 </html>

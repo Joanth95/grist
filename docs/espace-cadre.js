@@ -1,7 +1,7 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 /* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
-const APP_VERSION = "v22"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v23"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -974,6 +974,7 @@ function renderPlanningTab() {
   for (const dk of days) {
     headRow.appendChild(el("th", isJourOff(dk) ? "jour-off" : "", dayNum(dk)));
   }
+  headRow.appendChild(el("th", "compteurs-col", "Compteurs"));
   thead.appendChild(headRow);
   table.appendChild(thead);
 
@@ -1021,6 +1022,7 @@ function renderPlanningTab() {
       tr.appendChild(td);
       cells.push({ td, semaineId: entry.semaineId, jour: entry.jour, codeId: entry.codeId });
     });
+    tr.appendChild(renderCompteursCell(p));
     planningGrid.rows.push({ cells });
     tbody.appendChild(tr);
   });
@@ -1042,6 +1044,18 @@ function renderPlanningTab() {
   container.appendChild(renderCodesLegend());
   table.scrollLeft = savedScrollLeft;
   updateSelHighlight();
+}
+
+/** Cellule "Compteurs" : heures faites / prévues et solde (base 35h/semaine),
+ *  pour suivre en direct la récup due à un service en 37h30 par exemple. */
+function renderCompteursCell(p) {
+  const td = el("td", "compteurs-col");
+  td.appendChild(el("div", "", `Fait : ${formatH(p.FAIT)}`));
+  td.appendChild(el("div", "", `Prévu : ${formatH(p.A_FAIRE)}`));
+  const soldeTxt = `${p.Solde_heures > 0 ? "+" : ""}${formatH(p.Solde_heures)}`;
+  td.appendChild(el("div", p.Solde_heures > 0 ? "compteur-solde-pos" : p.Solde_heures < 0 ? "compteur-solde-neg" : "",
+    `Solde : ${soldeTxt}`));
+  return td;
 }
 
 /** Palette : un chip par code à "peindre", plus le mode Sélection et la gomme. */
