@@ -1,6 +1,6 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 
-const APP_VERSION = "v13"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v14"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -102,8 +102,6 @@ $("logout-btn").addEventListener("click", () => {
   sessionStorage.clear();
   location.reload();
 });
-
-$("refresh-btn").addEventListener("click", () => refresh().catch((err) => alert(err.message)));
 
 function enterApp() {
   $("login-screen").hidden = true;
