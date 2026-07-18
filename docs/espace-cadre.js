@@ -9,6 +9,7 @@ const TABS = [
   { id: "dashboard", label: "Tableau de bord" },
   { id: "declarations", label: "Déclarations à valider" },
   { id: "dossier", label: "Dossier étudiants" },
+  { id: "inscription", label: "Inscription" },
   { id: "planning", label: "Planning de service" },
   { id: "evaluation", label: "Envoi des évaluations" },
   { id: "stats", label: "Statistiques" },
@@ -19,7 +20,7 @@ const TABS = [
 // Onglets de 1er niveau (groupes) ; chaque groupe déroule ses sous-onglets.
 const TAB_GROUPS = [
   { id: "dashboard", label: "Tableau de bord", tabs: ["dashboard"] },
-  { id: "etudiants", label: "Étudiants", tabs: ["dossier", "declarations", "evaluation"] },
+  { id: "etudiants", label: "Étudiants", tabs: ["dossier", "inscription", "declarations", "evaluation"] },
   { id: "service", label: "Gestion de service", tabs: ["planning", "stats"] },
   { id: "parametres", label: "Paramètres", tabs: ["codes", "mailbienvenue"] },
 ];
@@ -357,6 +358,7 @@ function renderActiveTab() {
   $("tab-dashboard").hidden = state.activeTab !== "dashboard";
   $("tab-declarations").hidden = state.activeTab !== "declarations";
   $("tab-dossier").hidden = state.activeTab !== "dossier";
+  $("tab-inscription").hidden = state.activeTab !== "inscription";
   $("tab-planning").hidden = state.activeTab !== "planning";
   $("tab-evaluation").hidden = state.activeTab !== "evaluation";
   $("tab-stats").hidden = state.activeTab !== "stats";
@@ -365,6 +367,7 @@ function renderActiveTab() {
   if (state.activeTab === "dashboard") renderDashboardTab();
   if (state.activeTab === "declarations") renderDeclarationsTab();
   if (state.activeTab === "dossier") renderDossierTab();
+  if (state.activeTab === "inscription") renderInscriptionTab();
   if (state.activeTab === "planning") renderPlanningTab();
   if (state.activeTab === "evaluation") renderEvaluationTab();
   if (state.activeTab === "stats") renderStatsTab();
@@ -916,10 +919,12 @@ function renderDossierCategoryTabs() {
   }
 }
 
-function renderDossierTab() {
-  renderDossierCategoryTabs();
+/* ------------------------------------------------------------------ */
+/* Onglet Inscription (inscrire, inviter, rechercher un étudiant)      */
+/* ------------------------------------------------------------------ */
 
-  const container = $("dossier-list");
+function renderInscriptionTab() {
+  const container = $("inscription-content");
   container.innerHTML = "";
 
   const actions = el("div", "dossier-actions");
@@ -935,7 +940,7 @@ function renderDossierTab() {
   container.appendChild(actions);
 
   // Recherche : éviter les doublons en vérifiant si l'étudiant existe déjà
-  // (y compris passé dans un autre service, donc absent de la liste ci-dessous).
+  // (y compris passé dans un autre service, donc absent de l'onglet Dossiers).
   const searchBar = el("div", "dossier-search-bar");
   const searchInput = document.createElement("input");
   searchInput.type = "search";
@@ -954,6 +959,16 @@ function renderDossierTab() {
   searchInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); doSearch(); }
   });
+
+  // Ré-affiche les résultats si une recherche était déjà en cours.
+  if ((state.dossierSearchQuery || "").trim()) doSearch();
+}
+
+function renderDossierTab() {
+  renderDossierCategoryTabs();
+
+  const container = $("dossier-list");
+  container.innerHTML = "";
 
   const students = studentsDuService(state.dossierCategory);
 

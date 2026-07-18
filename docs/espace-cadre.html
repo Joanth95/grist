@@ -205,7 +205,7 @@
       .app-header, .moi-info, .cadre-service-select, .service-pickers, .main-tabs, .group-subtabs,
       .planning-controls, .code-palette, .app-footer,
       .planning-alertes, th.student-col .badge.warn, th.compteurs-col, td.compteurs-col, #tab-dashboard, #tab-declarations,
-      #tab-dossier, #tab-evaluation, #tab-stats, #tab-codes, #tab-mailbienvenue, .section-note { display: none !important; }
+      #tab-dossier, #tab-inscription, #tab-evaluation, #tab-stats, #tab-codes, #tab-mailbienvenue, .section-note { display: none !important; }
       #print-header { display: block; margin-bottom: 1rem; }
       #print-footer {
         display: block; margin-top: 16px; padding-top: 6px; border-top: 1px solid #ccc;
@@ -303,9 +303,14 @@
         </div>
 
         <div id="tab-dossier" hidden>
-          <p class="section-note">Dossier de chaque étudiant : stages effectués, planning individuel et déclarations d'heures.</p>
+          <p class="section-note">Dossier de chaque étudiant : stages effectués, planning individuel et déclarations d'heures. L'onglet <strong>Passé</strong> conserve l'historique des étudiants déjà passés dans le service.</p>
           <div class="sub-tabs dossier-category-tabs" id="dossier-category-tabs"></div>
           <div id="dossier-list"></div>
+        </div>
+
+        <div id="tab-inscription" hidden>
+          <p class="section-note">Inscrire un nouvel étudiant en stage, inviter un étudiant à s'auto-inscrire, ou rechercher un étudiant déjà connu (y compris passé dans un autre service) pour éviter les doublons.</p>
+          <div id="inscription-content"></div>
         </div>
 
         <div id="tab-planning" hidden>
