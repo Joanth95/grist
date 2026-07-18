@@ -26,6 +26,18 @@
         t.textContent = cfg.sousTitre;
       });
     }
+    // Logo de l'établissement (pièce jointe Grist servie par le Worker) ;
+    // ?v=<logoId> invalide le cache navigateur quand le logo change.
+    const api2 = ((window.CONFIG && window.CONFIG.API_URL) || "").replace(/\/$/, "");
+    document.querySelectorAll(".js-etab-logo").forEach((img) => {
+      if (cfg.logoId && api2) {
+        img.src = api2 + "/api/config/logo?v=" + encodeURIComponent(cfg.logoId);
+        img.hidden = false;
+      } else {
+        img.hidden = true;
+        img.removeAttribute("src");
+      }
+    });
   }
 
   // Affichage immédiat depuis le cache, puis rafraîchissement en arrière-plan

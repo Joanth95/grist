@@ -73,6 +73,15 @@ a { color: var(--bleu); }
 /* Bloc-marque de l'établissement (rempli dynamiquement via /api/config) */
 .brand-block { display: flex; align-items: center; gap: 1.25rem; min-width: 0; }
 
+/* Logo de l'établissement (pièce jointe Grist, table ETABLISSEMENT) */
+.js-etab-logo {
+  display: block;
+  max-height: 3.25rem;
+  max-width: 8.5rem;
+  object-fit: contain;
+}
+.fr-footer .js-etab-logo { max-height: 3rem; }
+
 .brand-logo {
   font-weight: 700;
   font-size: 0.78rem;
@@ -678,6 +687,8 @@ dialog h2 { margin: 0 0 0.5rem; }
   .type-option:has(input:checked) { background: rgba(133, 133, 246, 0.08); }
   .btn-primary { color: #0b0b0b; }
   .fr-header { box-shadow: 0 1px 0 0 var(--gris-bordure); }
+  /* Un logo couleur reste lisible sur une pastille claire en mode sombre */
+  .js-etab-logo { background: #f5f5fe; padding: 0.3rem; }
 }
 
 /* ---------- Impression / export PDF ---------- */
