@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mode d'emploi — Cadres de service</title>
   <link rel="stylesheet" href="styles.css?v=22">
+  <script src="config.js?v=21"></script>
   <style>
     .guide-wrap{max-width:860px;margin:auto;padding:0 1rem}
     main{padding:2rem 0 4rem}
@@ -273,7 +274,9 @@
   <script>
     (async () => {
       try {
-        const res = await fetch('../api/config');
+        const url = (window.CONFIG && window.CONFIG.API_URL) || '';
+        if (!url) return;
+        const res = await fetch(url + '/config');
         if (!res.ok) return;
         const cfg = await res.json();
         if (cfg.nom) {
@@ -284,7 +287,7 @@
           document.querySelectorAll('.js-etab-desc').forEach(el => el.textContent = cfg.description);
         }
         if (cfg.logoId) {
-          const logoUrl = `../api/logo?v=${cfg.logoId}`;
+          const logoUrl = url + `/logo?v=${cfg.logoId}`;
           document.querySelectorAll('.js-etab-logo').forEach(el => {
             el.src = logoUrl;
             el.hidden = false;
