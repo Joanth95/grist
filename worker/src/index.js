@@ -60,6 +60,7 @@ const T_FERIES = "JOURS_FERIES";
 const T_EVALUATIONS = "EVALUATION_STAGE_ETUDIANT";
 const T_RDV = "RDV_FORMATEUR";
 const T_JOURNAL = "JOURNAL_ACTIVITE";
+const T_ETABLISSEMENT = "ETABLISSEMENT";
 
 const DAY_COLUMNS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
@@ -129,6 +130,9 @@ async function route(request, env, ctx) {
   const path = new URL(request.url).pathname.replace(/\/+$/, "");
 
   // --- Endpoints publics (page d'entrée en stage) ---
+  if (request.method === "GET" && path === "/api/config") {
+    return getConfigEtablissement(env);
+  }
   if (request.method === "GET" && path === "/api/services") {
     return listServices(env);
   }
@@ -466,6 +470,26 @@ async function buildPayload(env, student) {
       Ajustement_h: s.fields.Ajustement_h ?? 0,
     })),
   };
+}
+
+/**
+ * Identité de l'établissement qui déploie l'application (table ETABLISSEMENT,
+ * première ligne). Public : ce sont les informations affichées dans l'en-tête
+ * du site. Tolère l'absence de la table (valeurs vides -> le front garde son
+ * affichage générique).
+ */
+async function getConfigEtablissement(env) {
+  try {
+    const records = await gristAll(env, T_ETABLISSEMENT);
+    const f = (records[0] && records[0].fields) || {};
+    return json({
+      nom: f.Nom || "",
+      description: f.Description || "",
+      sousTitre: f.Sous_titre || "",
+    });
+  } catch {
+    return json({ nom: "", description: "", sousTitre: "" });
+  }
 }
 
 async function listServices(env) {

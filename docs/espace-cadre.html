@@ -4,11 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Espace cadre</title>
-  <link rel="stylesheet" href="styles.css?v=20">
+  <link rel="stylesheet" href="styles.css?v=21">
   <style>
     /* Pleine largeur (surcharge le max-width 860px de styles.css, uniquement ici) */
     .content { max-width: none; padding: 0 2rem; }
-    .app-header { padding: 1rem 2rem; }
+    .app-header { padding: 0.8rem 2rem; justify-content: flex-start; gap: 1.5rem; }
     @media (max-width: 720px) { .content, .app-header { padding-left: 1rem; padding-right: 1rem; } }
 
     .service-pickers { display: flex; gap: 1rem; flex-wrap: nowrap; align-items: flex-end; margin-top: 0.5rem; margin-bottom: 0; }
@@ -199,9 +199,21 @@
     .dist-bar { height: 100%; background: var(--bleu); border-radius: 999px; min-width: 2px; }
     .dist-val { flex: 0 0 auto; color: var(--texte-doux); font-variant-numeric: tabular-nums; }
 
+    /* Alignement DSFR des champs définis localement ci-dessus */
+    .moi-info input[type="tel"], .cadre-service-select select, .dossier-search,
+    .mail-form input, .mail-form textarea, .etu-fiche input, .etu-fiche select,
+    .nouveau-code-form input, .planning-controls input[type="date"],
+    .stats-controls input[type="date"] {
+      background: var(--gris-contraste);
+      border: none;
+      border-radius: 0.25rem 0.25rem 0 0;
+      box-shadow: inset 0 -2px 0 0 var(--bordure-champ);
+    }
+
     #print-header, #print-footer { display: none; }
     @media print {
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+      .fr-header, .fr-notice, .fr-footer, .fr-header-tools,
       .app-header, .moi-info, .cadre-service-select, .service-pickers, .main-tabs, .group-subtabs,
       .planning-controls, .code-palette, .app-footer,
       .planning-alertes, th.student-col .badge.warn, th.compteurs-col, td.compteurs-col, #tab-dashboard, #tab-declarations,
@@ -225,56 +237,117 @@
 
   <!-- Écran de connexion -->
   <section id="login-screen" class="screen">
-    <div class="login-card">
-      <h1>Espace cadre</h1>
-      <p class="subtitle">Piloter les étudiants de votre service : planning, validations, fiches</p>
-      <form id="login-form">
-        <label for="login-email">Adresse email</label>
-        <input type="email" id="login-email" autocomplete="username" required>
-        <label for="login-code">Code d'accès</label>
-        <input type="password" id="login-code" autocomplete="current-password" required>
-        <button type="submit" class="btn btn-primary" id="login-btn">Se connecter</button>
-        <p id="login-error" class="error" hidden></p>
-      </form>
-      <p class="hint">
-        Le code d'accès vous a été transmis par l'administrateur de l'application.
-      </p>
-      <p class="hint">
-        Besoin d'aide ? <a href="guide-cadre.html">Consultez le mode d'emploi</a>.
-      </p>
-      <p class="hint">
-        Vous êtes étudiant ? <a href="index.html">Accédez à l'espace étudiant</a>.
-      </p>
+    <header class="fr-header">
+      <div class="fr-header-body">
+        <div class="brand-block">
+          <div class="brand-logo js-etab" hidden>
+            <span class="js-etab-nom"></span>
+            <span class="motto js-etab-desc"></span>
+          </div>
+          <div class="brand-service">
+            <div class="service-title">Espace cadre</div>
+            <div class="service-tagline js-etab-tagline">Suivi des stages étudiants</div>
+          </div>
+        </div>
+        <div class="fr-header-tools">
+          <a class="btn btn-ghost" href="guide-cadre.html">Mode d'emploi</a>
+          <a class="btn btn-ghost" href="index.html">Espace étudiant</a>
+        </div>
+      </div>
+    </header>
+
+    <div class="fr-notice">
+      <div class="fr-notice-inner"><strong>Version bêta</strong> — vos retours sont les bienvenus.</div>
     </div>
-    <footer class="app-footer">
-      Application développée par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant —
-      Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville<br>
-      <span class="beta-tag">Version bêta</span> — vos retours sont les bienvenus
+
+    <div class="login-wrap">
+      <div class="login-inner">
+        <h1>Connexion à l'espace cadre</h1>
+        <p class="lead">Pilotez les étudiants de votre service : planning, validations, fiches.</p>
+
+        <div class="login-card">
+          <h2>Se connecter avec son code d'accès</h2>
+          <form id="login-form">
+            <label for="login-email">Adresse email</label>
+            <input type="email" id="login-email" autocomplete="username" required>
+            <label for="login-code">Code d'accès
+              <span class="fr-hint-text">Transmis par l'administrateur de l'application</span>
+            </label>
+            <input type="password" id="login-code" autocomplete="current-password" required>
+            <button type="submit" class="btn btn-primary" id="login-btn">Se connecter</button>
+            <p id="login-error" class="error" hidden></p>
+          </form>
+          <p class="hint">
+            Besoin d'aide ? <a href="guide-cadre.html">Consultez le mode d'emploi</a>.
+          </p>
+          <p class="hint">
+            Vous êtes étudiant ? <a href="index.html">Accédez à l'espace étudiant</a>.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <footer class="fr-footer">
+      <div class="fr-footer-inner">
+        <div class="fr-footer-top">
+          <div class="brand-logo js-etab" hidden>
+            <span class="js-etab-nom"></span>
+            <span class="motto js-etab-desc"></span>
+          </div>
+          <p class="fr-footer-desc">
+            Application de suivi des stages étudiants développée par
+            <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant —
+            Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville.
+          </p>
+        </div>
+        <div class="fr-footer-links">
+          <a href="guide-etudiant.html">Mode d'emploi étudiant</a><span class="sep">·</span>
+          <a href="guide-cadre.html">Mode d'emploi cadre</a><span class="sep">·</span>
+          <a href="guide-admin.html">Guide administrateur</a><span class="sep">·</span>
+          <a href="https://grist.numerique.gouv.fr/o/chr-metz-thionville/qdm9zxQGmCPH/GESTION-ETUDIANT/" target="_blank" rel="noopener">Administration (Grist)</a>
+        </div>
+        <p class="fr-footer-mention">
+          <span class="beta-tag">Version bêta</span> — vos retours sont les bienvenus ·
+          © M. Joan THUILLIER — Tous droits réservés.
+        </p>
+      </div>
     </footer>
   </section>
 
   <!-- Application -->
   <section id="app-screen" class="screen" hidden>
-    <header class="app-header">
-      <div>
-        <h1>Espace cadre</h1>
-        <p id="cadre-info" class="subtitle"></p>
-        <div class="service-pickers">
-          <div class="cadre-service-select" id="cadre-site-select">
-            <label for="site-select">Site</label>
-            <select id="site-select"></select>
+    <header class="fr-header">
+      <div class="fr-header-body">
+        <div class="brand-block">
+          <div class="brand-logo js-etab" hidden>
+            <span class="js-etab-nom"></span>
+            <span class="motto js-etab-desc"></span>
           </div>
-          <div class="cadre-service-select">
-            <label for="service-select">Service</label>
-            <select id="service-select"></select>
+          <div class="brand-service">
+            <div class="service-title">Espace cadre</div>
+            <div class="service-tagline js-etab-tagline">Suivi des stages étudiants</div>
           </div>
         </div>
-      </div>
-      <div class="header-actions">
-        <button id="refresh-btn" class="btn btn-ghost" title="Actualiser">🔄</button>
-        <button id="logout-btn" class="btn btn-ghost">Se déconnecter</button>
+        <div class="fr-header-tools header-actions">
+          <button id="refresh-btn" class="btn btn-ghost" title="Actualiser">🔄</button>
+          <button id="logout-btn" class="btn btn-ghost">Se déconnecter</button>
+        </div>
       </div>
     </header>
+
+    <div class="app-header">
+      <p id="cadre-info" class="subtitle"></p>
+      <div class="service-pickers">
+        <div class="cadre-service-select" id="cadre-site-select">
+          <label for="site-select">Site</label>
+          <select id="site-select"></select>
+        </div>
+        <div class="cadre-service-select">
+          <label for="service-select">Service</label>
+          <select id="service-select"></select>
+        </div>
+      </div>
+    </div>
 
     <main class="content">
       <div id="print-header"></div>
@@ -340,13 +413,33 @@
       </section>
 
       <div id="print-footer"></div>
-
-      <footer class="app-footer">
-        Application développée par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant —
-        Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville<br>
-        <span class="beta-tag">Version bêta</span> — vos retours sont les bienvenus
-      </footer>
     </main>
+
+    <footer class="fr-footer">
+      <div class="fr-footer-inner">
+        <div class="fr-footer-top">
+          <div class="brand-logo js-etab" hidden>
+            <span class="js-etab-nom"></span>
+            <span class="motto js-etab-desc"></span>
+          </div>
+          <p class="fr-footer-desc">
+            Application de suivi des stages étudiants développée par
+            <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant —
+            Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville.
+          </p>
+        </div>
+        <div class="fr-footer-links">
+          <a href="guide-etudiant.html">Mode d'emploi étudiant</a><span class="sep">·</span>
+          <a href="guide-cadre.html">Mode d'emploi cadre</a><span class="sep">·</span>
+          <a href="guide-admin.html">Guide administrateur</a><span class="sep">·</span>
+          <a href="https://grist.numerique.gouv.fr/o/chr-metz-thionville/qdm9zxQGmCPH/GESTION-ETUDIANT/" target="_blank" rel="noopener">Administration (Grist)</a>
+        </div>
+        <p class="fr-footer-mention">
+          <span class="beta-tag">Version bêta</span> — vos retours sont les bienvenus ·
+          © M. Joan THUILLIER — Tous droits réservés.
+        </p>
+      </div>
+    </footer>
   </section>
 
   <!-- Ajouter une déclaration pour un étudiant -->
@@ -558,7 +651,8 @@
     </form>
   </dialog>
 
-  <script src="config.js?v=18"></script>
+  <script src="config.js?v=21"></script>
+  <script src="etablissement.js?v=21"></script>
   <script src="espace-cadre.js?v=27"></script>
 </body>
 </html>

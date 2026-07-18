@@ -4,67 +4,130 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Espace étudiant</title>
-  <link rel="stylesheet" href="styles.css?v=18">
+  <link rel="stylesheet" href="styles.css?v=21">
 
 </head>
 <body>
 
   <!-- Écran de connexion -->
   <section id="login-screen" class="screen">
-    <div class="login-card">
-      <h1>Espace étudiant</h1>
-      <p class="subtitle">Consulter son planning de stage et déclarer ses heures ou sa sortie de stage</p>
-      <form id="login-form">
-        <label for="login-code">Code anonymat</label>
-        <input type="text" id="login-code" autocomplete="off" autocapitalize="characters"
-               placeholder="Ex. : J150398D" required
-               title="1ère lettre du prénom + date de naissance JJMMAA + 1ère lettre du nom">
-        <button type="submit" class="btn btn-primary" id="login-btn">Se connecter</button>
-        <p id="login-error" class="error" hidden></p>
-      </form>
-      <p class="hint">
-        Votre code anonymat = 1ère lettre du prénom + date de naissance (JJMMAA)
-        + 1ère lettre du nom, en majuscules.<br>
-        <em>Exemple : Jean DUPONT né le 15/03/1998 → J150398D</em>
-      </p>
-      <p class="hint">
-        Vous arrivez en stage ?
-      </p>
-      <button type="button" class="btn btn-primary" onclick="window.location.href='entree-stage.html'">
-        Enregistrez votre entrée en stage
-      </button>
-      <p class="hint">
-        Besoin d'aide ? <a href="guide-etudiant.html">Consultez le mode d'emploi</a>.
-      </p>
-      <p class="hint">
-        Vous êtes cadre de service ? <a href="espace-cadre.html">Accédez à votre espace cadre</a>.
-      </p>
-      <p class="hint">
-        Vous êtes administrateur ? <a href="https://grist.numerique.gouv.fr/o/chr-metz-thionville/qdm9zxQGmCPH/GESTION-ETUDIANT/" target="_blank">Accédez à GRIST</a>
-        (<a href="guide-admin.html">mode d'emploi</a>).
-      </p>
+    <header class="fr-header">
+      <div class="fr-header-body">
+        <div class="brand-block">
+          <div class="brand-logo js-etab" hidden>
+            <span class="js-etab-nom"></span>
+            <span class="motto js-etab-desc"></span>
+          </div>
+          <div class="brand-service">
+            <div class="service-title">Espace étudiant</div>
+            <div class="service-tagline js-etab-tagline">Suivi des stages étudiants</div>
+          </div>
+        </div>
+        <div class="fr-header-tools">
+          <a class="btn btn-ghost" href="guide-etudiant.html">Mode d'emploi</a>
+          <a class="btn btn-ghost" href="espace-cadre.html">Espace cadre</a>
+        </div>
+      </div>
+    </header>
+
+    <div class="fr-notice">
+      <div class="fr-notice-inner"><strong>Version bêta</strong> — vos retours sont les bienvenus.</div>
     </div>
-    <footer class="app-footer">
-      Application développée par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant —
-      Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville<br>
-      <span class="beta-tag">Version bêta</span> — vos retours sont les bienvenus
+
+    <div class="login-wrap">
+      <div class="login-inner">
+        <h1>Connexion à l'espace étudiant</h1>
+        <p class="lead">Consultez votre planning de stage et déclarez vos heures ou votre sortie de stage.</p>
+
+        <div class="login-card">
+          <h2>Se connecter avec son code anonymat</h2>
+          <form id="login-form">
+            <label for="login-code">Code anonymat
+              <span class="fr-hint-text">Format attendu : 1ère lettre du prénom + date de naissance JJMMAA + 1ère lettre du nom</span>
+            </label>
+            <input type="text" id="login-code" autocomplete="off" autocapitalize="characters"
+                   placeholder="Ex. : J150398D" required
+                   title="1ère lettre du prénom + date de naissance JJMMAA + 1ère lettre du nom">
+            <button type="submit" class="btn btn-primary" id="login-btn">Se connecter</button>
+            <p id="login-error" class="error" hidden></p>
+          </form>
+          <div class="fr-callout">
+            <p class="fr-callout-title">Comment retrouver mon code ?</p>
+            <p>Votre code anonymat = 1ère lettre du prénom + date de naissance (JJMMAA)
+              + 1ère lettre du nom, en majuscules.<br>
+              <em>Exemple : Jean DUPONT né le 15/03/1998 → J150398D</em></p>
+          </div>
+        </div>
+
+        <div class="login-sep">ou</div>
+
+        <div class="fr-tiles">
+          <div class="fr-tile">
+            <h3><a href="entree-stage.html">Enregistrer mon entrée en stage</a></h3>
+            <p>Vous arrivez en stage ? Créez votre dossier et obtenez votre code anonymat.</p>
+          </div>
+          <div class="fr-tile">
+            <h3><a href="espace-cadre.html">Accéder à l'espace cadre</a></h3>
+            <p>Cadres de service : plannings, validations et inscriptions.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="fr-footer">
+      <div class="fr-footer-inner">
+        <div class="fr-footer-top">
+          <div class="brand-logo js-etab" hidden>
+            <span class="js-etab-nom"></span>
+            <span class="motto js-etab-desc"></span>
+          </div>
+          <p class="fr-footer-desc">
+            Application de suivi des stages étudiants développée par
+            <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant —
+            Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville.
+          </p>
+        </div>
+        <div class="fr-footer-links">
+          <a href="guide-etudiant.html">Mode d'emploi étudiant</a><span class="sep">·</span>
+          <a href="guide-cadre.html">Mode d'emploi cadre</a><span class="sep">·</span>
+          <a href="guide-admin.html">Guide administrateur</a><span class="sep">·</span>
+          <a href="https://grist.numerique.gouv.fr/o/chr-metz-thionville/qdm9zxQGmCPH/GESTION-ETUDIANT/" target="_blank" rel="noopener">Administration (Grist)</a>
+        </div>
+        <p class="fr-footer-mention">
+          <span class="beta-tag">Version bêta</span> — vos retours sont les bienvenus ·
+          © M. Joan THUILLIER — Tous droits réservés.
+        </p>
+      </div>
     </footer>
   </section>
 
   <!-- Application -->
   <section id="app-screen" class="screen" hidden>
-    <header class="app-header">
-      <div>
-        <h1>Mon planning de stage</h1>
-        <p id="student-name" class="subtitle"></p>
-      </div>
-      <div class="header-actions">
-        <button id="print-btn" class="btn btn-ghost" title="Imprimer ou enregistrer en PDF">🖨 PDF</button>
-        <button id="logout-btn" class="btn btn-ghost">Se déconnecter</button>
+    <header class="fr-header">
+      <div class="fr-header-body">
+        <div class="brand-block">
+          <div class="brand-logo js-etab" hidden>
+            <span class="js-etab-nom"></span>
+            <span class="motto js-etab-desc"></span>
+          </div>
+          <div class="brand-service">
+            <div class="service-title">Espace étudiant</div>
+            <div class="service-tagline js-etab-tagline">Suivi des stages étudiants</div>
+          </div>
+        </div>
+        <div class="fr-header-tools header-actions">
+          <button id="print-btn" class="btn btn-ghost" title="Imprimer ou enregistrer en PDF">🖨 PDF</button>
+          <button id="logout-btn" class="btn btn-ghost">Se déconnecter</button>
+        </div>
       </div>
     </header>
 
     <main class="content">
+      <div class="page-title">
+        <h1>Mon planning de stage</h1>
+        <p id="student-name" class="subtitle"></p>
+      </div>
+
       <div id="periode-tabs" class="periode-tabs"></div>
       <div id="periode-info"></div>
 
@@ -87,12 +150,33 @@
           posé ensuite sur le planning avec le code <strong>RF</strong>.</p>
         <div id="weeks"></div>
       </section>
-      <footer class="app-footer">
-        Application développée par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant —
-        Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville<br>
-        <span class="beta-tag">Version bêta</span> — vos retours sont les bienvenus
-      </footer>
     </main>
+
+    <footer class="fr-footer">
+      <div class="fr-footer-inner">
+        <div class="fr-footer-top">
+          <div class="brand-logo js-etab" hidden>
+            <span class="js-etab-nom"></span>
+            <span class="motto js-etab-desc"></span>
+          </div>
+          <p class="fr-footer-desc">
+            Application de suivi des stages étudiants développée par
+            <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant —
+            Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville.
+          </p>
+        </div>
+        <div class="fr-footer-links">
+          <a href="guide-etudiant.html">Mode d'emploi étudiant</a><span class="sep">·</span>
+          <a href="guide-cadre.html">Mode d'emploi cadre</a><span class="sep">·</span>
+          <a href="guide-admin.html">Guide administrateur</a><span class="sep">·</span>
+          <a href="https://grist.numerique.gouv.fr/o/chr-metz-thionville/qdm9zxQGmCPH/GESTION-ETUDIANT/" target="_blank" rel="noopener">Administration (Grist)</a>
+        </div>
+        <p class="fr-footer-mention">
+          <span class="beta-tag">Version bêta</span> — vos retours sont les bienvenus ·
+          © M. Joan THUILLIER — Tous droits réservés.
+        </p>
+      </div>
+    </footer>
   </section>
 
   <!-- Formulaire de déclaration -->
@@ -152,7 +236,8 @@
     </form>
   </dialog>
 
-  <script src="config.js?v=18"></script>
-  <script src="app.js?v=19"></script>
+  <script src="config.js?v=21"></script>
+  <script src="etablissement.js?v=21"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>
