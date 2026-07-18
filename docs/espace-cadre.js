@@ -82,7 +82,7 @@ const state = {
   dossierCategory: "cours", // 'passe' | 'cours' | 'avenir'
   dossierSubTab: {}, // studentId -> 'stages' | 'planning'
   dossierSelectedPeriode: {}, // studentId -> periodeId
-  planningStart: null, // ISO date : début de la fenêtre de 30 jours affichée
+  planningStart: null, // ISO date : 1er jour du mois affiché dans le planning
   planningPaintCode: undefined, // code "armé" dans la palette (id, null = gomme, undefined = mode sélection)
   planningSel: null, // rectangle sélectionné dans la grille : { r1, c1, r2, c2 }
   statsStart: null, // début de la période du rapport d'activité (ISO)
@@ -1435,7 +1435,7 @@ $("rdv-form").addEventListener("submit", async (e) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Onglet Planning de service (grille 30 jours + impression)          */
+/* Onglet Planning de service (grille mensuelle + impression)         */
 /* Édition façon tableur : palette de codes à "peindre", sélection à  */
 /* la souris, copier-coller (Ctrl+C / Ctrl+V), Suppr pour effacer.    */
 /* ------------------------------------------------------------------ */
@@ -1455,32 +1455,38 @@ function renderPlanningTab() {
   const savedScrollLeft = prevTable ? prevTable.scrollLeft : 0;
   container.innerHTML = "";
 
+  // Le planning s'affiche par mois calendaire : on normalise toujours le
+  // début de fenêtre sur le 1er du mois sélectionné.
+  const startKey = firstOfMonthIso(state.planningStart || firstDayOfMonthIso());
+  state.planningStart = startKey;
+
   const controls = el("div", "planning-controls");
   const dateInput = document.createElement("input");
-  dateInput.type = "date";
-  dateInput.value = state.planningStart || firstDayOfMonthIso();
+  dateInput.type = "month";
+  dateInput.value = startKey.slice(0, 7);
   dateInput.addEventListener("change", () => {
-    state.planningStart = dateInput.value;
+    if (!dateInput.value) return;
+    state.planningStart = firstOfMonthIso(dateInput.value + "-01");
     renderPlanningTab();
   });
-  const todayBtn = el("button", "btn btn-ghost", "Aujourd'hui");
+  const todayBtn = el("button", "btn btn-ghost", "Ce mois-ci");
   todayBtn.type = "button";
-  todayBtn.addEventListener("click", () => { state.planningStart = isoDate(new Date()); renderPlanningTab(); });
-  const prevBtn = el("button", "btn btn-ghost", "◀ Préc. 30j");
+  todayBtn.addEventListener("click", () => { state.planningStart = firstOfMonthIso(isoDate(new Date())); renderPlanningTab(); });
+  const prevBtn = el("button", "btn btn-ghost", "◀ Mois préc.");
   prevBtn.type = "button";
-  prevBtn.addEventListener("click", () => shiftWindow(-30));
-  const nextBtn = el("button", "btn btn-ghost", "Suiv. 30j ▶");
+  prevBtn.addEventListener("click", () => shiftMonth(-1));
+  const nextBtn = el("button", "btn btn-ghost", "Mois suiv. ▶");
   nextBtn.type = "button";
-  nextBtn.addEventListener("click", () => shiftWindow(30));
+  nextBtn.addEventListener("click", () => shiftMonth(1));
   const printBtn = el("button", "btn btn-primary", "🖨 Imprimer");
   printBtn.type = "button";
   printBtn.addEventListener("click", () => window.print());
   controls.append(dateInput, todayBtn, prevBtn, nextBtn, printBtn);
   container.appendChild(controls);
 
-  const startKey = state.planningStart || firstDayOfMonthIso();
+  const nbJours = daysInMonthIso(startKey);
   const days = [];
-  for (let i = 0; i < 30; i++) days.push(addDaysIso(startKey, i));
+  for (let i = 0; i < nbJours; i++) days.push(addDaysIso(startKey, i));
   const endKey = days[days.length - 1];
 
   updatePrintHeader(startKey, endKey);
@@ -1873,10 +1879,9 @@ function isWeekendIso(iso) {
   return day === 0 || day === 6;
 }
 
-function shiftWindow(deltaDays) {
+function shiftMonth(deltaMonths) {
   const cur = new Date((state.planningStart || firstDayOfMonthIso()) + "T00:00:00");
-  cur.setDate(cur.getDate() + deltaDays);
-  state.planningStart = isoDate(cur);
+  state.planningStart = isoDate(new Date(cur.getFullYear(), cur.getMonth() + deltaMonths, 1));
   renderPlanningTab();
 }
 
@@ -2502,6 +2507,16 @@ function isoDate(date) {
 function firstDayOfMonthIso() {
   const d = new Date();
   return isoDate(new Date(d.getFullYear(), d.getMonth(), 1));
+}
+
+function firstOfMonthIso(iso) {
+  const d = new Date(iso + "T00:00:00");
+  return isoDate(new Date(d.getFullYear(), d.getMonth(), 1));
+}
+
+function daysInMonthIso(iso) {
+  const d = new Date(iso + "T00:00:00");
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
 }
 
 function addDaysIso(iso, n) {
