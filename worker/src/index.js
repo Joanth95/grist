@@ -59,6 +59,7 @@ const T_UTILISATEURS = "UTILISATEURS";
 const T_FERIES = "JOURS_FERIES";
 const T_EVALUATIONS = "EVALUATION_STAGE_ETUDIANT";
 const T_RDV = "RDV_FORMATEUR";
+const T_JOURNAL = "JOURNAL_ACTIVITE";
 
 const DAY_COLUMNS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
@@ -88,13 +89,13 @@ const MAX_SEMAINES_GENEREES = 30;
 const HEURES_PAR_SEMAINE = 35;
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const cors = corsHeaders(env);
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: cors });
     }
     try {
-      const response = await route(request, env);
+      const response = await route(request, env, ctx);
       for (const [k, v] of Object.entries(cors)) response.headers.set(k, v);
       return response;
     } catch (err) {
@@ -124,7 +125,7 @@ function httpError(status, publicMessage) {
   return err;
 }
 
-async function route(request, env) {
+async function route(request, env, ctx) {
   const path = new URL(request.url).pathname.replace(/\/+$/, "");
 
   // --- Endpoints publics (page d'entrée en stage) ---
@@ -137,12 +138,28 @@ async function route(request, env) {
   if (request.method === "POST" && path === "/api/login") {
     const body = await request.json().catch(() => ({}));
     const student = await authenticateCode(env, body.code);
-    return json(await buildPayload(env, student));
+    const payload = await buildPayload(env, student);
+    logActivite(env, ctx, {
+      role: "Étudiant",
+      qui: student.code,
+      nom: nomCompletEtudiant(student),
+      action: "Connexion",
+    });
+    purgeJournal(env, ctx);
+    return json(payload);
   }
   if (request.method === "POST" && path === "/api/cadre/login") {
     const body = await request.json().catch(() => ({}));
     const cadre = await authenticateCadre(env, body.email, body.code);
-    return json(await buildCadrePayload(env, cadre));
+    const payload = await buildCadrePayload(env, cadre);
+    logActivite(env, ctx, {
+      role: "Cadre",
+      qui: (cadre.fields.Email || "").trim(),
+      nom: cadreNomComplet(cadre),
+      action: "Connexion",
+    });
+    purgeJournal(env, ctx);
+    return json(payload);
   }
   // --- Endpoints cadre authentifiés ---
   if (path.startsWith("/api/cadre/")) {
@@ -151,44 +168,61 @@ async function route(request, env) {
       request.headers.get("X-Cadre-Email"),
       request.headers.get("X-Cadre-Code")
     );
+    const who = {
+      role: "Cadre",
+      qui: (cadre.fields.Email || "").trim(),
+      nom: cadreNomComplet(cadre),
+    };
     if (request.method === "GET" && path === "/api/cadre/data") {
-      return json(await buildCadrePayload(env, cadre));
+      const data = await buildCadrePayload(env, cadre);
+      logActivite(env, ctx, { ...who, action: "Consultation de l'espace cadre" });
+      return json(data);
     }
     const sm = path.match(/^\/api\/cadre\/sorties\/(\d+)$/);
     if (request.method === "PATCH" && sm) {
-      return validerSortie(request, env, cadre, Number(sm[1]));
+      return withLog(env, ctx, who, "Validation / modif déclaration", `déclaration #${sm[1]}`,
+        () => validerSortie(request, env, cadre, Number(sm[1])));
     }
     if (request.method === "POST" && path === "/api/cadre/sorties") {
-      return creerSortiePourEtudiant(request, env, cadre);
+      return withLog(env, ctx, who, "Déclaration créée pour un étudiant", "",
+        () => creerSortiePourEtudiant(request, env, cadre));
     }
     const wm = path.match(/^\/api\/cadre\/planning\/(\d+)$/);
     if (request.method === "PATCH" && wm) {
-      return updatePlanningJour(request, env, cadre, Number(wm[1]));
+      return withLog(env, ctx, who, "Modification du planning", `semaine #${wm[1]}`,
+        () => updatePlanningJour(request, env, cadre, Number(wm[1])));
     }
     const pm = path.match(/^\/api\/cadre\/periodes\/(\d+)$/);
     if (request.method === "PATCH" && pm) {
-      return updatePeriode(request, env, cadre, Number(pm[1]));
+      return withLog(env, ctx, who, "Modification fiche période", `période #${pm[1]}`,
+        () => updatePeriode(request, env, cadre, Number(pm[1])));
     }
     const im = path.match(/^\/api\/cadre\/periodes\/(\d+)\/planning-imprimable$/);
     if (request.method === "GET" && im) {
-      return planningImprimable(env, cadre, Number(im[1]));
+      return withLog(env, ctx, who, "Impression du planning de stage", `période #${im[1]}`,
+        () => planningImprimable(env, cadre, Number(im[1])));
     }
     if (request.method === "POST" && path === "/api/cadre/rdv") {
-      return creerRdv(request, env, cadre);
+      return withLog(env, ctx, who, "Ajout d'un RDV formateur", "",
+        () => creerRdv(request, env, cadre));
     }
     const rm = path.match(/^\/api\/cadre\/rdv\/(\d+)$/);
     if (request.method === "DELETE" && rm) {
-      return supprimerRdv(env, cadre, Number(rm[1]));
+      return withLog(env, ctx, who, "Suppression d'un RDV formateur", `rdv #${rm[1]}`,
+        () => supprimerRdv(env, cadre, Number(rm[1])));
     }
     if (request.method === "PATCH" && path === "/api/cadre/profil") {
-      return updateProfilCadre(request, env, cadre);
+      return withLog(env, ctx, who, "Modification de son profil", "",
+        () => updateProfilCadre(request, env, cadre));
     }
     const svm = path.match(/^\/api\/cadre\/services\/(\d+)$/);
     if (request.method === "PATCH" && svm) {
-      return updateCodesService(request, env, cadre, Number(svm[1]));
+      return withLog(env, ctx, who, "Modification des codes horaires du service", `service #${svm[1]}`,
+        () => updateCodesService(request, env, cadre, Number(svm[1])));
     }
     if (request.method === "POST" && path === "/api/cadre/codes") {
-      return creerCodeHoraire(request, env, cadre);
+      return withLog(env, ctx, who, "Création d'un code horaire", "",
+        () => creerCodeHoraire(request, env, cadre));
     }
     throw httpError(404, "Route inconnue");
   }
@@ -196,15 +230,20 @@ async function route(request, env) {
   // --- Endpoints authentifiés ---
   const student = await authenticateCode(env, request.headers.get("X-Student-Code"));
 
+  const whoE = { role: "Étudiant", qui: student.code, nom: nomCompletEtudiant(student) };
   if (request.method === "GET" && path === "/api/data") {
-    return json(await buildPayload(env, student));
+    const data = await buildPayload(env, student);
+    logActivite(env, ctx, { ...whoE, action: "Consultation de son espace" });
+    return json(data);
   }
   if (request.method === "POST" && path === "/api/sorties") {
-    return createSortie(request, env, student);
+    return withLog(env, ctx, whoE, "Déclaration créée", "",
+      () => createSortie(request, env, student));
   }
   const m = path.match(/^\/api\/sorties\/(\d+)$/);
   if (request.method === "DELETE" && m) {
-    return deleteSortie(env, student, Number(m[1]));
+    return withLog(env, ctx, whoE, "Déclaration supprimée", `déclaration #${m[1]}`,
+      () => deleteSortie(env, student, Number(m[1])));
   }
 
   throw httpError(404, "Route inconnue");
@@ -1317,6 +1356,64 @@ async function gristAll(env, table) {
 
 async function gristUpdate(env, table, id, fields) {
   await grist(env, "PATCH", `/tables/${table}/records`, { records: [{ id, fields }] });
+}
+
+/* ------------------------------------------------------------------ */
+/* Journal d'activité (connexions + actions)                           */
+/* ------------------------------------------------------------------ */
+
+/** Nom complet d'un étudiant pour le journal. */
+function nomCompletEtudiant(student) {
+  const f = (student && student.fields) || {};
+  return [f.PRENOM, f.NOM].map((x) => (x || "").toString().trim()).filter(Boolean).join(" ");
+}
+
+/**
+ * Écrit une ligne dans JOURNAL_ACTIVITE. Best-effort : une erreur d'écriture
+ * du journal ne doit JAMAIS faire échouer la requête de l'utilisateur.
+ * Via ctx.waitUntil, l'écriture se fait après l'envoi de la réponse (aucune latence).
+ */
+function logActivite(env, ctx, entry) {
+  const p = grist(env, "POST", `/tables/${T_JOURNAL}/records`, {
+    records: [{
+      fields: {
+        Horodatage: Math.floor(Date.now() / 1000),
+        Role: entry.role || "",
+        Qui: entry.qui || "",
+        Nom: entry.nom || "",
+        Action: entry.action || "",
+        Detail: entry.detail || "",
+      },
+    }],
+  }).catch((e) => console.error("JOURNAL_ACTIVITE:", (e && e.message) || e));
+  if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(p);
+}
+
+/** Exécute une action, puis journalise si elle a réussi (sinon l'erreur remonte, pas de log). */
+async function withLog(env, ctx, who, action, detail, fn) {
+  const res = await fn();
+  logActivite(env, ctx, { ...who, action, detail });
+  return res;
+}
+
+// Durée de conservation du journal (jours). Au-delà, les lignes sont purgées.
+const JOURNAL_RETENTION_JOURS = 30;
+
+/**
+ * Supprime les lignes du journal de plus de JOURNAL_RETENTION_JOURS.
+ * Appelé à chaque connexion (fréquence raisonnable). Best-effort, en waitUntil,
+ * par lots de 500 lignes les plus anciennes (les suivantes partiront à la prochaine connexion).
+ */
+function purgeJournal(env, ctx) {
+  const p = (async () => {
+    const cutoff = Math.floor(Date.now() / 1000) - JOURNAL_RETENTION_JOURS * 24 * 3600;
+    const data = await grist(env, "GET", `/tables/${T_JOURNAL}/records?sort=Horodatage&limit=500`);
+    const old = (data.records || [])
+      .filter((r) => (r.fields.Horodatage || 0) < cutoff)
+      .map((r) => r.id);
+    if (old.length) await grist(env, "POST", `/tables/${T_JOURNAL}/data/delete`, old);
+  })().catch((e) => console.error("purgeJournal:", (e && e.message) || e));
+  if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(p);
 }
 
 /* ------------------------------------------------------------------ */
