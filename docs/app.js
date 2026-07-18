@@ -76,11 +76,6 @@ function enterApp() {
   $("app-screen").hidden = false;
   const e = state.data.etudiant;
   $("student-name").textContent = `${e.prenom} ${e.nom}`.trim();
-  const nouvellePeriodeLink = $("nouvelle-periode-link");
-  if (nouvellePeriodeLink) {
-    const params = new URLSearchParams({ prenom: e.prenom || "", nom: e.nom || "" });
-    nouvellePeriodeLink.href = "entree-stage.html?" + params.toString();
-  }
   render();
 }
 
@@ -403,6 +398,97 @@ $("sortie-form").addEventListener("submit", async (e) => {
   try {
     await api("POST", "/api/sorties", body);
     dialog.close();
+    await refresh();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Dialogue de nouvelle période de stage                               */
+/* ------------------------------------------------------------------ */
+
+const periodeDialog = $("periode-dialog");
+let servicesRef = null; // chargés à la demande (première ouverture du dialogue)
+
+async function loadServicesRef() {
+  if (servicesRef) return servicesRef;
+  const res = await fetch(API + "/api/services");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Erreur de chargement");
+  servicesRef = data.services;
+  return servicesRef;
+}
+
+function fillPeriodeSitesEtServices(services) {
+  const siteSelect = $("periode-site");
+  siteSelect.innerHTML = "";
+  siteSelect.appendChild(new Option("— Choisir —", ""));
+  const sites = [...new Set(services.map((s) => s.Site || "Autre"))].sort((a, b) => a.localeCompare(b, "fr"));
+  for (const site of sites) siteSelect.appendChild(new Option(site, site));
+  fillPeriodeServicesForSite("");
+}
+
+function fillPeriodeServicesForSite(site) {
+  const select = $("periode-service");
+  select.innerHTML = "";
+  if (!site) {
+    select.appendChild(new Option("— Choisissez d'abord un site —", ""));
+    select.disabled = true;
+    return;
+  }
+  const forSite = servicesRef.filter((s) => (s.Site || "Autre") === site);
+  select.disabled = false;
+  select.appendChild(new Option("— Choisir —", ""));
+  for (const s of forSite) select.appendChild(new Option(s.Nom, s.id));
+}
+
+$("periode-site").addEventListener("change", () => fillPeriodeServicesForSite($("periode-site").value));
+
+$("add-periode-btn").addEventListener("click", async () => {
+  const errEl = $("periode-error");
+  errEl.hidden = true;
+  $("periode-du").value = "";
+  $("periode-au").value = "";
+  periodeDialog.showModal();
+  try {
+    const services = await loadServicesRef();
+    fillPeriodeSitesEtServices(services);
+  } catch (err) {
+    errEl.textContent = "Impossible de charger la liste des services : " + err.message;
+    errEl.hidden = false;
+  }
+});
+
+$("periode-cancel-btn").addEventListener("click", () => periodeDialog.close());
+
+$("periode-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = $("periode-error");
+  errEl.hidden = true;
+
+  const du = $("periode-du").value;
+  const au = $("periode-au").value;
+  if (du && au && au < du) {
+    errEl.textContent = "La fin du stage doit être après le début.";
+    errEl.hidden = false;
+    return;
+  }
+
+  const body = {
+    Service: Number($("periode-service").value),
+    Du: du,
+    Au: au,
+  };
+
+  const btn = $("periode-save-btn");
+  btn.disabled = true;
+  try {
+    await api("POST", "/api/periodes", body);
+    periodeDialog.close();
     await refresh();
   } catch (err) {
     errEl.textContent = err.message;

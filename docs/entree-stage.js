@@ -7,14 +7,6 @@ const $ = (id) => document.getElementById(id);
 let services = []; // services accueillant des étudiants (avec cadre)
 
 async function init() {
-  // Arrivée depuis l'espace étudiant (?prenom=&nom=) : préremplit l'identité
-  // pour un étudiant déjà connu qui enregistre une nouvelle période de stage.
-  const params = new URLSearchParams(location.search);
-  const prenom = params.get("prenom");
-  const nom = params.get("nom");
-  if (prenom) $("f-prenom").value = prenom;
-  if (nom) $("f-nom").value = nom;
-
   try {
     const res = await fetch(API + "/api/services");
     const ref = await res.json();

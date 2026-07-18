@@ -80,7 +80,7 @@
           <h1>Mon planning de stage</h1>
           <p id="student-name" class="subtitle"></p>
         </div>
-        <a href="entree-stage.html" id="nouvelle-periode-link" class="btn btn-ghost">+ Nouvelle période de stage</a>
+        <button id="add-periode-btn" class="btn btn-ghost">+ Nouvelle période de stage</button>
       </div>
 
       <div id="periode-tabs" class="periode-tabs"></div>
@@ -167,9 +167,47 @@
     </form>
   </dialog>
 
+  <!-- Formulaire de nouvelle période de stage -->
+  <dialog id="periode-dialog">
+    <form id="periode-form" method="dialog">
+      <h2>Nouvelle période de stage</h2>
+
+      <div class="fr-callout">
+        <p>Ce formulaire sert uniquement à enregistrer un <strong>nouveau stage</strong>
+          (nouveau service, nouvelles dates). Pour un rattrapage, un retard ou une
+          sortie de stage organisée par votre centre de formation pendant un stage
+          en cours, utilisez plutôt le bouton <strong>+ Déclarer</strong>.</p>
+      </div>
+
+      <label for="periode-site">Site</label>
+      <select id="periode-site" required></select>
+
+      <label for="periode-service">Service</label>
+      <select id="periode-service" required disabled></select>
+
+      <div class="row">
+        <div>
+          <label for="periode-du">Début du stage</label>
+          <input type="date" id="periode-du" required>
+        </div>
+        <div>
+          <label for="periode-au">Fin du stage</label>
+          <input type="date" id="periode-au" required>
+        </div>
+      </div>
+
+      <p id="periode-error" class="error" hidden></p>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="periode-cancel-btn">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="periode-save-btn">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="config.js?v=21"></script>
   <script src="layout.js?v=23"></script>
   <script src="etablissement.js?v=22"></script>
-  <script src="app.js?v=22"></script>
+  <script src="app.js?v=23"></script>
 </body>
 </html>
