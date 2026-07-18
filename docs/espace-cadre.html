@@ -132,12 +132,53 @@
       .planning-alertes { border-color: #7a2a26; background: #4a1210; }
     }
 
+    /* ---------- Tableau de bord ---------- */
+    .kpi-grid { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 0.25rem 0 1.5rem; }
+    .kpi-card { flex: 1 1 150px; min-width: 140px; text-align: left; background: var(--blanc); border: 1px solid var(--gris-bordure); border-left: 4px solid var(--gris-bordure); border-radius: var(--radius); padding: 0.7rem 0.9rem; box-shadow: 0 1px 4px rgba(0,0,0,0.06); cursor: pointer; font: inherit; }
+    button.kpi-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.14); transform: translateY(-1px); }
+    .kpi-card.kpi-static { cursor: default; }
+    .kpi-value { font-size: 1.7rem; font-weight: 800; line-height: 1.1; color: var(--texte); }
+    .kpi-label { font-size: 0.82rem; font-weight: 600; color: var(--texte); margin-top: 0.15rem; }
+    .kpi-sub { font-size: 0.74rem; color: var(--texte-doux); min-height: 0.9rem; }
+    .kpi-info { border-left-color: var(--bleu); }
+    .kpi-ok { border-left-color: #59c884; }
+    .kpi-warn { border-left-color: #ffb056; }
+    .kpi-pending { border-left-color: #f0b429; }
+    .kpi-danger { border-left-color: var(--rouge); }
+    .kpi-warn .kpi-value, .kpi-danger .kpi-value { color: var(--rouge); }
+
+    .dash-table-wrap { overflow-x: auto; }
+    table.dash-table { border-collapse: collapse; width: 100%; font-size: 0.88rem; background: var(--blanc); box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-radius: var(--radius); overflow: hidden; }
+    table.dash-table th, table.dash-table td { padding: 0.5rem 0.7rem; text-align: left; border-bottom: 1px solid var(--gris-bordure); white-space: nowrap; }
+    table.dash-table thead th { background: var(--gris-fond); font-size: 0.78rem; color: var(--texte-doux); }
+    table.dash-table tbody tr.dash-row { cursor: pointer; }
+    table.dash-table tbody tr.dash-row:hover { background: var(--gris-fond); }
+    .dash-nom { font-weight: 600; }
+    .dash-muted { color: var(--texte-doux); }
+
+    .echeances { margin-top: 1.75rem; }
+    .echeances-list { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.4rem; }
+    .echeance-item { display: flex; align-items: center; gap: 0.6rem; font-size: 0.88rem; padding: 0.35rem 0; border-bottom: 1px solid var(--gris-bordure); }
+    .echeance-item:last-child { border-bottom: none; }
+
+    /* ---------- Statistiques ---------- */
+    .stats-controls { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; margin-bottom: 1.25rem; }
+    .stats-controls > label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.8rem; color: var(--texte-doux); }
+    .stats-controls input[type="date"] { padding: 0.4rem 0.5rem; border: 1px solid var(--gris-bordure); border-radius: 4px; font-size: 0.9rem; }
+    .stats-presets { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .stat-dist { margin: 1.25rem 0; background: var(--blanc); border: 1px solid var(--gris-bordure); border-radius: var(--radius); padding: 0.8rem 1rem; }
+    .dist-row { display: flex; align-items: center; gap: 0.6rem; margin: 0.3rem 0; font-size: 0.85rem; }
+    .dist-label { flex: 0 0 30%; min-width: 8rem; }
+    .dist-track { flex: 1; background: var(--gris-fond); border-radius: 999px; height: 0.85rem; overflow: hidden; }
+    .dist-bar { height: 100%; background: var(--bleu); border-radius: 999px; min-width: 2px; }
+    .dist-val { flex: 0 0 auto; color: var(--texte-doux); font-variant-numeric: tabular-nums; }
+
     #print-header, #print-footer { display: none; }
     @media print {
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
       .app-header, .moi-info, .cadre-service-select, .main-tabs, .planning-controls, .code-palette, .app-footer,
-      .planning-alertes, th.student-col .badge.warn, th.compteurs-col, td.compteurs-col, #tab-declarations,
-      #tab-dossier, #tab-evaluation, #tab-codes, .section-note { display: none !important; }
+      .planning-alertes, th.student-col .badge.warn, th.compteurs-col, td.compteurs-col, #tab-dashboard, #tab-declarations,
+      #tab-dossier, #tab-evaluation, #tab-stats, #tab-codes, .section-note { display: none !important; }
       #print-header { display: block; margin-bottom: 1rem; }
       #print-footer {
         display: block; margin-top: 16px; padding-top: 6px; border-top: 1px solid #ccc;
@@ -213,7 +254,12 @@
       <section>
         <div class="main-tabs" id="main-tabs"></div>
 
-        <div id="tab-declarations">
+        <div id="tab-dashboard">
+          <p class="section-note">Vue d'ensemble de votre service : indicateurs clés, étudiants en cours et à venir, échéances. Cliquez sur une carte ou une ligne pour aller au détail.</p>
+          <div id="dashboard-content"></div>
+        </div>
+
+        <div id="tab-declarations" hidden>
           <p class="section-note">Validez les déclarations en attente, ou dévalidez une déclaration déjà traitée par erreur.</p>
 
           <section class="decl-section">
@@ -241,6 +287,11 @@
         <div id="tab-evaluation" hidden>
           <p class="section-note">Étudiants éligibles à l'envoi du questionnaire (de 10 jours avant la fin du stage jusqu'à 40 jours après).</p>
           <div id="evaluation-list"></div>
+        </div>
+
+        <div id="tab-stats" hidden>
+          <p class="section-note">Statistiques d'encadrement sur la période choisie, pour votre rapport d'activité. Ajustez les dates puis imprimez le rapport.</p>
+          <div id="stats-content"></div>
         </div>
 
         <div id="tab-codes" hidden>
@@ -388,6 +439,6 @@
   </dialog>
 
   <script src="config.js?v=18"></script>
-  <script src="espace-cadre.js?v=23"></script>
+  <script src="espace-cadre.js?v=24"></script>
 </body>
 </html>

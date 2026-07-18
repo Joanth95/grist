@@ -1,15 +1,17 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 /* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
-const APP_VERSION = "v23"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v24"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 const TABS = [
+  { id: "dashboard", label: "Tableau de bord" },
   { id: "declarations", label: "Déclarations à valider" },
   { id: "dossier", label: "Dossier étudiants" },
   { id: "planning", label: "Planning de service" },
   { id: "evaluation", label: "Envoi des évaluations" },
+  { id: "stats", label: "Statistiques" },
   { id: "codes", label: "Codes horaires" },
 ];
 
@@ -30,13 +32,15 @@ const state = {
   data: null, // { services, niveaux, motifs, moi, periodes, semaines, codes, sorties }
   selectedSite: null,
   selectedServiceId: null,
-  activeTab: "declarations",
+  activeTab: "dashboard",
   dossierCategory: "cours", // 'passe' | 'cours' | 'avenir'
   dossierSubTab: {}, // studentId -> 'stages' | 'planning'
   dossierSelectedPeriode: {}, // studentId -> periodeId
   planningStart: null, // ISO date : début de la fenêtre de 30 jours affichée
   planningPaintCode: undefined, // code "armé" dans la palette (id, null = gomme, undefined = mode sélection)
   planningSel: null, // rectangle sélectionné dans la grille : { r1, c1, r2, c2 }
+  statsStart: null, // début de la période du rapport d'activité (ISO)
+  statsEnd: null, // fin de la période du rapport d'activité (ISO)
 };
 
 const DOSSIER_CATEGORIES = [
@@ -279,16 +283,427 @@ function renderMainTabs() {
 }
 
 function renderActiveTab() {
+  $("tab-dashboard").hidden = state.activeTab !== "dashboard";
   $("tab-declarations").hidden = state.activeTab !== "declarations";
   $("tab-dossier").hidden = state.activeTab !== "dossier";
   $("tab-planning").hidden = state.activeTab !== "planning";
   $("tab-evaluation").hidden = state.activeTab !== "evaluation";
+  $("tab-stats").hidden = state.activeTab !== "stats";
   $("tab-codes").hidden = state.activeTab !== "codes";
+  if (state.activeTab === "dashboard") renderDashboardTab();
   if (state.activeTab === "declarations") renderDeclarationsTab();
   if (state.activeTab === "dossier") renderDossierTab();
   if (state.activeTab === "planning") renderPlanningTab();
   if (state.activeTab === "evaluation") renderEvaluationTab();
+  if (state.activeTab === "stats") renderStatsTab();
   if (state.activeTab === "codes") renderCodesTab();
+}
+
+/** Change d'onglet par programmation (clic sur une carte du tableau de bord). */
+function gotoTab(tabId) {
+  state.activeTab = tabId;
+  renderMainTabs();
+  renderActiveTab();
+}
+
+/* ================================================================== */
+/* Onglet Tableau de bord (vue d'ensemble opérationnelle du service)   */
+/* ================================================================== */
+
+/** Périodes du service concernées par le tableau de bord : en cours + à venir. */
+function dashboardPeriodes() {
+  return periodesDuService().filter((p) => {
+    const c = periodeCategory(p);
+    return c === "cours" || c === "avenir";
+  });
+}
+
+/** Déclarations en attente de validation sur les stages EN COURS du service. */
+function pendingDeclarationsForService() {
+  const enCoursIds = new Set(periodesDuService().filter((p) => p.En_cours).map((p) => p.id));
+  return state.data.sorties.filter((s) => enCoursIds.has(s.Periode) && !s.Valide);
+}
+
+/** Une évaluation est « à traiter » de 10 jours avant la fin du stage à 40
+ *  jours après (même fenêtre que l'onglet Envoi des évaluations). */
+function evalEligible(p) {
+  if (!p.Au) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const au = new Date(p.Au + "T00:00:00");
+  const diffDays = Math.round((today - au) / 86400000);
+  return diffDays >= -10 && diffDays <= 40;
+}
+
+/** Petit badge résumant l'état de l'évaluation d'une période. */
+function evalStatusBadge(p) {
+  if (p.Evaluation_repondue) return badge("A répondu", "ok");
+  if (p.Evaluation_envoyee) return badge("Envoyée", "pending");
+  if (evalEligible(p)) return badge("À envoyer", "warn");
+  return el("span", "dash-muted", "—");
+}
+
+function kpiCard(value, label, sub, targetTab, tone) {
+  const card = el("button", "kpi-card" + (tone ? " kpi-" + tone : ""));
+  card.type = "button";
+  card.appendChild(el("div", "kpi-value", String(value)));
+  card.appendChild(el("div", "kpi-label", label));
+  card.appendChild(el("div", "kpi-sub", sub || ""));
+  card.addEventListener("click", () => gotoTab(targetTab));
+  return card;
+}
+
+function renderDashboardTab() {
+  const container = $("dashboard-content");
+  container.innerHTML = "";
+
+  const periodes = dashboardPeriodes();
+  const enCours = periodes.filter((p) => p.En_cours);
+  const aVenir = periodes.filter((p) => periodeCategory(p) === "avenir");
+  const svcPeriodes = periodesDuService();
+  const pending = pendingDeclarationsForService();
+  const aEnvoyer = svcPeriodes.filter((p) => evalEligible(p) && !p.Evaluation_envoyee);
+  const sansReponse = svcPeriodes.filter((p) => p.Evaluation_envoyee && !p.Evaluation_repondue);
+  const nbAlertes = periodes.reduce((n, p) => n + ((p.Alertes && p.Alertes.length) || 0), 0);
+
+  const grid = el("div", "kpi-grid");
+  grid.appendChild(kpiCard(enCours.length, "Étudiant" + (enCours.length > 1 ? "s" : "") + " en stage",
+    aVenir.length ? `+${aVenir.length} à venir` : "aucun à venir", "dossier", "info"));
+  grid.appendChild(kpiCard(pending.length, "Déclaration" + (pending.length > 1 ? "s" : "") + " à valider",
+    pending.length ? "à traiter" : "tout est à jour", "declarations", pending.length ? "warn" : "ok"));
+  grid.appendChild(kpiCard(aEnvoyer.length, "Évaluation" + (aEnvoyer.length > 1 ? "s" : "") + " à envoyer",
+    "fin de stage proche", "evaluation", aEnvoyer.length ? "warn" : "ok"));
+  grid.appendChild(kpiCard(sansReponse.length, "Sans réponse",
+    "évaluation" + (sansReponse.length > 1 ? "s envoyées" : " envoyée"), "evaluation", sansReponse.length ? "pending" : "ok"));
+  grid.appendChild(kpiCard(nbAlertes, "Alerte" + (nbAlertes > 1 ? "s" : "") + " conformité",
+    nbAlertes ? "droit du travail" : "aucune", "planning", nbAlertes ? "danger" : "ok"));
+  container.appendChild(grid);
+
+  // Tableau des étudiants (une ligne par période en cours / à venir).
+  if (!periodes.length) {
+    container.appendChild(el("p", "empty", "Aucun étudiant en cours ou à venir sur ce service."));
+  } else {
+    const pendingByPeriode = new Map();
+    for (const s of pending) pendingByPeriode.set(s.Periode, (pendingByPeriode.get(s.Periode) || 0) + 1);
+
+    const sorted = [...periodes].sort((a, b) => {
+      if (a.En_cours !== b.En_cours) return a.En_cours ? -1 : 1;
+      return `${a.Etudiant.nom}${a.Etudiant.prenom}`.localeCompare(`${b.Etudiant.nom}${b.Etudiant.prenom}`);
+    });
+
+    const table = document.createElement("table");
+    table.className = "dash-table";
+    const thead = document.createElement("thead");
+    thead.innerHTML = "<tr><th>Étudiant</th><th>Statut</th><th>Période</th><th>Niveau</th>"
+      + "<th>Solde</th><th>À valider</th><th>Alertes</th><th>Évaluation</th></tr>";
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    for (const p of sorted) {
+      const tr = document.createElement("tr");
+      tr.className = "dash-row";
+      tr.title = "Ouvrir le dossier de l'étudiant";
+
+      const tdNom = el("td", "dash-nom");
+      tdNom.appendChild(el("span", "", `${p.Etudiant.prenom} ${p.Etudiant.nom}`.trim()));
+      if (p.Etudiant.anonymat) {
+        tdNom.append(" ");
+        tdNom.appendChild(el("span", "anonymat-badge", p.Etudiant.anonymat));
+      }
+      tr.appendChild(tdNom);
+
+      const cat = periodeCategory(p);
+      const tdStatut = el("td", "");
+      tdStatut.appendChild(badge(cat === "cours" ? "En cours" : "À venir", cat === "cours" ? "info" : "pending"));
+      tr.appendChild(tdStatut);
+
+      tr.appendChild(el("td", "dash-muted", `${frDateCourt(p.Du)} → ${frDateCourt(p.Au)}`));
+      tr.appendChild(el("td", "", p.Niveau || "—"));
+
+      const soldeTxt = `${p.Solde_heures > 0 ? "+" : ""}${formatH(p.Solde_heures)}`;
+      tr.appendChild(el("td", p.Solde_heures > 0 ? "compteur-solde-pos" : p.Solde_heures < 0 ? "compteur-solde-neg" : "", soldeTxt));
+
+      const nbPending = pendingByPeriode.get(p.id) || 0;
+      const tdPending = el("td", "");
+      if (nbPending) tdPending.appendChild(badge(String(nbPending), "warn"));
+      else tdPending.appendChild(el("span", "dash-muted", "—"));
+      tr.appendChild(tdPending);
+
+      const nbAl = (p.Alertes && p.Alertes.length) || 0;
+      const tdAl = el("td", "");
+      if (nbAl) {
+        const b = badge(`⚠️ ${nbAl}`, "warn");
+        b.title = p.Alertes.join("\n");
+        tdAl.appendChild(b);
+      } else {
+        tdAl.appendChild(el("span", "dash-muted", "—"));
+      }
+      tr.appendChild(tdAl);
+
+      const tdEval = el("td", "");
+      tdEval.appendChild(evalStatusBadge(p));
+      tr.appendChild(tdEval);
+
+      tr.addEventListener("click", () => gotoDossierFor(p));
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+
+    const wrap = el("div", "dash-table-wrap");
+    wrap.appendChild(table);
+    container.appendChild(wrap);
+  }
+
+  container.appendChild(renderEcheances());
+}
+
+/** Ouvre le dossier de l'étudiant de la période cliquée, sur la bonne catégorie. */
+function gotoDossierFor(p) {
+  state.dossierCategory = periodeCategory(p);
+  state.dossierSelectedPeriode[p.Etudiant.id] = p.id;
+  gotoTab("dossier");
+}
+
+/** Section « Échéances (14 prochains jours) » : fins/débuts de stage + RDV. */
+function renderEcheances() {
+  const wrap = el("div", "echeances");
+  wrap.appendChild(el("div", "dual-list-title", "Échéances (14 prochains jours)"));
+
+  const today = isoDate(new Date());
+  const limit = addDaysIso(today, 14);
+  const svc = periodesDuService();
+
+  const items = [];
+  for (const p of svc) {
+    const nom = `${p.Etudiant.prenom} ${p.Etudiant.nom}`.trim();
+    if (p.Au && p.Au >= today && p.Au <= limit) items.push({ date: p.Au, txt: `Fin de stage — ${nom}`, kind: "pending" });
+    if (p.Du && p.Du >= today && p.Du <= limit) items.push({ date: p.Du, txt: `Début de stage — ${nom}`, kind: "info" });
+  }
+  const svcIds = new Set(svc.map((p) => p.id));
+  const perById = new Map(state.data.periodes.map((p) => [p.id, p]));
+  for (const r of (state.data.rdvs || [])) {
+    if (!r.Date_rdv || r.Date_rdv < today || r.Date_rdv > limit) continue;
+    if (!svcIds.has(r.Periode)) continue;
+    const per = perById.get(r.Periode);
+    const nom = per ? `${per.Etudiant.prenom} ${per.Etudiant.nom}`.trim() : "";
+    items.push({ date: r.Date_rdv, txt: `${r.Type_de_rendez_vous || "Rendez-vous"} — ${nom}`, kind: "info" });
+  }
+
+  if (!items.length) {
+    wrap.appendChild(el("p", "empty", "Aucune échéance dans les 14 prochains jours."));
+    return wrap;
+  }
+  items.sort((a, b) => a.date.localeCompare(b.date));
+  const list = el("div", "echeances-list");
+  for (const it of items) {
+    const row = el("div", "echeance-item");
+    row.appendChild(badge(frDateCourt(it.date), it.kind));
+    row.appendChild(el("span", "", it.txt));
+    list.appendChild(row);
+  }
+  wrap.appendChild(list);
+  return wrap;
+}
+
+/* ================================================================== */
+/* Onglet Statistiques (rapport d'activité du service)                 */
+/* ================================================================== */
+
+/** Année scolaire courante : 1er septembre → 31 août. */
+function academicYearRange() {
+  const now = new Date();
+  const startYear = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+  return { start: `${startYear}-09-01`, end: `${startYear + 1}-08-31` };
+}
+
+function statsRange() {
+  if (!state.statsStart || !state.statsEnd) {
+    const r = academicYearRange();
+    state.statsStart = r.start;
+    state.statsEnd = r.end;
+  }
+  return { start: state.statsStart, end: state.statsEnd };
+}
+
+/** Regroupe une liste par clé et renvoie [{label, value}] trié décroissant. */
+function countBy(list, keyFn) {
+  const map = new Map();
+  for (const item of list) {
+    const k = keyFn(item);
+    map.set(k, (map.get(k) || 0) + 1);
+  }
+  return [...map.entries()].map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, "fr"));
+}
+
+/** Agrège les statistiques du service sur la période [start, end]. */
+function statsCompute() {
+  const { start, end } = statsRange();
+  // Un stage est compté s'il chevauche la période choisie.
+  const periodes = periodesDuService().filter((p) =>
+    (!p.Au || p.Au >= start) && (!p.Du || p.Du <= end));
+  const etudiants = new Set(periodes.map((p) => p.Etudiant.id));
+  const totalFait = periodes.reduce((n, p) => n + (p.FAIT || 0), 0);
+  const periodeIds = new Set(periodes.map((p) => p.id));
+  const rdvs = (state.data.rdvs || []).filter((r) =>
+    periodeIds.has(r.Periode) && r.Date_rdv && r.Date_rdv >= start && r.Date_rdv <= end);
+  return {
+    start, end, periodes,
+    nbEtudiants: etudiants.size,
+    nbStages: periodes.length,
+    totalFait,
+    byNiveau: countBy(periodes, (p) => p.Niveau || "Non précisé"),
+    byCentre: countBy(periodes, (p) => p.Etudiant.centre || "Non précisé"),
+    byFormation: countBy(periodes, (p) => p.Etudiant.formation || "Non précisé"),
+    envoyees: periodes.filter((p) => p.Evaluation_envoyee).length,
+    repondues: periodes.filter((p) => p.Evaluation_repondue).length,
+    nbRdv: rdvs.length,
+  };
+}
+
+function renderStatsTab() {
+  const container = $("stats-content");
+  container.innerHTML = "";
+  const { start, end } = statsRange();
+
+  // Contrôles : dates + raccourcis de période.
+  const controls = el("div", "stats-controls");
+  const mkDate = (labelTxt, value, onChange) => {
+    const label = el("label", "", labelTxt);
+    const input = document.createElement("input");
+    input.type = "date";
+    input.value = value;
+    input.addEventListener("change", () => onChange(input.value));
+    label.appendChild(input);
+    return label;
+  };
+  controls.appendChild(mkDate("Du", start, (v) => { state.statsStart = v; renderStatsTab(); }));
+  controls.appendChild(mkDate("Au", end, (v) => { state.statsEnd = v; renderStatsTab(); }));
+
+  const presets = el("div", "stats-presets");
+  const mkPreset = (labelTxt, range) => {
+    const btn = el("button", "sub-tab", labelTxt);
+    btn.type = "button";
+    btn.addEventListener("click", () => { state.statsStart = range.start; state.statsEnd = range.end; renderStatsTab(); });
+    return btn;
+  };
+  presets.appendChild(mkPreset("Année scolaire", academicYearRange()));
+  const y = new Date().getFullYear();
+  presets.appendChild(mkPreset("Année civile", { start: `${y}-01-01`, end: `${y}-12-31` }));
+  presets.appendChild(mkPreset("12 derniers mois", { start: addDaysIso(isoDate(new Date()), -365), end: isoDate(new Date()) }));
+  controls.appendChild(presets);
+
+  const printBtn = el("button", "btn btn-primary", "🖨 Imprimer le rapport");
+  printBtn.type = "button";
+  printBtn.addEventListener("click", printStats);
+  controls.appendChild(printBtn);
+  container.appendChild(controls);
+
+  const s = statsCompute();
+
+  const grid = el("div", "kpi-grid");
+  grid.appendChild(statCard(s.nbEtudiants, "Étudiants accueillis"));
+  grid.appendChild(statCard(s.nbStages, "Stages"));
+  grid.appendChild(statCard(formatH(s.totalFait), "Heures réalisées"));
+  grid.appendChild(statCard(s.nbRdv, "Rendez-vous formateurs"));
+  const tauxReponse = s.envoyees ? Math.round((s.repondues / s.envoyees) * 100) : 0;
+  grid.appendChild(statCard(`${s.envoyees}`, "Évaluations envoyées"));
+  grid.appendChild(statCard(s.envoyees ? `${tauxReponse}%` : "—", "Taux de réponse", `${s.repondues}/${s.envoyees} répondues`));
+  container.appendChild(grid);
+
+  if (!s.nbStages) {
+    container.appendChild(el("p", "empty", "Aucun stage sur ce service pour la période choisie."));
+    return;
+  }
+
+  container.appendChild(renderDistribution("Répartition par niveau", s.byNiveau));
+  container.appendChild(renderDistribution("Répartition par centre de formation", s.byCentre));
+  container.appendChild(renderDistribution("Répartition par formation", s.byFormation));
+}
+
+function statCard(value, label, sub) {
+  const card = el("div", "kpi-card kpi-static");
+  card.appendChild(el("div", "kpi-value", String(value)));
+  card.appendChild(el("div", "kpi-label", label));
+  card.appendChild(el("div", "kpi-sub", sub || ""));
+  return card;
+}
+
+/** Barres de répartition ; entries = [{label, value}]. */
+function renderDistribution(title, entries) {
+  const wrap = el("div", "stat-dist");
+  wrap.appendChild(el("div", "dual-list-title", title));
+  const total = entries.reduce((n, e) => n + e.value, 0);
+  const max = Math.max(1, ...entries.map((e) => e.value));
+  for (const e of entries) {
+    const row = el("div", "dist-row");
+    row.appendChild(el("div", "dist-label", e.label));
+    const track = el("div", "dist-track");
+    const bar = el("div", "dist-bar");
+    bar.style.width = `${Math.round((e.value / max) * 100)}%`;
+    track.appendChild(bar);
+    row.appendChild(track);
+    const pct = total ? Math.round((e.value / total) * 100) : 0;
+    row.appendChild(el("div", "dist-val", `${e.value} (${pct}%)`));
+    wrap.appendChild(row);
+  }
+  return wrap;
+}
+
+/** Ouvre le rapport d'activité dans une nouvelle fenêtre et lance l'impression. */
+function printStats() {
+  const s = statsCompute();
+  const service = state.data.services.find((x) => x.id === state.selectedServiceId);
+  const win = window.open("", "_blank");
+  if (!win) {
+    alert("Autorisez les fenêtres pop-up pour imprimer le rapport.");
+    return;
+  }
+  win.document.open();
+  win.document.write(buildStatsReportHtml(s, service));
+  win.document.close();
+}
+
+function buildStatsReportHtml(s, service) {
+  const serviceName = service ? service.Nom : "";
+  const moi = (state.data.moi && state.data.moi.nom) || "";
+  const tauxReponse = s.envoyees ? Math.round((s.repondues / s.envoyees) * 100) : 0;
+  const distTable = (title, entries) => {
+    const total = entries.reduce((n, e) => n + e.value, 0);
+    const rows = entries.map((e) => {
+      const pct = total ? Math.round((e.value / total) * 100) : 0;
+      return `<tr><td>${escapeHtml(e.label)}</td><td style="text-align:right">${e.value}</td><td style="text-align:right">${pct}%</td></tr>`;
+    }).join("");
+    return `<h3>${escapeHtml(title)}</h3><table class="r"><thead><tr><th>Catégorie</th><th>Stages</th><th>Part</th></tr></thead><tbody>${rows}</tbody></table>`;
+  };
+  const genDate = new Date().toLocaleDateString("fr-FR");
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">`
+    + `<title>Rapport d'activité — ${escapeHtml(serviceName)}</title><style>`
+    + `body{font-family:Marianne,Arial,sans-serif;color:#161616;margin:2rem;}`
+    + `h1{font-size:1.4rem;margin:0 0 .2rem;}h2{font-size:1rem;color:#555;font-weight:400;margin:0 0 1.2rem;}`
+    + `h3{font-size:1rem;margin:1.4rem 0 .4rem;border-bottom:2px solid #000091;padding-bottom:.2rem;}`
+    + `.kpis{display:flex;flex-wrap:wrap;gap:.8rem;margin:1rem 0;}`
+    + `.kpi{border:1px solid #ddd;border-radius:6px;padding:.6rem .9rem;min-width:120px;}`
+    + `.kpi .v{font-size:1.5rem;font-weight:700;color:#000091;}.kpi .l{font-size:.8rem;color:#555;}`
+    + `table.r{border-collapse:collapse;width:100%;max-width:460px;font-size:.9rem;}`
+    + `table.r th,table.r td{border:1px solid #ddd;padding:.35rem .6rem;}table.r th{background:#f5f5fe;text-align:left;}`
+    + `footer{margin-top:2rem;padding-top:.5rem;border-top:1px solid #ccc;font-size:.75rem;color:#555;}`
+    + `</style></head><body onload="setTimeout(function(){window.print();},250);">`
+    + `<h1>Rapport d'activité — encadrement des étudiants</h1>`
+    + `<h2>${escapeHtml(serviceName)} · du ${frDate(s.start)} au ${frDate(s.end)}</h2>`
+    + `<div class="kpis">`
+    + `<div class="kpi"><div class="v">${s.nbEtudiants}</div><div class="l">Étudiants accueillis</div></div>`
+    + `<div class="kpi"><div class="v">${s.nbStages}</div><div class="l">Stages</div></div>`
+    + `<div class="kpi"><div class="v">${formatH(s.totalFait)}</div><div class="l">Heures réalisées</div></div>`
+    + `<div class="kpi"><div class="v">${s.nbRdv}</div><div class="l">Rendez-vous formateurs</div></div>`
+    + `<div class="kpi"><div class="v">${s.envoyees}</div><div class="l">Évaluations envoyées</div></div>`
+    + `<div class="kpi"><div class="v">${s.envoyees ? tauxReponse + "%" : "—"}</div><div class="l">Taux de réponse (${s.repondues}/${s.envoyees})</div></div>`
+    + `</div>`
+    + distTable("Répartition par niveau", s.byNiveau)
+    + distTable("Répartition par centre de formation", s.byCentre)
+    + distTable("Répartition par formation", s.byFormation)
+    + `<footer>Rapport généré le ${genDate}${moi ? " par " + escapeHtml(moi) : ""} · Espace cadre — CHR Metz-Thionville</footer>`
+    + `</body></html>`;
 }
 
 /* ------------------------------------------------------------------ */
