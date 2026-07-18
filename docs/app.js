@@ -76,6 +76,11 @@ function enterApp() {
   $("app-screen").hidden = false;
   const e = state.data.etudiant;
   $("student-name").textContent = `${e.prenom} ${e.nom}`.trim();
+  const nouvellePeriodeLink = $("nouvelle-periode-link");
+  if (nouvellePeriodeLink) {
+    const params = new URLSearchParams({ prenom: e.prenom || "", nom: e.nom || "" });
+    nouvellePeriodeLink.href = "entree-stage.html?" + params.toString();
+  }
   render();
 }
 

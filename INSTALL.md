@@ -201,7 +201,7 @@ formules).
 | | A_FAIRE | Numérique |
 | | Evaluation_envoyee | Bool |
 | | UUID | Texte (défaut `UUID()`) |
-| | *En_cours* (formule) | `Au >= TODAY()` |
+| | *En_cours* (formule) | `Du <= TODAY() and Au >= TODAY()` |
 | | *FAIT* (formule) | somme des `Total_h_semaine` du planning |
 | | *Solde_heures* (formule) | `FAIT - A_FAIRE` |
 | | *Lien_evaluation* (formule) | URL du formulaire d'évaluation + `Cle_lien` |

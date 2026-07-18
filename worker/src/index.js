@@ -872,8 +872,8 @@ async function updatePeriode(request, env, cadre, periodeId) {
   }
 
   // La fiche (tuteur/niveau/dates) d'un stage déjà terminé ne se modifie
-  // plus : seul le stage en cours (En_cours, formule Grist Au >= aujourd'hui)
-  // reste éditable. Evaluation_envoyee reste modifiable même après la fin.
+  // plus : seul le stage en cours (En_cours, formule Grist Du <= aujourd'hui
+  // <= Au) reste éditable. Evaluation_envoyee reste modifiable même après la fin.
   const modifieLaFiche = body.Tuteur !== undefined || body.Niveau !== undefined
     || body.Du !== undefined || body.Au !== undefined;
   if (modifieLaFiche && !rows[0].fields.En_cours) {
