@@ -46,13 +46,15 @@
       <strong>Sommaire</strong>
       <a href="#principe">1. Principe général</a>
       <a href="#acces">2. Accéder au document Grist</a>
-      <a href="#services">3. Gérer les services</a>
-      <a href="#cadres">4. Gérer les comptes cadres</a>
-      <a href="#pole">5. Cadres de pôle (CSS)</a>
-      <a href="#codes">6. Codes horaires et jours fériés</a>
-      <a href="#satisfaction">7. Tableau de bord satisfaction</a>
-      <a href="#securite">8. Sécurité — points d'attention</a>
-      <a href="#technique">9. Déploiement technique</a>
+      <a href="#etablissement">3. Identité de l'établissement</a>
+      <a href="#services">4. Gérer les services</a>
+      <a href="#cadres">5. Gérer les comptes cadres</a>
+      <a href="#pole">6. Cadres de pôle (CSS)</a>
+      <a href="#codes">7. Codes horaires et jours fériés</a>
+      <a href="#journal">8. Journal d'activité</a>
+      <a href="#satisfaction">9. Tableau de bord satisfaction</a>
+      <a href="#securite">10. Sécurité — points d'attention</a>
+      <a href="#technique">11. Déploiement technique</a>
     </nav>
 
     <section id="principe">
@@ -75,22 +77,36 @@
       <div class="callout warn">Le document est privé : il faut un compte Grist avec les droits d'édition pour y accéder. L'accès anonyme est volontairement refusé.</div>
     </section>
 
+    <section id="etablissement">
+      <h2>3. Identité de l'établissement</h2>
+      <p>Table <span class="code">ETABLISSEMENT</span> (première ligne uniquement) : l'identité affichée dans l'en-tête des espaces web. Elle permet de déployer l'outil pour un autre établissement sans toucher au code.</p>
+      <table>
+        <tr><th>Colonne</th><th>Rôle</th></tr>
+        <tr><td><span class="code">Nom</span></td><td>Nom de l'établissement, affiché dans l'en-tête du site.</td></tr>
+        <tr><td><span class="code">Description</span> / <span class="code">Sous_titre</span></td><td>Textes complémentaires de l'en-tête (baseline, sous-titre).</td></tr>
+        <tr><td><span class="code">Logo</span></td><td>Pièce jointe (image) : le logo affiché dans l'en-tête. La première pièce jointe de la cellule est utilisée ; elle est servie via le Worker (la clé API reste protégée).</td></tr>
+      </table>
+      <div class="callout">Si la table est absente ou vide, le site garde son affichage générique.</div>
+    </section>
+
     <section id="services">
-      <h2>3. Gérer les services</h2>
-      <p>Table <span class="code">SERVICES</span>, une ligne par service accueillant (ou non) des étudiants.</p>
+      <h2>4. Gérer les services</h2>
+      <p>Table <span class="code">SERVICES</span>, une ligne par service accueillant (ou non) des étudiants. Les sites géographiques sont, eux, listés dans la table <span class="code">SITES</span> (colonne <span class="code">NOM</span>).</p>
       <table>
         <tr><th>Colonne</th><th>Rôle</th></tr>
         <tr><td><span class="code">Nom</span></td><td>Nom du service, affiché aux étudiants et cadres.</td></tr>
-        <tr><td><span class="code">Site</span></td><td>Site géographique (ex. Hôpital de Mercy, Hôpital de Hayange). Sert à trier la liste des services quand plusieurs sites partagent des noms de service identiques.</td></tr>
+        <tr><td><span class="code">Site</span></td><td>Référence vers la table <span class="code">SITES</span> (ex. Hôpital de Mercy, Hôpital de Hayange). Sert à trier la liste des services quand plusieurs sites partagent des noms de service identiques.</td></tr>
         <tr><td><span class="code">Cadre_ref</span></td><td>Cadre principal du service (lien vers <span class="code">UTILISATEURS</span>). C'est lui/elle qui apparaît comme contact auprès des étudiants.</td></tr>
         <tr><td><span class="code">Cadres_secondaires</span></td><td>Liste d'autres cadres ayant aussi accès au service (même droits que le cadre principal), utile si plusieurs personnes encadrent les étudiants.</td></tr>
         <tr><td><span class="code">Recoit_des_etudiant</span></td><td>Case à cocher : si décochée, le service n'apparaît plus dans les formulaires d'entrée en stage ni dans le sélecteur de l'espace cadre.</td></tr>
+        <tr><td><span class="code">Codes_horaires</span></td><td>Liste des codes horaires actifs pour le service (liste vide = tous les codes). Se gère normalement depuis l'espace cadre, onglet « Codes horaires ».</td></tr>
+        <tr><td><span class="code">Mail_bienvenue_objet</span> / <span class="code">Mail_bienvenue_corps</span></td><td>Modèle du mail de bienvenue propre au service (variables <span class="code">{prenom}</span>, <span class="code">{service}</span>, etc.). Se gère normalement depuis l'espace cadre, onglet « Mail de bienvenue » ; vide = modèle par défaut.</td></tr>
       </table>
       <div class="callout">Un cadre peut être responsable de plusieurs services (via <span class="code">Cadre_ref</span> sur plusieurs lignes, ou via <span class="code">Cadres_secondaires</span>) : un sélecteur lui permet alors de passer de l'un à l'autre dans son espace.</div>
     </section>
 
     <section id="cadres">
-      <h2>4. Gérer les comptes cadres</h2>
+      <h2>5. Gérer les comptes cadres</h2>
       <p>Table <span class="code">UTILISATEURS</span>, une ligne par cadre (ou responsable) susceptible de se connecter à l'espace cadre.</p>
       <table>
         <tr><th>Colonne</th><th>Rôle</th></tr>
@@ -104,25 +120,35 @@
     </section>
 
     <section id="pole">
-      <h2>5. Cadres de pôle (CSS)</h2>
+      <h2>6. Cadres de pôle (CSS)</h2>
       <p>Le cadre supérieur de santé (CSS) d'un pôle a automatiquement accès à <strong>tous les services de son pôle</strong>, sans avoir à être ajouté service par service. Ce lien se règle sur la table <span class="code">Pole</span> : le champ <span class="code">CSS</span> pointe vers l'<span class="code">UTILISATEURS</span> qui doit superviser le pôle.</p>
       <p>Le CSS dispose des <strong>mêmes droits</strong> que les cadres de service (édition du planning, validation des déclarations, fiches étudiants) sur l'ensemble des services de son pôle.</p>
     </section>
 
     <section id="codes">
-      <h2>6. Codes horaires et jours fériés</h2>
+      <h2>7. Codes horaires et jours fériés</h2>
       <p>Table <span class="code">CODES_HORAIRES</span> : référentiel des codes utilisables dans le planning (ex. <span class="code">M</span> Matin, <span class="code">S</span> Soir, <span class="code">N</span> Nuit, <span class="code">J</span> Journée, <span class="code">R</span>/<span class="code">RH-S</span>/<span class="code">RH-D</span> Repos, <span class="code">IFSI</span>, <span class="code">ABS</span> Absence, <span class="code">JF</span> Jour férié, <span class="code">RF</span> Récupération jour férié). Chaque code porte ses horaires et le nombre d'heures associé, utilisés pour tous les calculs de compteurs.</p>
       <p>Table <span class="code">JOURS_FERIES</span> : liste des dates fériées de l'année. À tenir à jour chaque année civile — c'est elle qui pilote le grisage des jours fériés dans les plannings et le calcul des heures à réaliser (voir le mode d'emploi cadre, section jours fériés, pour le détail des règles).</p>
       <div class="callout">Ajouter un nouveau code horaire ou modifier un code existant se répercute immédiatement dans les deux espaces web (palette de la vue « Planning de service », liste déroulante des cases).</div>
+      <p>Les cadres peuvent aussi, depuis leur espace (onglet « Codes horaires »), <strong>choisir les codes actifs pour leur service</strong> et <strong>créer de nouveaux codes</strong> — ceux-ci s'ajoutent au référentiel commun <span class="code">CODES_HORAIRES</span>. Un code créé n'est jamais supprimé automatiquement : la suppression éventuelle relève de l'administrateur (attention aux plannings qui l'utilisent).</p>
+    </section>
+
+    <section id="journal">
+      <h2>8. Journal d'activité</h2>
+      <p>Table <span class="code">JOURNAL_ACTIVITE</span> : le Worker y consigne automatiquement les connexions et actions des étudiants et des cadres (colonnes <span class="code">Horodatage</span>, <span class="code">Role</span>, <span class="code">Qui</span>, <span class="code">Nom</span>, <span class="code">Action</span>, <span class="code">Detail</span>). Utile pour comprendre « qui a fait quoi » en cas de question.</p>
+      <ul>
+        <li>L'écriture est en <em>best-effort</em> : un échec du journal ne bloque jamais l'utilisateur ;</li>
+        <li>Les lignes de plus de <strong>30 jours</strong> sont purgées automatiquement (à chaque connexion, par lots) — pas d'entretien manuel à prévoir.</li>
+      </ul>
     </section>
 
     <section id="satisfaction">
-      <h2>7. Tableau de bord satisfaction</h2>
+      <h2>9. Tableau de bord satisfaction</h2>
       <p>Une page Grist dédiée (« Tableau de bord satisfaction ») affiche les résultats des questionnaires envoyés aux étudiants en fin de stage : KPI globaux (nombre de réponses, note moyenne, taux de recommandation), scores par thème, verbatims (points forts, axes, suggestions) et fréquentation par service. Deux champs de dates permettent de restreindre la période analysée.</p>
     </section>
 
     <section id="securite">
-      <h2>8. Sécurité — points d'attention</h2>
+      <h2>10. Sécurité — points d'attention</h2>
       <ul>
         <li>Le <strong>code anonymat</strong> étudiant (1<sup>re</sup> lettre prénom + date de naissance + 1<sup>re</sup> lettre nom) est volontairement simple : c'est un choix assumé, les données accessibles se limitent au planning de stage de l'étudiant concerné.</li>
         <li>Le <strong>code d'accès cadre</strong> donne, lui, accès à toutes les données d'un service entier : il doit être long, aléatoire, transmis de façon confidentielle, et révoqué (décochez <span class="code">Utilisateur_de_l_outil</span>) dès qu'un cadre quitte ses fonctions.</li>
@@ -132,7 +158,7 @@
     </section>
 
     <section id="technique">
-      <h2>9. Déploiement technique</h2>
+      <h2>11. Déploiement technique</h2>
       <p>Cette section concerne uniquement la personne qui héberge et maintient le code de l'application (pas la gestion quotidienne des services et des cadres, décrite ci-dessus).</p>
       <p>L'application repose sur trois briques : le site (GitHub Pages, dossier <span class="code">docs/</span>), un proxy (Cloudflare Worker, dossier <span class="code">worker/</span>) qui protège la clé API Grist, et le document Grist lui-même. Le détail des étapes (clé API, déploiement du worker, configuration du site, sécurisation de l'origine) est décrit dans le <span class="code">README.md</span> du dépôt ; pour déployer une copie de l'outil pour un autre service ou établissement, voir <span class="code">INSTALL.md</span>.</p>
       <div class="callout">En résumé : clé API Grist → secret Cloudflare (<span class="code">wrangler secret put GRIST_API_KEY</span>) → <span class="code">wrangler deploy</span> → URL du worker renseignée dans <span class="code">docs/config.js</span> → site publié via GitHub Pages.</div>

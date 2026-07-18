@@ -46,14 +46,19 @@
       <strong>Sommaire</strong>
       <a href="#principe">1. Principe général</a>
       <a href="#connexion">2. Se connecter</a>
-      <a href="#onglets">3. Les 4 onglets de l'espace cadre</a>
-      <a href="#dossier">4. Dossier étudiants</a>
-      <a href="#planning">5. Planning de service</a>
-      <a href="#heures">6. Comprendre les heures</a>
-      <a href="#feries">7. Jours fériés</a>
-      <a href="#valider">8. Valider les déclarations</a>
-      <a href="#evaluations">9. Envoi des évaluations</a>
-      <a href="#cadre">10. Vos coordonnées</a>
+      <a href="#onglets">3. Organisation de l'espace</a>
+      <a href="#dashboard">4. Tableau de bord</a>
+      <a href="#dossier">5. Dossier étudiants</a>
+      <a href="#inscription">6. Inscription</a>
+      <a href="#planning">7. Planning de service</a>
+      <a href="#heures">8. Comprendre les heures</a>
+      <a href="#feries">9. Jours fériés</a>
+      <a href="#valider">10. Valider les déclarations</a>
+      <a href="#evaluations">11. Envoi des évaluations</a>
+      <a href="#stats">12. Statistiques</a>
+      <a href="#codes">13. Codes horaires</a>
+      <a href="#mailbienvenue">14. Mail de bienvenue</a>
+      <a href="#cadre">15. Vos coordonnées</a>
     </nav>
 
     <section id="principe">
@@ -72,34 +77,67 @@
     </section>
 
     <section id="onglets">
-      <h2>3. Les 4 onglets de l'espace cadre</h2>
+      <h2>3. Organisation de l'espace</h2>
+      <p>L'espace cadre est organisé en <strong>4 groupes</strong>, chacun regroupant un ou plusieurs onglets :</p>
       <table>
-        <tr><th>Onglet</th><th>À quoi il sert</th></tr>
-        <tr><td><strong>Déclarations à valider</strong></td><td>Valider ou dévalider les heures déclarées par les étudiants en stage.</td></tr>
-        <tr><td><strong>Dossier étudiants</strong></td><td>Fiche de chaque étudiant : stages passés / en cours / à venir, planning individuel, déclarations.</td></tr>
-        <tr><td><strong>Planning de service</strong></td><td>Vue d'ensemble du service sur 30 jours, modifiable case par case, imprimable.</td></tr>
-        <tr><td><strong>Envoi des évaluations</strong></td><td>Envoyer le questionnaire de satisfaction aux étudiants en fin de stage.</td></tr>
+        <tr><th>Groupe</th><th>Onglets</th><th>À quoi ça sert</th></tr>
+        <tr><td><strong>Tableau de bord</strong></td><td>Tableau de bord</td><td>Vue synthétique du service : indicateurs, étudiants en cours et à venir, échéances.</td></tr>
+        <tr><td><strong>Étudiants</strong></td><td>Dossier étudiants · Inscription · Déclarations à valider · Envoi des évaluations</td><td>Le suivi individuel : fiches de stage, inscription de nouveaux étudiants, validation des heures, questionnaires de satisfaction.</td></tr>
+        <tr><td><strong>Gestion de service</strong></td><td>Planning de service · Statistiques</td><td>Le pilotage collectif : planning mensuel de tous les étudiants, rapport d'activité du service.</td></tr>
+        <tr><td><strong>Paramètres</strong></td><td>Codes horaires · Mail de bienvenue</td><td>La configuration propre à votre service : codes utilisables dans le planning, modèle du mail envoyé aux nouveaux inscrits.</td></tr>
       </table>
     </section>
 
+    <section id="dashboard">
+      <h2>4. Tableau de bord</h2>
+      <p>C'est l'écran d'accueil de votre espace. Il affiche :</p>
+      <ul>
+        <li><strong>Des indicateurs</strong> (cliquables, ils mènent à l'onglet concerné) : étudiants en stage, déclarations à valider, évaluations à envoyer, évaluations sans réponse, alertes de conformité au droit du travail ;</li>
+        <li><strong>Un tableau des étudiants</strong> en cours et à venir : période, niveau, solde d'heures, déclarations en attente, alertes, état de l'évaluation. Un clic sur une ligne ouvre le dossier de l'étudiant ;</li>
+        <li><strong>Les échéances des 14 prochains jours</strong> : débuts et fins de stage, rendez-vous formateurs.</li>
+      </ul>
+    </section>
+
     <section id="dossier">
-      <h2>4. Dossier étudiants</h2>
+      <h2>5. Dossier étudiants</h2>
       <p>Les étudiants de votre service sont classés en trois sous-onglets :</p>
       <ul>
         <li><span class="pill">En cours</span> — le stage est actuellement en cours ;</li>
         <li><strong>À venir</strong> — le stage n'a pas encore commencé ;</li>
-        <li><strong>Passé</strong> — le stage est terminé.</li>
+        <li><strong>Passé</strong> — le stage est terminé (l'historique des étudiants déjà passés dans le service est conservé).</li>
       </ul>
-      <p>Sous le nom de chaque étudiant s'affichent son <strong>code anonymat</strong> (à lui redonner s'il l'a oublié) et les <strong>dates de son stage</strong>. Chaque dossier se compose de deux sous-onglets :</p>
-      <h3>Stages effectués</h3>
-      <p>La fiche du stage : tuteur, niveau, dates de début et de fin. Elle reste <strong>modifiable tant que le stage est en cours</strong> ; une fois le stage terminé, elle passe automatiquement en lecture seule.</p>
+      <p>Sous le nom de chaque étudiant s'affichent son <strong>code anonymat</strong> (à lui redonner s'il l'a oublié) et les <strong>dates de son stage</strong>. Un bouton <strong>« ✉ Mail de bienvenue »</strong> permet de lui (ré)envoyer le mail d'accueil du service (voir section 14). Chaque dossier se compose de deux sous-onglets :</p>
+      <h3>Historique des stages</h3>
+      <p>La fiche de chaque stage : tuteur, niveau, dates de début et de fin. Elle reste <strong>modifiable tant que le stage est en cours</strong> ; une fois le stage terminé, elle passe automatiquement en lecture seule. Le parcours complet de l'étudiant est visible, y compris ses stages dans d'autres services (en lecture seule).</p>
       <h3>Planning personnel</h3>
       <p>Le planning individuel de l'étudiant, semaine par semaine, ainsi que la liste de ses déclarations d'heures avec leur statut (<span class="pill warn">En attente</span> ou <span class="pill">Validé</span>). Le bouton <strong>« + Déclarer »</strong> permet de déclarer vous-même des heures pour l'étudiant (par exemple un rattrapage) ; la déclaration attend ensuite votre validation comme n'importe quelle autre, dans l'onglet « Déclarations à valider ».</p>
+      <p>Le bouton <strong>🖨 Imprimer le planning</strong> génère une version imprimable du planning de stage individuel de l'étudiant.</p>
+      <h3>Rendez-vous formateurs / tuteur</h3>
+      <p>Chaque stage porte la liste de ses <strong>rendez-vous</strong> (visite formateur, bilan tuteur…). Le bouton d'ajout enregistre le type de rendez-vous, la date, le formateur et un commentaire ; les rendez-vous des 14 prochains jours remontent dans les échéances du tableau de bord.</p>
+    </section>
+
+    <section id="inscription">
+      <h2>6. Inscription</h2>
+      <p>Cet onglet regroupe tout ce qui concerne l'arrivée d'un étudiant dans votre service :</p>
+      <ul>
+        <li><strong>+ Inscrire un étudiant</strong> : vous saisissez vous-même son identité et son stage (utile si l'étudiant ne s'est pas inscrit en ligne) ;</li>
+        <li><strong>✉ Inviter à s'inscrire</strong> : ouvre un mail pré-rempli avec le lien du formulaire d'entrée en stage, pour que l'étudiant s'inscrive lui-même ;</li>
+        <li><strong>Rechercher un étudiant existant</strong> (par nom, prénom ou code anonymat) : évite les doublons — si l'étudiant est déjà connu de l'outil, vous lui ajoutez simplement un nouveau stage ; sinon, vous pouvez l'inscrire ou l'inviter.</li>
+      </ul>
+      <div class="callout">Réflexe conseillé : <strong>recherchez d'abord</strong> l'étudiant avant de l'inscrire, pour rattacher le nouveau stage à son dossier existant.</div>
     </section>
 
     <section id="planning">
-      <h2>5. Planning de service</h2>
-      <p>Cet onglet affiche tous les étudiants du service sur une <strong>fenêtre glissante de 30 jours</strong> : choisissez une date de départ, ou naviguez avec « Aujourd'hui » / « ◀ Préc. 30j » / « Suiv. 30j ▶ ». Les dates du stage de chaque étudiant s'affichent sous son nom.</p>
+      <h2>7. Planning de service</h2>
+      <p>Cet onglet affiche tous les étudiants du service sur un <strong>mois calendaire</strong> : naviguez de mois en mois avec les flèches ou revenez au mois courant avec « Ce mois-ci ». Les dates du stage de chaque étudiant s'affichent sous son nom.</p>
+      <p>Une colonne <strong>Compteurs</strong> résume pour chaque étudiant ses heures <strong>faites / prévues</strong> et son <strong>solde</strong> (base 35 h par semaine), sans quitter le planning.</p>
+      <h3>Alertes de conformité au droit du travail</h3>
+      <p>Le planning contrôle automatiquement trois règles et signale les manquements par un badge ⚠️ sur l'étudiant concerné, avec le détail en bas du tableau :</p>
+      <ul>
+        <li><strong>Repos quotidien</strong> : au moins <strong>11 h</strong> entre la fin d'un poste et le début du suivant ;</li>
+        <li><strong>Durée hebdomadaire</strong> : au plus <strong>48 h</strong> travaillées par semaine calendaire ;</li>
+        <li><strong>Repos hebdomadaire</strong> : au moins un jour de repos posé sur 7 jours.</li>
+      </ul>
       <h3>Édition façon tableur</h3>
       <p>Une <strong>palette de codes</strong> horaires s'affiche au-dessus du tableau. Deux façons de modifier le planning :</p>
       <ul>
@@ -112,7 +150,7 @@
     </section>
 
     <section id="heures">
-      <h2>6. Comprendre le décompte des heures</h2>
+      <h2>8. Comprendre le décompte des heures</h2>
       <table>
         <tr><th>Notion</th><th>Comment c'est calculé</th></tr>
         <tr><td><strong>À réaliser</strong></td><td><strong>35 h × nombre de semaines</strong> de stage, moins les jours fériés (voir ci-dessous).</td></tr>
@@ -122,18 +160,18 @@
     </section>
 
     <section id="feries">
-      <h2>7. Jours fériés</h2>
+      <h2>9. Jours fériés</h2>
       <p>Règle appliquée (conforme à l'<strong>arrêté du 31 juillet 2009</strong>) :</p>
       <ul>
         <li>Le férié est <strong>accordé</strong> : il est <strong>déduit du volume à réaliser</strong>. Un férié non travaillé ne crée donc pas de dette.</li>
         <li>Un férié <strong>travaillé</strong> compte ses heures normales (sans être doublé) et ouvre un <strong>jour de récupération</strong>, affiché sur la fiche de l'étudiant.</li>
         <li>Pour solder la récupération, posez le code <span class="code">RF</span> (« Récupération jour férié ») sur un jour du planning.</li>
       </ul>
-      <p>Les jours fériés sont grisés dans le planning de service (voir section 5).</p>
+      <p>Les jours fériés sont grisés dans le planning de service (voir section 7).</p>
     </section>
 
     <section id="valider">
-      <h2>8. Valider les déclarations d'heures</h2>
+      <h2>10. Valider les déclarations d'heures</h2>
       <p>Quand un étudiant déclare des heures (ou que vous en déclarez pour lui), elles apparaissent dans l'onglet <strong>Déclarations à valider</strong>, section « En attente ».</p>
       <ul>
         <li>Tant qu'elle n'est pas validée, une déclaration <strong>ne compte pas</strong> dans les heures de l'étudiant, qui la voit comme <span class="pill warn">En attente</span>.</li>
@@ -152,7 +190,7 @@
     </section>
 
     <section id="evaluations">
-      <h2>9. Envoi des évaluations</h2>
+      <h2>11. Envoi des évaluations</h2>
       <p>Cet onglet liste les étudiants <strong>éligibles à l'envoi du questionnaire de satisfaction</strong> : de 10 jours avant la fin du stage jusqu'à 40 jours après.</p>
       <p>Le bouton <strong>« Envoyer l'évaluation »</strong> ouvre un email pré-rempli avec le lien du questionnaire, à envoyer à l'étudiant. Un badge indique l'état :</p>
       <ul>
@@ -161,8 +199,37 @@
       </ul>
     </section>
 
+    <section id="stats">
+      <h2>12. Statistiques</h2>
+      <p>Le <strong>rapport d'activité du service</strong> sur la période de votre choix (champs de dates + préréglages : année en cours, 12 derniers mois…) :</p>
+      <ul>
+        <li>Étudiants accueillis, nombre de stages, heures réalisées, rendez-vous formateurs ;</li>
+        <li>Évaluations envoyées et <strong>taux de réponse</strong> ;</li>
+        <li>Répartition des étudiants par <strong>niveau</strong>, <strong>centre de formation</strong> et <strong>formation</strong>.</li>
+      </ul>
+      <div class="callout">Le bouton <strong>🖨 Imprimer le rapport</strong> génère une version imprimable, par exemple pour un bilan annuel d'encadrement.</div>
+    </section>
+
+    <section id="codes">
+      <h2>13. Codes horaires</h2>
+      <p>Cet onglet vous permet de choisir les <strong>codes horaires utilisables dans votre service</strong>, via une double liste :</p>
+      <ul>
+        <li><strong>Codes disponibles</strong> : le référentiel commun à l'établissement ;</li>
+        <li><strong>Codes utilisés dans ce service</strong> : ceux qui apparaissent dans la palette et les listes du planning.</li>
+      </ul>
+      <p>Passez un code d'une liste à l'autre avec les flèches ▶ / ◀, puis enregistrez. Cela allège la palette du planning en la limitant aux codes réellement pratiqués chez vous.</p>
+      <p>Vous pouvez aussi <strong>créer un nouveau code horaire</strong> (code, libellé, horaires) : il est ajouté d'office aux codes utilisés de votre service, et les autres services peuvent ensuite le reprendre.</p>
+      <div class="callout warn">Un code créé ne peut plus être supprimé (il peut avoir été utilisé dans des plannings). Vérifiez qu'un code équivalent n'existe pas déjà dans les codes disponibles.</div>
+    </section>
+
+    <section id="mailbienvenue">
+      <h2>14. Mail de bienvenue</h2>
+      <p>Chaque service peut personnaliser le <strong>mail de bienvenue</strong> envoyé aux étudiants (objet et corps). Le modèle accepte des variables remplacées automatiquement à l'envoi : <span class="code">{prenom}</span>, <span class="code">{nom}</span>, <span class="code">{service}</span>, <span class="code">{du}</span>, <span class="code">{au}</span>, <span class="code">{code}</span>, <span class="code">{referent}</span>, <span class="code">{cadre}</span>.</p>
+      <p>Le mail s'envoie depuis le dossier d'un étudiant (bouton « ✉ Mail de bienvenue ») : il ouvre votre messagerie avec le message pré-rempli. Sans modèle personnalisé, un modèle par défaut est utilisé.</p>
+    </section>
+
     <section id="cadre">
-      <h2>10. Vos coordonnées de cadre</h2>
+      <h2>15. Vos coordonnées de cadre</h2>
       <p>Votre nom et vos coordonnées (mail, téléphone) s'affichent à l'étudiant sur sa fiche de stage et dans le message d'inscription. Assurez-vous qu'elles soient à jour auprès de l'administrateur de l'application.</p>
       <div class="callout">Tant que votre téléphone n'est pas renseigné, seul le mail s'affiche à l'étudiant.</div>
     </section>
