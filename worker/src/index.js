@@ -133,6 +133,9 @@ async function route(request, env, ctx) {
   if (request.method === "GET" && path === "/api/config") {
     return getConfigEtablissement(env);
   }
+  if (request.method === "GET" && path === "/api/config/logo") {
+    return getLogoEtablissement(env);
+  }
   if (request.method === "GET" && path === "/api/services") {
     return listServices(env);
   }
@@ -486,10 +489,44 @@ async function getConfigEtablissement(env) {
       nom: f.Nom || "",
       description: f.Description || "",
       sousTitre: f.Sous_titre || "",
+      logoId: premierePieceJointe(f.Logo),
     });
   } catch {
-    return json({ nom: "", description: "", sousTitre: "" });
+    return json({ nom: "", description: "", sousTitre: "", logoId: null });
   }
+}
+
+/** Id de la première pièce jointe d'une cellule Attachments (["L", id, …]). */
+function premierePieceJointe(cellule) {
+  return Array.isArray(cellule) && cellule.length > 1 && cellule[1] ? cellule[1] : null;
+}
+
+/**
+ * Logo de l'établissement : proxifie le téléchargement de la pièce jointe
+ * Grist (la clé API reste côté Worker). Servi avec un cache long : le front
+ * ajoute ?v=<logoId> à l'URL, donc un nouveau logo change d'URL.
+ */
+async function getLogoEtablissement(env) {
+  let attId = null;
+  try {
+    const records = await gristAll(env, T_ETABLISSEMENT);
+    attId = premierePieceJointe(records[0] && records[0].fields && records[0].fields.Logo);
+  } catch {
+    attId = null;
+  }
+  if (!attId) throw httpError(404, "Aucun logo d'établissement");
+
+  const base = (env.GRIST_BASE_URL || "https://grist.numerique.gouv.fr/api").replace(/\/$/, "");
+  const res = await fetch(`${base}/docs/${env.GRIST_DOC_ID}/attachments/${attId}/download`, {
+    headers: { Authorization: `Bearer ${env.GRIST_API_KEY}` },
+  });
+  if (!res.ok) throw httpError(404, "Logo introuvable");
+  return new Response(res.body, {
+    headers: {
+      "Content-Type": res.headers.get("Content-Type") || "image/png",
+      "Cache-Control": "public, max-age=86400",
+    },
+  });
 }
 
 async function listServices(env) {
