@@ -1,7 +1,7 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 /* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
-const APP_VERSION = "v24"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v27"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -13,7 +13,53 @@ const TABS = [
   { id: "evaluation", label: "Envoi des évaluations" },
   { id: "stats", label: "Statistiques" },
   { id: "codes", label: "Codes horaires" },
+  { id: "mailbienvenue", label: "Mail de bienvenue" },
 ];
+
+// Onglets de 1er niveau (groupes) ; chaque groupe déroule ses sous-onglets.
+const TAB_GROUPS = [
+  { id: "dashboard", label: "Tableau de bord", tabs: ["dashboard"] },
+  { id: "etudiants", label: "Étudiants", tabs: ["dossier", "declarations", "evaluation"] },
+  { id: "service", label: "Gestion de service", tabs: ["planning", "stats"] },
+  { id: "parametres", label: "Paramètres", tabs: ["codes", "mailbienvenue"] },
+];
+
+// Modèle de mail de bienvenue par défaut (si le service n'en a pas configuré).
+// Variables disponibles : {prenom} {nom} {service} {du} {au} {code} {referent} {cadre}
+const DEFAULT_MAIL_BIENVENUE = {
+  objet: "Bienvenue en stage — {service}",
+  corps: `Bonjour {prenom},
+
+Nous avons le plaisir de vous accueillir en stage dans le service {service}, du {du} au {au}.
+
+Pour consulter votre planning et déclarer vos heures, connectez-vous à votre espace étudiant :
+https://joanth95.github.io/grist/
+Votre code d'accès personnel est : {code}
+
+Nous restons à votre disposition et vous souhaitons un excellent stage.
+
+{cadre}`,
+};
+
+// Page publique d'auto-inscription (l'étudiant renseigne lui-même son dossier).
+const ENROLL_URL = "https://joanth95.github.io/grist/entree-stage.html";
+
+// Modèle du mail d'invitation à s'inscrire (étudiant pas encore connu).
+// Variables : {prenom} {lien} {cadre}
+const DEFAULT_MAIL_INVITATION = {
+  objet: "Inscription à votre stage — espace étudiant",
+  corps: `Bonjour {prenom},
+
+Afin de préparer votre stage, merci de vous inscrire vous-même sur l'espace étudiant en suivant ce lien :
+{lien}
+
+Vous y renseignerez votre identité et vos dates de stage ; un code d'accès personnel vous sera alors communiqué pour consulter votre planning.
+
+{cadre}`,
+};
+
+const tabLabel = (id) => (TABS.find((t) => t.id === id) || {}).label || id;
+const groupOfTab = (tabId) => TAB_GROUPS.find((g) => g.tabs.includes(tabId)) || TAB_GROUPS[0];
 
 // Lien direct (?email=...&code=...) : permet d'ouvrir l'espace cadre déjà
 // connecté, sans ressaisir les identifiants (ex. lien fourni depuis Grist).
@@ -41,6 +87,7 @@ const state = {
   planningSel: null, // rectangle sélectionné dans la grille : { r1, c1, r2, c2 }
   statsStart: null, // début de la période du rapport d'activité (ISO)
   statsEnd: null, // fin de la période du rapport d'activité (ISO)
+  lastTabInGroup: {}, // groupId -> dernier sous-onglet consulté (mémorisé)
 };
 
 const DOSSIER_CATEGORIES = [
@@ -268,17 +315,41 @@ function studentsDuService(category) {
 }
 
 function renderMainTabs() {
+  const activeGroup = groupOfTab(state.activeTab);
+
+  // 1er niveau : les groupes.
   const bar = $("main-tabs");
   bar.innerHTML = "";
-  for (const tab of TABS) {
-    const btn = el("button", "main-tab" + (state.activeTab === tab.id ? " active" : ""), tab.label);
+  for (const g of TAB_GROUPS) {
+    const btn = el("button", "main-tab" + (g.id === activeGroup.id ? " active" : ""), g.label);
     btn.type = "button";
     btn.addEventListener("click", () => {
-      state.activeTab = tab.id;
+      const remembered = state.lastTabInGroup[g.id];
+      state.activeTab = g.tabs.includes(remembered) ? remembered : g.tabs[0];
       renderMainTabs();
       renderActiveTab();
     });
     bar.appendChild(btn);
+  }
+
+  // 2e niveau : les sous-onglets du groupe actif (masqué si un seul).
+  const subBar = $("main-subtabs");
+  subBar.innerHTML = "";
+  if (activeGroup.tabs.length > 1) {
+    subBar.hidden = false;
+    for (const tabId of activeGroup.tabs) {
+      const btn = el("button", "group-subtab" + (state.activeTab === tabId ? " active" : ""), tabLabel(tabId));
+      btn.type = "button";
+      btn.addEventListener("click", () => {
+        state.activeTab = tabId;
+        state.lastTabInGroup[activeGroup.id] = tabId;
+        renderMainTabs();
+        renderActiveTab();
+      });
+      subBar.appendChild(btn);
+    }
+  } else {
+    subBar.hidden = true;
   }
 }
 
@@ -290,6 +361,7 @@ function renderActiveTab() {
   $("tab-evaluation").hidden = state.activeTab !== "evaluation";
   $("tab-stats").hidden = state.activeTab !== "stats";
   $("tab-codes").hidden = state.activeTab !== "codes";
+  $("tab-mailbienvenue").hidden = state.activeTab !== "mailbienvenue";
   if (state.activeTab === "dashboard") renderDashboardTab();
   if (state.activeTab === "declarations") renderDeclarationsTab();
   if (state.activeTab === "dossier") renderDossierTab();
@@ -297,11 +369,13 @@ function renderActiveTab() {
   if (state.activeTab === "evaluation") renderEvaluationTab();
   if (state.activeTab === "stats") renderStatsTab();
   if (state.activeTab === "codes") renderCodesTab();
+  if (state.activeTab === "mailbienvenue") renderMailBienvenueTab();
 }
 
 /** Change d'onglet par programmation (clic sur une carte du tableau de bord). */
 function gotoTab(tabId) {
   state.activeTab = tabId;
+  state.lastTabInGroup[groupOfTab(tabId).id] = tabId;
   renderMainTabs();
   renderActiveTab();
 }
@@ -847,6 +921,40 @@ function renderDossierTab() {
 
   const container = $("dossier-list");
   container.innerHTML = "";
+
+  const actions = el("div", "dossier-actions");
+  const inscrireBtn = el("button", "btn btn-primary", "+ Inscrire un étudiant");
+  inscrireBtn.type = "button";
+  inscrireBtn.addEventListener("click", () => openInscriptionDialog(null));
+  actions.appendChild(inscrireBtn);
+
+  const inviteBtn = el("button", "btn btn-ghost", "✉ Inviter à s'inscrire");
+  inviteBtn.type = "button";
+  inviteBtn.addEventListener("click", () => openInviteDialog());
+  actions.appendChild(inviteBtn);
+  container.appendChild(actions);
+
+  // Recherche : éviter les doublons en vérifiant si l'étudiant existe déjà
+  // (y compris passé dans un autre service, donc absent de la liste ci-dessous).
+  const searchBar = el("div", "dossier-search-bar");
+  const searchInput = document.createElement("input");
+  searchInput.type = "search";
+  searchInput.className = "dossier-search";
+  searchInput.placeholder = "Rechercher un étudiant existant (nom, prénom ou code)…";
+  searchInput.value = state.dossierSearchQuery || "";
+  const searchBtn = el("button", "btn btn-ghost", "Rechercher");
+  searchBtn.type = "button";
+  searchBar.append(searchInput, searchBtn);
+  container.appendChild(searchBar);
+  const searchResults = el("div", "dossier-search-results");
+  container.appendChild(searchResults);
+
+  const doSearch = () => rechercherEtudiants(searchInput.value, searchResults);
+  searchBtn.addEventListener("click", doSearch);
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); doSearch(); }
+  });
+
   const students = studentsDuService(state.dossierCategory);
 
   if (!students.length) {
@@ -874,6 +982,17 @@ function renderDossierTab() {
     const metaParts = [st.etudiant.formation, st.etudiant.centre].filter(Boolean);
     if (metaParts.length) header.appendChild(el("div", "etu-meta", metaParts.join(" · ")));
     card.appendChild(header);
+
+    const cardActions = el("div", "etu-card-actions");
+    const addStageBtn = el("button", "btn btn-ghost btn-small", "+ Ajouter un stage");
+    addStageBtn.type = "button";
+    addStageBtn.addEventListener("click", () => openInscriptionDialog(st.etudiant));
+    cardActions.appendChild(addStageBtn);
+    const mailBtn = el("button", "btn btn-ghost btn-small", "✉ Mail de bienvenue");
+    mailBtn.type = "button";
+    mailBtn.addEventListener("click", () => envoyerMailBienvenue(st));
+    cardActions.appendChild(mailBtn);
+    card.appendChild(cardActions);
 
     // Historique complet des périodes de l'étudiant dans le service
     // actuellement sélectionné (pas les autres services accessibles au
@@ -2070,6 +2189,286 @@ ${p.Lien_evaluation}
 
 Vos réponses restent confidentielles. Merci pour votre implication durant ce stage.`;
   return `mailto:${encodeURIComponent(p.Etudiant.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Inscription par le cadre (nouvel étudiant ou ajout de stage)        */
+/* ------------------------------------------------------------------ */
+
+const inscriptionDialog = $("inscription-dialog");
+let inscriptionEtudiantId = null; // null = nouvel étudiant ; sinon id existant
+
+function fillSelect(sel, values, selected) {
+  sel.innerHTML = values.map((v) =>
+    `<option value="${escapeHtml(v)}" ${v === selected ? "selected" : ""}>${escapeHtml(v)}</option>`).join("");
+}
+
+/** Ouvre le dialogue d'inscription. student=null -> nouvel étudiant (formulaire
+ *  identité) ; sinon -> ajout d'un stage à un étudiant déjà connu. */
+function openInscriptionDialog(student) {
+  inscriptionEtudiantId = student ? student.id : null;
+  const identity = $("insc-identity");
+
+  if (student) {
+    $("inscription-title").textContent = `Ajouter un stage — ${student.prenom} ${student.nom}`.trim();
+    identity.hidden = true;
+  } else {
+    $("inscription-title").textContent = "Inscrire un étudiant";
+    identity.hidden = false;
+    fillSelect($("insc-civilite"), state.data.civilites || [], "");
+    fillSelect($("insc-formation"), state.data.formations || [], "");
+    $("insc-prenom").value = "";
+    $("insc-nom").value = "";
+    $("insc-ddn").value = "";
+    $("insc-centre").value = "";
+    $("insc-email").value = "";
+    $("insc-tel").value = "";
+  }
+
+  $("insc-service").innerHTML = state.data.services.map((s) =>
+    `<option value="${s.id}" ${s.id === state.selectedServiceId ? "selected" : ""}>${escapeHtml(s.Nom)}</option>`).join("");
+  fillSelect($("insc-niveau"), state.data.niveaux || [], "");
+  $("insc-du").value = isoDate(new Date());
+  $("insc-au").value = "";
+  $("insc-referent").value = "";
+  $("insc-error").hidden = true;
+  $("insc-save-btn").textContent = student ? "Ajouter le stage" : "Inscrire";
+  inscriptionDialog.showModal();
+}
+
+$("insc-cancel-btn").addEventListener("click", () => inscriptionDialog.close());
+
+$("inscription-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = $("insc-error");
+  errEl.hidden = true;
+
+  const periode = {
+    Service: Number($("insc-service").value),
+    Du: $("insc-du").value,
+    Au: $("insc-au").value,
+    Niveau: $("insc-niveau").value,
+    Referent_pedagogique: $("insc-referent").value.trim(),
+  };
+
+  let body;
+  if (inscriptionEtudiantId) {
+    body = { etudiantId: inscriptionEtudiantId, periode };
+  } else {
+    body = {
+      Civilite: $("insc-civilite").value,
+      PRENOM: $("insc-prenom").value.trim(),
+      NOM: $("insc-nom").value.trim(),
+      DDN: $("insc-ddn").value,
+      FORMATION: $("insc-formation").value,
+      Centre_de_formation: $("insc-centre").value.trim(),
+      Adresse_mail: $("insc-email").value.trim(),
+      Numero_de_telephone: $("insc-tel").value.trim(),
+      periode,
+    };
+  }
+
+  const btn = $("insc-save-btn");
+  btn.disabled = true;
+  try {
+    const res = await api("POST", "/api/cadre/inscription", body);
+    inscriptionDialog.close();
+    if (!inscriptionEtudiantId && res && res.code) {
+      alert(`Étudiant inscrit ✅\n\nCode d'accès personnel : ${res.code}\n`
+        + `À communiquer à l'étudiant pour accéder à son espace.`);
+    }
+    // Afficher le service du nouveau stage et se placer dessus.
+    const svc = state.data.services.find((s) => s.id === periode.Service);
+    if (svc) { state.selectedServiceId = svc.id; state.selectedSite = svc.Site || "Autre"; }
+    await refresh();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/** Recherche d'un étudiant existant (endpoint worker) et rendu des résultats. */
+async function rechercherEtudiants(query, container) {
+  const q = (query || "").trim();
+  state.dossierSearchQuery = q;
+  container.innerHTML = "";
+  if (q.length < 2) {
+    container.appendChild(el("p", "save-hint", "Saisissez au moins 2 caractères."));
+    return;
+  }
+  container.appendChild(el("p", "save-hint", "Recherche en cours…"));
+  try {
+    const { resultats } = await api("GET", `/api/cadre/etudiants/recherche?q=${encodeURIComponent(q)}`);
+    container.innerHTML = "";
+    if (!resultats.length) {
+      const none = el("div", "search-none");
+      none.appendChild(el("span", "", `Aucun étudiant trouvé pour « ${q} ». Vous pouvez l'inscrire, ou l'inviter à s'inscrire lui-même.`));
+      const inv = el("button", "btn btn-ghost btn-small", "✉ Inviter à s'inscrire");
+      inv.type = "button";
+      inv.addEventListener("click", () => openInviteDialog());
+      none.appendChild(inv);
+      container.appendChild(none);
+      return;
+    }
+    container.appendChild(el("div", "dual-list-title",
+      `${resultats.length} étudiant${resultats.length > 1 ? "s" : ""} trouvé${resultats.length > 1 ? "s" : ""}`));
+    for (const r of resultats) {
+      const row = el("div", "pending-row");
+      const main = el("div", "pending-main");
+      const title = el("div", "sortie-title", `${r.prenom} ${r.nom}`.trim());
+      if (r.anonymat) {
+        title.append(" ");
+        title.appendChild(el("span", "anonymat-badge", r.anonymat));
+      }
+      if (r.dansMesServices) title.appendChild(badge("déjà dans vos services", "info"));
+      main.appendChild(title);
+      const meta = [r.formation, r.centre].filter(Boolean).join(" · ");
+      if (meta) main.appendChild(el("div", "sortie-meta", meta));
+      row.appendChild(main);
+
+      const addBtn = el("button", "btn btn-primary btn-small", "+ Ajouter un stage");
+      addBtn.type = "button";
+      addBtn.addEventListener("click", () => openInscriptionDialog({ id: r.id, prenom: r.prenom, nom: r.nom }));
+      row.appendChild(addBtn);
+      container.appendChild(row);
+    }
+  } catch (err) {
+    container.innerHTML = "";
+    container.appendChild(el("p", "error", err.message));
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Invitation à s'inscrire (mailto vers la page publique d'inscription) */
+/* ------------------------------------------------------------------ */
+
+const inviteDialog = $("invite-dialog");
+
+function openInviteDialog() {
+  $("invite-email").value = "";
+  $("invite-prenom").value = "";
+  $("invite-error").hidden = true;
+  inviteDialog.showModal();
+}
+
+$("invite-cancel-btn").addEventListener("click", () => inviteDialog.close());
+
+$("invite-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const email = $("invite-email").value.trim();
+  const prenom = $("invite-prenom").value.trim();
+  const vars = { prenom, lien: ENROLL_URL, cadre: (state.data.moi && state.data.moi.nom) || "" };
+  const objet = fillTemplate(DEFAULT_MAIL_INVITATION.objet, vars);
+  let corps = fillTemplate(DEFAULT_MAIL_INVITATION.corps, vars);
+  if (!prenom) corps = corps.replace(/Bonjour\s*,/, "Bonjour,");
+  inviteDialog.close();
+  window.location.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(objet)}&body=${encodeURIComponent(corps)}`;
+});
+
+/* ------------------------------------------------------------------ */
+/* Mail de bienvenue (mailto depuis le modèle du service)              */
+/* ------------------------------------------------------------------ */
+
+/** Remplace les variables {prenom}, {service}, … dans un modèle de texte. */
+function fillTemplate(str, vars) {
+  return String(str || "").replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== undefined ? vars[k] : m));
+}
+
+/** Période la plus pertinente pour le mail : en cours, sinon à venir, sinon la plus récente. */
+function periodePourMail(st) {
+  const ps = [...st.periodes].sort((a, b) => (b.Du || "").localeCompare(a.Du || ""));
+  return ps.find((p) => p.En_cours) || ps.find((p) => periodeCategory(p) === "avenir") || ps[0];
+}
+
+/** Ouvre le client mail pré-rempli avec le modèle de bienvenue du service. */
+function envoyerMailBienvenue(st) {
+  const p = periodePourMail(st);
+  const service = state.data.services.find((s) => s.id === (p ? p.Service : state.selectedServiceId));
+  const objetTpl = (service && service.Mail_objet) || DEFAULT_MAIL_BIENVENUE.objet;
+  const corpsTpl = (service && service.Mail_corps) || DEFAULT_MAIL_BIENVENUE.corps;
+  const vars = {
+    prenom: st.etudiant.prenom, nom: st.etudiant.nom,
+    service: service ? service.Nom : "",
+    du: p ? frDate(p.Du) : "", au: p ? frDate(p.Au) : "",
+    code: st.etudiant.anonymat || "",
+    referent: p ? (p.Referent_pedagogique || "") : "",
+    cadre: (state.data.moi && state.data.moi.nom) || "",
+  };
+  const email = st.etudiant.email || "";
+  if (!email && !confirm("Cet étudiant n'a pas d'adresse mail enregistrée. Ouvrir quand même le mail (vous saisirez le destinataire) ?")) {
+    return;
+  }
+  const url = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(fillTemplate(objetTpl, vars))}`
+    + `&body=${encodeURIComponent(fillTemplate(corpsTpl, vars))}`;
+  window.location.href = url;
+}
+
+/* ------------------------------------------------------------------ */
+/* Onglet Mail de bienvenue (configuration du modèle par service)      */
+/* ------------------------------------------------------------------ */
+
+function renderMailBienvenueTab() {
+  const container = $("mailbienvenue-content");
+  container.innerHTML = "";
+  const service = state.data.services.find((s) => s.id === state.selectedServiceId);
+  if (!service) return;
+
+  container.appendChild(el("p", "save-hint",
+    `Modèle propre au service « ${service.Nom} ». Variables disponibles : `
+    + "{prenom} {nom} {service} {du} {au} {code} {referent} {cadre}."));
+
+  const objetLabel = el("label", "", "Objet du mail");
+  const objetInput = document.createElement("input");
+  objetInput.type = "text";
+  objetInput.maxLength = 150;
+  objetInput.value = service.Mail_objet || DEFAULT_MAIL_BIENVENUE.objet;
+  objetLabel.appendChild(objetInput);
+
+  const corpsLabel = el("label", "", "Corps du mail");
+  const corpsInput = document.createElement("textarea");
+  corpsInput.rows = 12;
+  corpsInput.maxLength = 4000;
+  corpsInput.value = service.Mail_corps || DEFAULT_MAIL_BIENVENUE.corps;
+  corpsLabel.appendChild(corpsInput);
+
+  const form = el("div", "mail-form");
+  form.append(objetLabel, corpsLabel);
+  container.appendChild(form);
+
+  const hint = el("p", "save-hint", "");
+  const saveBtn = el("button", "btn btn-primary", "Enregistrer le modèle");
+  saveBtn.type = "button";
+  saveBtn.addEventListener("click", async () => {
+    saveBtn.disabled = true;
+    hint.textContent = "";
+    try {
+      const res = await api("PATCH", `/api/cadre/services/${service.id}/mail-bienvenue`,
+        { objet: objetInput.value.trim(), corps: corpsInput.value });
+      service.Mail_objet = res.objet;
+      service.Mail_corps = res.corps;
+      hint.textContent = "Modèle enregistré ✅";
+    } catch (err) {
+      hint.textContent = "Échec de l'enregistrement : " + err.message
+        + " — les colonnes Mail_bienvenue_objet / Mail_bienvenue_corps existent-elles dans Grist ?";
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  const resetBtn = el("button", "btn-link", "Réinitialiser au modèle par défaut");
+  resetBtn.type = "button";
+  resetBtn.style.marginLeft = "0.75rem";
+  resetBtn.addEventListener("click", () => {
+    objetInput.value = DEFAULT_MAIL_BIENVENUE.objet;
+    corpsInput.value = DEFAULT_MAIL_BIENVENUE.corps;
+  });
+
+  const actions = el("div", "");
+  actions.style.marginTop = "0.75rem";
+  actions.append(saveBtn, resetBtn);
+  container.append(actions, hint);
 }
 
 /* ------------------------------------------------------------------ */

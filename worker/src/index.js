@@ -187,6 +187,15 @@ async function route(request, env, ctx) {
       return withLog(env, ctx, who, "Déclaration créée pour un étudiant", "",
         () => creerSortiePourEtudiant(request, env, cadre));
     }
+    if (request.method === "POST" && path === "/api/cadre/inscription") {
+      return withLog(env, ctx, who, "Inscription / ajout de stage", "",
+        () => inscriptionParCadre(request, env, cadre));
+    }
+    if (request.method === "GET" && path === "/api/cadre/etudiants/recherche") {
+      logActivite(env, ctx, { ...who, action: "Recherche d'un étudiant",
+        detail: new URL(request.url).searchParams.get("q") || "" });
+      return rechercherEtudiants(request, env, cadre);
+    }
     const wm = path.match(/^\/api\/cadre\/planning\/(\d+)$/);
     if (request.method === "PATCH" && wm) {
       return withLog(env, ctx, who, "Modification du planning", `semaine #${wm[1]}`,
@@ -219,6 +228,11 @@ async function route(request, env, ctx) {
     if (request.method === "PATCH" && svm) {
       return withLog(env, ctx, who, "Modification des codes horaires du service", `service #${svm[1]}`,
         () => updateCodesService(request, env, cadre, Number(svm[1])));
+    }
+    const mbm = path.match(/^\/api\/cadre\/services\/(\d+)\/mail-bienvenue$/);
+    if (request.method === "PATCH" && mbm) {
+      return withLog(env, ctx, who, "Modification du mail de bienvenue", `service #${mbm[1]}`,
+        () => updateMailBienvenue(request, env, cadre, Number(mbm[1])));
     }
     if (request.method === "POST" && path === "/api/cadre/codes") {
       return withLog(env, ctx, who, "Création d'un code horaire", "",
@@ -567,8 +581,14 @@ async function buildCadrePayload(env, cadre) {
       Site: siteName(s, sitesById),
       // Codes horaires activés pour ce service (liste vide = tous les codes)
       Codes: refIds(s.fields.Codes_horaires),
+      // Modèle de mail de bienvenue propre au service (facultatif ; colonnes
+      // SERVICES.Mail_bienvenue_objet / Mail_bienvenue_corps, "" si absentes).
+      Mail_objet: s.fields.Mail_bienvenue_objet || "",
+      Mail_corps: s.fields.Mail_bienvenue_corps || "",
     })),
     niveaux: NIVEAUX,
+    formations: FORMATIONS,
+    civilites: CIVILITES,
     motifs: MOTIFS,
     rdvTypes: RDV_TYPES,
     moi: {
@@ -1254,15 +1274,27 @@ async function inscription(request, env) {
     studentRowId = created.records[0].id;
   }
 
+  const { semainesGenerees } = await creerPeriodeAvecSemaines(env, {
+    studentRowId, code, serviceId, du, au, niveau, referent,
+  });
+
+  return json({ code, dejaInscrit, semainesGenerees }, 201);
+}
+
+/**
+ * Crée une période de stage + les semaines de planning vides associées.
+ * Facteur commun entre l'inscription publique et l'inscription par le cadre.
+ * A_FAIRE = 35 h/semaine moins les jours fériés (accordés à l'étudiant).
+ */
+async function creerPeriodeAvecSemaines(env, { studentRowId, code, serviceId, du, au, niveau, referent }) {
   const duEpoch = Date.parse(du + "T00:00:00Z") / 1000;
   const auEpoch = Date.parse(au + "T00:00:00Z") / 1000;
 
-  // Heures à réaliser = 35 h/semaine, moins les jours fériés (accordés à l'étudiant).
-  const feriesIns = await gristAll(env, T_FERIES);
-  const feriesInsIso = feriesIns.map((f) => epochToIso(f.fields.Date)).filter(Boolean);
-  const aFaireInscription = Math.max(0,
+  const feries = await gristAll(env, T_FERIES);
+  const feriesIso = feries.map((f) => epochToIso(f.fields.Date)).filter(Boolean);
+  const aFaire = Math.max(0,
     HEURES_PAR_SEMAINE * nombreSemaines(duEpoch, auEpoch)
-    - HEURES_PAR_SEMAINE / 5 * nombreFeries(feriesInsIso, duEpoch, auEpoch));
+    - HEURES_PAR_SEMAINE / 5 * nombreFeries(feriesIso, duEpoch, auEpoch));
 
   const createdPeriode = await grist(env, "POST", `/tables/${T_PERIODES}/records`, {
     records: [{
@@ -1274,7 +1306,7 @@ async function inscription(request, env) {
         Niveau: niveau,
         Service: serviceId,
         Referent_pedagogique: referent,
-        A_FAIRE: aFaireInscription,
+        A_FAIRE: aFaire,
       },
     }],
   });
@@ -1282,9 +1314,148 @@ async function inscription(request, env) {
 
   // Génère une semaine de planning (vide) par semaine de stage,
   // que le service remplira ensuite dans Grist.
-  const nbSemaines = await genererSemaines(env, periodeId, du, au);
+  const semainesGenerees = await genererSemaines(env, periodeId, du, au);
+  return { periodeId, semainesGenerees };
+}
 
-  return json({ code, dejaInscrit, semainesGenerees: nbSemaines }, 201);
+/**
+ * Inscription par le cadre : soit un tout nouvel étudiant (identité complète,
+ * mêmes règles que l'inscription publique), soit l'ajout d'une période à un
+ * étudiant existant (body.etudiantId). Restreint aux services du cadre.
+ */
+async function inscriptionParCadre(request, env, cadre) {
+  const body = await request.json().catch(() => ({}));
+  const p = body.periode || {};
+  const serviceId = Number(p.Service);
+  if (!cadre.serviceIds.has(serviceId)) throw httpError(403, "Ce service ne vous est pas rattaché");
+  const service = cadre.services.find((s) => s.id === serviceId);
+  if (!service || !service.fields.Recoit_des_etudiant) throw httpError(400, "Ce service n'accueille pas d'étudiants");
+
+  const du = String(p.Du || "");
+  const au = String(p.Au || "");
+  const niveau = NIVEAUX.includes(p.Niveau) ? p.Niveau : "";
+  const referent = cleanText(p.Referent_pedagogique, 80);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(du) || !/^\d{4}-\d{2}-\d{2}$/.test(au)) throw httpError(400, "Dates de stage invalides");
+  if (du > au) throw httpError(400, "La fin du stage doit être après le début");
+
+  let studentRowId;
+  let code;
+
+  const etuIdFourni = body.etudiantId !== undefined && body.etudiantId !== null && body.etudiantId !== "";
+  if (etuIdFourni) {
+    // Étudiant déjà connu : on récupère son code anonymat existant.
+    const etuId = Number(body.etudiantId);
+    const rows = await gristFilter(env, T_ETUDIANTS, { id: [etuId] });
+    if (!rows.length) throw httpError(404, "Étudiant introuvable");
+    studentRowId = etuId;
+    code = (rows[0].fields.Anonymat || "").toUpperCase();
+    if (!code) throw httpError(400, "Cet étudiant n'a pas de code anonymat");
+  } else {
+    // Nouvel étudiant : mêmes validations que l'inscription publique.
+    const nom = cleanText(body.NOM, 80);
+    const prenom = cleanText(body.PRENOM, 80);
+    const ddn = String(body.DDN || "");
+    const civilite = CIVILITES.includes(body.Civilite) ? body.Civilite : "";
+    const formation = FORMATIONS.includes(body.FORMATION) ? body.FORMATION : "";
+    const centre = cleanText(body.Centre_de_formation, 120);
+    const email = cleanText(body.Adresse_mail, 120);
+    const telephone = cleanText(body.Numero_de_telephone, 20);
+
+    if (!nom || !prenom) throw httpError(400, "Nom et prénom obligatoires");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ddn)) throw httpError(400, "Date de naissance invalide");
+    if (!formation) throw httpError(400, "Formation obligatoire");
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw httpError(400, "Adresse mail invalide");
+
+    const [y, mo, d] = ddn.split("-");
+    code = (prenom[0] + d + mo + y.slice(2) + nom[0]).toUpperCase();
+
+    const existing = await gristFilter(env, T_ETUDIANTS, { Anonymat: [code] });
+    if (existing.length === 1) {
+      studentRowId = existing[0].id;
+    } else if (existing.length > 1) {
+      throw httpError(409, "Plusieurs dossiers correspondent à ce code : contactez l'administrateur");
+    } else {
+      const created = await grist(env, "POST", `/tables/${T_ETUDIANTS}/records`, {
+        records: [{ fields: {
+          NOM: nom,
+          PRENOM: prenom,
+          DDN: Date.parse(ddn + "T00:00:00Z") / 1000,
+          FORMATION: formation,
+          Civilite: civilite,
+          Centre_de_formation: centre,
+          Adresse_mail: email,
+          Numero_de_telephone: telephone,
+        } }],
+      });
+      studentRowId = created.records[0].id;
+    }
+  }
+
+  // Refus d'un doublon : même date de début sur le même service.
+  const duEpoch = Date.parse(du + "T00:00:00Z") / 1000;
+  const periodesEtu = await gristFilter(env, T_PERIODES, { Code_anonymat: [code] });
+  if (periodesEtu.some((per) => per.fields.Du === duEpoch && per.fields.Service === serviceId)) {
+    throw httpError(409, "Une période commençant à cette date existe déjà pour cet étudiant sur ce service");
+  }
+
+  const { periodeId, semainesGenerees } = await creerPeriodeAvecSemaines(env, {
+    studentRowId, code, serviceId, du, au, niveau, referent,
+  });
+  return json({ code, periodeId, semainesGenerees }, 201);
+}
+
+/**
+ * Recherche d'un étudiant (pour éviter les doublons avant de créer une période).
+ * Cherche dans TOUTE la base élèves par nom / prénom / code anonymat ; renvoie
+ * des champs volontairement minimaux (PAS de DDN ni de téléphone). Indique si
+ * l'étudiant a déjà un stage dans un des services du cadre.
+ */
+async function rechercherEtudiants(request, env, cadre) {
+  const q = (new URL(request.url).searchParams.get("q") || "").trim().toLowerCase();
+  if (q.length < 2) return json({ resultats: [] });
+
+  const [students, periodesAll] = await Promise.all([
+    gristAll(env, T_ETUDIANTS),
+    gristAll(env, T_PERIODES),
+  ]);
+  const dansMes = new Set(periodesAll
+    .filter((p) => cadre.serviceIds.has(p.fields.Service))
+    .map((p) => p.fields.Etudiant).filter(Boolean));
+
+  const norm = (s) => String(s || "").toLowerCase();
+  const resultats = students
+    .filter((e) => {
+      const nom = norm(e.fields.NOM);
+      const prenom = norm(e.fields.PRENOM);
+      const code = norm(e.fields.Anonymat);
+      return nom.includes(q) || prenom.includes(q) || code.includes(q)
+        || `${prenom} ${nom}`.includes(q) || `${nom} ${prenom}`.includes(q);
+    })
+    .slice(0, 25)
+    .map((e) => ({
+      id: e.id,
+      nom: e.fields.NOM || "",
+      prenom: e.fields.PRENOM || "",
+      anonymat: e.fields.Anonymat || "",
+      formation: e.fields.FORMATION || "",
+      centre: e.fields.Centre_de_formation || "",
+      dansMesServices: dansMes.has(e.id),
+    }));
+  return json({ resultats });
+}
+
+/** Le cadre configure le modèle de mail de bienvenue de son service
+ *  (colonnes SERVICES.Mail_bienvenue_objet / Mail_bienvenue_corps). */
+async function updateMailBienvenue(request, env, cadre, serviceId) {
+  if (!cadre.serviceIds.has(serviceId)) throw httpError(403, "Ce service ne vous est pas rattaché");
+  const body = await request.json().catch(() => ({}));
+  const objet = cleanText(body.objet, 150);
+  const corps = cleanText(body.corps, 4000);
+  await gristUpdate(env, T_SERVICES, serviceId, {
+    Mail_bienvenue_objet: objet,
+    Mail_bienvenue_corps: corps,
+  });
+  return json({ ok: true, objet, corps });
 }
 
 function cleanText(value, max) {

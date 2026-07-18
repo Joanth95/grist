@@ -6,16 +6,42 @@
   <title>Espace cadre</title>
   <link rel="stylesheet" href="styles.css?v=20">
   <style>
+    /* Pleine largeur (surcharge le max-width 860px de styles.css, uniquement ici) */
+    .content { max-width: none; padding: 0 2rem; }
+    .app-header { padding: 1rem 2rem; }
+    @media (max-width: 720px) { .content, .app-header { padding-left: 1rem; padding-right: 1rem; } }
+
+    .service-pickers { display: flex; gap: 1.25rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: 1.5rem; }
+    .service-pickers .cadre-service-select { flex: 1 1 280px; max-width: 460px; }
     .cadre-service-select { margin: 0 0 1rem; }
-    .cadre-service-select:last-of-type { margin-bottom: 1.5rem; }
     .cadre-service-select label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--gris-texte, #555); margin: 0 0 0.3rem; }
-    .cadre-service-select select { padding: 0.6rem 0.75rem; border: 1px solid var(--gris-bordure); border-radius: 4px; min-width: 100%; font-size: 0.95rem; background: var(--blanc); }
+    .cadre-service-select select { padding: 0.6rem 0.75rem; border: 1px solid var(--gris-bordure); border-radius: 4px; width: 100%; font-size: 0.95rem; background: var(--blanc); }
+
+    /* Sous-onglets (2e niveau) sous la barre de groupes */
+    .group-subtabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0 0 1.25rem; padding: 0.15rem 0 0.9rem; border-bottom: 1px solid var(--gris-bordure); }
+    .group-subtab { background: transparent; border: 1px solid var(--gris-bordure); border-radius: 999px; padding: 0.35rem 0.95rem; font-size: 0.9rem; font-weight: 600; color: var(--texte-doux); cursor: pointer; transition: background 0.15s, color 0.15s; }
+    .group-subtab:hover { background: var(--gris-fond); color: var(--texte); }
+    .group-subtab.active { background: var(--bleu); border-color: var(--bleu); color: var(--blanc); }
 
     .moi-info { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; margin: 0 0 1.5rem; padding: 1rem; background: var(--blanc); border: 1px solid var(--gris-bordure); border-radius: var(--radius); font-size: 0.9rem; }
     .moi-info .moi-nom { font-weight: 700; font-size: 1rem; }
     .moi-info .moi-tel { color: var(--texte-doux); }
     .moi-info input[type="tel"] { padding: 0.3rem 0.5rem; border: 1px solid var(--gris-bordure); border-radius: 4px; font-size: 0.9rem; width: 12rem; }
     .moi-info .btn-small { padding: 0.25rem 0.6rem; font-size: 0.82rem; }
+    .dossier-actions { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.75rem; }
+    .dossier-actions-hint { font-size: 0.82rem; color: var(--texte-doux); }
+    .dossier-search-bar { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+    .dossier-search { flex: 1 1 320px; max-width: 520px; padding: 0.55rem 0.7rem; border: 1px solid var(--gris-bordure); border-radius: 4px; font-size: 0.92rem; background: var(--blanc); color: var(--texte); }
+    .dossier-search-results:not(:empty) { background: var(--blanc); border: 1px solid var(--gris-bordure); border-radius: var(--radius); padding: 0.5rem 1rem; margin-bottom: 1.1rem; }
+    .search-none { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; font-size: 0.9rem; color: var(--texte-doux); padding: 0.4rem 0; }
+    .etu-card-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.6rem 0 0.1rem; }
+    .btn-small { padding: 0.3rem 0.7rem; font-size: 0.82rem; }
+    .mail-form { display: flex; flex-direction: column; gap: 0.9rem; margin: 0.9rem 0; }
+    .mail-form > label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; font-weight: 600; color: var(--texte-doux); }
+    .mail-form input, .mail-form textarea { padding: 0.55rem 0.65rem; border: 1px solid var(--gris-bordure); border-radius: 4px; font: inherit; font-size: 0.9rem; width: 100%; box-sizing: border-box; background: var(--blanc); color: var(--texte); }
+    .mail-form textarea { resize: vertical; line-height: 1.45; }
+    .insc-sep { border: none; border-top: 1px solid var(--gris-bordure); margin: 1rem 0; }
+    .insc-periode-title { font-weight: 700; font-size: 0.95rem; margin: 0.25rem 0 0.5rem; }
     .etu-card { background: var(--blanc); border-radius: var(--radius); box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 1rem 1.25rem; margin-bottom: 1rem; }
     .etu-header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; }
     .etu-nom { font-weight: 700; font-size: 1.05rem; }
@@ -176,9 +202,10 @@
     #print-header, #print-footer { display: none; }
     @media print {
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
-      .app-header, .moi-info, .cadre-service-select, .main-tabs, .planning-controls, .code-palette, .app-footer,
+      .app-header, .moi-info, .cadre-service-select, .service-pickers, .main-tabs, .group-subtabs,
+      .planning-controls, .code-palette, .app-footer,
       .planning-alertes, th.student-col .badge.warn, th.compteurs-col, td.compteurs-col, #tab-dashboard, #tab-declarations,
-      #tab-dossier, #tab-evaluation, #tab-stats, #tab-codes, .section-note { display: none !important; }
+      #tab-dossier, #tab-evaluation, #tab-stats, #tab-codes, #tab-mailbienvenue, .section-note { display: none !important; }
       #print-header { display: block; margin-bottom: 1rem; }
       #print-footer {
         display: block; margin-top: 16px; padding-top: 6px; border-top: 1px solid #ccc;
@@ -240,19 +267,22 @@
     </header>
 
     <main class="content">
-      <div class="cadre-service-select" id="cadre-site-select">
-        <label for="site-select">Site</label>
-        <select id="site-select"></select>
-      </div>
-      <div class="cadre-service-select">
-        <label for="service-select">Service</label>
-        <select id="service-select"></select>
+      <div class="service-pickers">
+        <div class="cadre-service-select" id="cadre-site-select">
+          <label for="site-select">Site</label>
+          <select id="site-select"></select>
+        </div>
+        <div class="cadre-service-select">
+          <label for="service-select">Service</label>
+          <select id="service-select"></select>
+        </div>
       </div>
 
       <div id="print-header"></div>
 
       <section>
         <div class="main-tabs" id="main-tabs"></div>
+        <div class="group-subtabs" id="main-subtabs" hidden></div>
 
         <div id="tab-dashboard">
           <p class="section-note">Vue d'ensemble de votre service : indicateurs clés, étudiants en cours et à venir, échéances. Cliquez sur une carte ou une ligne pour aller au détail.</p>
@@ -297,6 +327,11 @@
         <div id="tab-codes" hidden>
           <p class="section-note">Cliquez sur un code pour le faire passer d'une liste à l'autre, puis Enregistrer : seuls les codes « utilisés » seront proposés dans le planning de ce service. Vous pouvez aussi créer un nouveau code horaire.</p>
           <div id="codes-service-list" class="decl-card"></div>
+        </div>
+
+        <div id="tab-mailbienvenue" hidden>
+          <p class="section-note">Modèle de mail de bienvenue du service. Il est utilisé par le bouton « ✉ Mail de bienvenue » présent sur le dossier de chaque étudiant.</p>
+          <div id="mailbienvenue-content" class="decl-card" style="padding: 1rem 1.25rem;"></div>
         </div>
       </section>
 
@@ -412,6 +447,87 @@
     </form>
   </dialog>
 
+  <!-- Inscrire un étudiant / ajouter un stage -->
+  <dialog id="inscription-dialog">
+    <form id="inscription-form" method="dialog">
+      <h2 id="inscription-title">Inscrire un étudiant</h2>
+
+      <div id="insc-identity">
+        <div class="row">
+          <div>
+            <label for="insc-civilite">Civilité</label>
+            <select id="insc-civilite"></select>
+          </div>
+          <div>
+            <label for="insc-formation">Formation</label>
+            <select id="insc-formation"></select>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="insc-prenom">Prénom</label>
+            <input type="text" id="insc-prenom" maxlength="80" autocomplete="off">
+          </div>
+          <div>
+            <label for="insc-nom">Nom</label>
+            <input type="text" id="insc-nom" maxlength="80" autocomplete="off">
+          </div>
+        </div>
+        <label for="insc-ddn">Date de naissance</label>
+        <input type="date" id="insc-ddn">
+        <label for="insc-centre">Centre de formation (IFSI…) <span class="optional">(facultatif)</span></label>
+        <input type="text" id="insc-centre" maxlength="120" autocomplete="off">
+        <label for="insc-email">Adresse mail <span class="optional">(facultatif)</span></label>
+        <input type="email" id="insc-email" maxlength="120" autocomplete="off">
+        <label for="insc-tel">Téléphone <span class="optional">(facultatif)</span></label>
+        <input type="tel" id="insc-tel" maxlength="20" autocomplete="off">
+        <hr class="insc-sep">
+      </div>
+
+      <div class="insc-periode-title">Période de stage</div>
+      <label for="insc-service">Service</label>
+      <select id="insc-service"></select>
+      <div class="row">
+        <div>
+          <label for="insc-du">Du</label>
+          <input type="date" id="insc-du" required>
+        </div>
+        <div>
+          <label for="insc-au">Au</label>
+          <input type="date" id="insc-au" required>
+        </div>
+      </div>
+      <label for="insc-niveau">Niveau</label>
+      <select id="insc-niveau"></select>
+      <label for="insc-referent">Référent pédagogique (IFSI) <span class="optional">(facultatif)</span></label>
+      <input type="text" id="insc-referent" maxlength="80" autocomplete="off">
+
+      <p id="insc-error" class="error" hidden></p>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="insc-cancel-btn">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="insc-save-btn">Inscrire</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Inviter un étudiant à s'inscrire lui-même -->
+  <dialog id="invite-dialog">
+    <form id="invite-form" method="dialog">
+      <h2>Inviter un étudiant à s'inscrire</h2>
+      <p class="save-hint">L'étudiant recevra un lien vers la page d'inscription où il renseignera lui-même son dossier (identité et dates de stage).</p>
+      <label for="invite-email">Adresse mail de l'étudiant</label>
+      <input type="email" id="invite-email" maxlength="120" autocomplete="off" placeholder="prenom.nom@exemple.fr">
+      <label for="invite-prenom">Prénom <span class="optional">(facultatif)</span></label>
+      <input type="text" id="invite-prenom" maxlength="80" autocomplete="off">
+      <p id="invite-error" class="error" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="invite-cancel-btn">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="invite-send-btn">Ouvrir le mail</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Ajouter un rendez-vous formateur/tuteur -->
   <dialog id="rdv-dialog">
     <form id="rdv-form" method="dialog">
@@ -439,6 +555,6 @@
   </dialog>
 
   <script src="config.js?v=18"></script>
-  <script src="espace-cadre.js?v=24"></script>
+  <script src="espace-cadre.js?v=27"></script>
 </body>
 </html>
