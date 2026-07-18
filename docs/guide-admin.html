@@ -201,30 +201,6 @@
     </div>
   </footer>
 
-  <script>
-    (async () => {
-      try {
-        const url = (window.CONFIG && window.CONFIG.API_URL) || '';
-        if (!url) return;
-        const res = await fetch(url + '/config');
-        if (!res.ok) return;
-        const cfg = await res.json();
-        if (cfg.nom) {
-          document.querySelectorAll('.js-etab-nom').forEach(el => el.textContent = cfg.nom);
-          document.querySelectorAll('.js-etab').forEach(el => el.hidden = false);
-        }
-        if (cfg.description) {
-          document.querySelectorAll('.js-etab-desc').forEach(el => el.textContent = cfg.description);
-        }
-        if (cfg.logoId) {
-          const logoUrl = url + `/logo?v=${cfg.logoId}`;
-          document.querySelectorAll('.js-etab-logo').forEach(el => {
-            el.src = logoUrl;
-            el.hidden = false;
-          });
-        }
-      } catch (e) {}
-    })();
-  </script>
+  <script src="etablissement.js?v=22"></script>
 </body>
 </html>
