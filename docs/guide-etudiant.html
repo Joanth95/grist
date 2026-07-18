@@ -31,23 +31,10 @@
   </style>
 </head>
 <body>
-  <header class="fr-header">
-    <div class="fr-header-body">
-      <div class="brand-block">
-        <img class="js-etab-logo" alt="" hidden>
-        <div class="brand-logo js-etab" hidden>
-          <span class="js-etab-nom"></span>
-          <span class="motto js-etab-desc"></span>
-        </div>
-        <div class="brand-service">
-          <div class="service-title">Mode d'emploi</div>
-          <div class="service-tagline">Espace étudiant</div>
-        </div>
-      </div>
-      <div class="fr-header-tools">
-        <a class="btn btn-ghost" href="espace-cadre.html">Espace cadre</a>
-        <a class="btn btn-ghost" href="index.html">Espace étudiant</a>
-      </div>
+  <header class="fr-header" data-title="Mode d'emploi" data-tagline="Espace étudiant">
+    <div class="fr-header-tools">
+      <a class="btn btn-ghost" href="espace-cadre.html">Espace cadre</a>
+      <a class="btn btn-ghost" href="index.html">Espace étudiant</a>
     </div>
   </header>
 
@@ -159,33 +146,9 @@
     </div>
   </main>
 
-  <footer class="fr-footer">
-    <div class="fr-footer-inner">
-      <div class="fr-footer-top">
-        <img class="js-etab-logo" alt="" hidden>
-        <div class="brand-logo js-etab" hidden>
-          <span class="js-etab-nom"></span>
-          <span class="motto js-etab-desc"></span>
-        </div>
-        <p class="fr-footer-desc">
-          Application de suivi des stages étudiants développée par
-          <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant —
-          Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville.
-        </p>
-      </div>
-      <div class="fr-footer-links">
-        <a href="guide-etudiant.html">Mode d'emploi étudiant</a><span class="sep">·</span>
-        <a href="guide-cadre.html">Mode d'emploi cadre</a><span class="sep">·</span>
-        <a href="guide-admin.html">Guide administrateur</a><span class="sep">·</span>
-        <a href="https://grist.numerique.gouv.fr/o/chr-metz-thionville/qdm9zxQGmCPH/GESTION-ETUDIANT/" target="_blank" rel="noopener">Administration (Grist)</a>
-      </div>
-      <p class="fr-footer-mention">
-        <span class="beta-tag">Version bêta</span> — vos retours sont les bienvenus ·
-        © M. Joan THUILLIER — Tous droits réservés.
-      </p>
-    </div>
-  </footer>
+  <footer class="fr-footer"></footer>
 
+  <script src="layout.js?v=23"></script>
   <script src="etablissement.js?v=22"></script>
 </body>
 </html>

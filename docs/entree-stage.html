@@ -9,22 +9,9 @@
 <body>
 
   <section class="screen" id="form-screen">
-    <header class="fr-header">
-      <div class="fr-header-body">
-        <div class="brand-block">
-          <img class="js-etab-logo" alt="" hidden>
-          <div class="brand-logo js-etab" hidden>
-            <span class="js-etab-nom"></span>
-            <span class="motto js-etab-desc"></span>
-          </div>
-          <div class="brand-service">
-            <div class="service-title"><a href="index.html">Espace étudiant</a></div>
-            <div class="service-tagline js-etab-tagline">Suivi des stages étudiants</div>
-          </div>
-        </div>
-        <div class="fr-header-tools">
-          <a class="btn btn-ghost" href="index.html">← Retour à la connexion</a>
-        </div>
+    <header class="fr-header" data-title="Espace étudiant" data-title-href="index.html" data-tagline="Suivi des stages étudiants" data-tagline-dynamic>
+      <div class="fr-header-tools">
+        <a class="btn btn-ghost" href="index.html">← Retour à la connexion</a>
       </div>
     </header>
 
@@ -121,50 +108,12 @@
       </div>
     </div>
 
-    <footer class="fr-footer">
-      <div class="fr-footer-inner">
-        <div class="fr-footer-top">
-          <img class="js-etab-logo" alt="" hidden>
-          <div class="brand-logo js-etab" hidden>
-            <span class="js-etab-nom"></span>
-            <span class="motto js-etab-desc"></span>
-          </div>
-          <p class="fr-footer-desc">
-            Application de suivi des stages étudiants développée par
-            <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant —
-            Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville.
-          </p>
-        </div>
-        <div class="fr-footer-links">
-          <a href="guide-etudiant.html">Mode d'emploi étudiant</a><span class="sep">·</span>
-          <a href="guide-cadre.html">Mode d'emploi cadre</a><span class="sep">·</span>
-          <a href="guide-admin.html">Guide administrateur</a>
-        </div>
-        <p class="fr-footer-mention">
-          <span class="beta-tag">Version bêta</span> — vos retours sont les bienvenus ·
-          © M. Joan THUILLIER — Tous droits réservés.
-        </p>
-      </div>
-    </footer>
+    <footer class="fr-footer" data-no-admin></footer>
   </section>
 
   <!-- Confirmation -->
   <section class="screen" id="success-screen" hidden>
-    <header class="fr-header">
-      <div class="fr-header-body">
-        <div class="brand-block">
-          <img class="js-etab-logo" alt="" hidden>
-          <div class="brand-logo js-etab" hidden>
-            <span class="js-etab-nom"></span>
-            <span class="motto js-etab-desc"></span>
-          </div>
-          <div class="brand-service">
-            <div class="service-title"><a href="index.html">Espace étudiant</a></div>
-            <div class="service-tagline js-etab-tagline">Suivi des stages étudiants</div>
-          </div>
-        </div>
-      </div>
-    </header>
+    <header class="fr-header" data-title="Espace étudiant" data-title-href="index.html" data-tagline="Suivi des stages étudiants" data-tagline-dynamic></header>
 
     <div class="login-wrap">
       <div class="login-inner">
@@ -183,29 +132,11 @@
       </div>
     </div>
 
-    <footer class="fr-footer">
-      <div class="fr-footer-inner">
-        <div class="fr-footer-top">
-          <img class="js-etab-logo" alt="" hidden>
-          <div class="brand-logo js-etab" hidden>
-            <span class="js-etab-nom"></span>
-            <span class="motto js-etab-desc"></span>
-          </div>
-          <p class="fr-footer-desc">
-            Application de suivi des stages étudiants développée par
-            <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant —
-            Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville.
-          </p>
-        </div>
-        <p class="fr-footer-mention">
-          <span class="beta-tag">Version bêta</span> — vos retours sont les bienvenus ·
-          © M. Joan THUILLIER — Tous droits réservés.
-        </p>
-      </div>
-    </footer>
+    <footer class="fr-footer" data-no-admin></footer>
   </section>
 
   <script src="config.js?v=21"></script>
+  <script src="layout.js?v=23"></script>
   <script src="etablissement.js?v=22"></script>
   <script src="entree-stage.js?v=21"></script>
 </body>
