@@ -1009,11 +1009,10 @@ function renderDossierTab() {
     cardActions.appendChild(mailBtn);
     card.appendChild(cardActions);
 
-    // Historique complet des périodes de l'étudiant dans le service
-    // actuellement sélectionné (pas les autres services accessibles au
-    // cadre), toutes catégories confondues.
-    const allPeriodes = state.data.periodes.filter(
-      (p) => p.Etudiant.id === st.id && p.Service === state.selectedServiceId);
+    // Historique complet des périodes de l'étudiant, tous services confondus
+    // (parcours complet) ; seules celles du service sélectionné restent
+    // modifiables, les autres s'affichent en lecture seule.
+    const allPeriodes = state.data.periodes.filter((p) => p.Etudiant.id === st.id);
 
     const subTabs = el("div", "sub-tabs");
     const current = state.dossierSubTab[st.id] || "stages";
@@ -1038,9 +1037,9 @@ function renderDossierTab() {
   }
 }
 
-/** Sous-onglet "Historique des stages" : les périodes de l'étudiant dans le
- *  service sélectionné, du plus récent au plus ancien ; seul le stage en
- *  cours reste éditable, les autres s'affichent en lecture seule. */
+/** Sous-onglet "Historique des stages" : toutes les périodes de l'étudiant
+ *  (tous services), du plus récent au plus ancien ; seul le stage en cours du
+ *  service sélectionné reste éditable, le reste s'affiche en lecture seule. */
 function renderStagesFaits(allPeriodes) {
   const wrap = el("div", "");
   const periodes = [...allPeriodes].sort((a, b) => (b.Du || "").localeCompare(a.Du || ""));
@@ -1059,7 +1058,7 @@ function renderStagesFaits(allPeriodes) {
     item.appendChild(header);
 
     // La fiche n'est éditable que pour le stage en cours du service sélectionné.
-    const editable = p.En_cours;
+    const editable = p.En_cours && p.Service === state.selectedServiceId;
 
     const infoParts = [];
     if (!editable && p.Niveau) infoParts.push(p.Niveau);
@@ -1073,11 +1072,14 @@ function renderStagesFaits(allPeriodes) {
       item.appendChild(renderFiche(p));
     } else if (cat === "passe") {
       item.appendChild(el("p", "save-hint", "Stage terminé : la fiche n'est plus modifiable."));
+    } else if (p.Service !== state.selectedServiceId) {
+      item.appendChild(el("p", "save-hint",
+        "Stage dans un autre service : consultation seule."));
     }
 
     // Une période déclarée par erreur peut être supprimée tant que le stage
     // n'est pas terminé ; le planning hebdomadaire rattaché part avec elle.
-    if (cat !== "passe" && state.data.services.some((s) => s.id === p.Service)) {
+    if (cat !== "passe" && p.Service === state.selectedServiceId) {
       item.appendChild(renderSuppressionPeriode(p));
     }
     wrap.appendChild(item);
