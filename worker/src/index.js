@@ -503,9 +503,18 @@ async function getConfigEtablissement(env) {
       description: f.Description || "",
       sousTitre: f.Sous_titre || "",
       logoId: premierePieceJointe(f.Logo),
+      // Lien « Administration (Grist) » du pied de page (colonne facultative
+      // Url_document_grist ; vide -> le front garde son lien par défaut).
+      urlDocumentGrist: f.Url_document_grist || "",
+      // Texte du pied de page (colonne facultative Texte_pied_de_page ;
+      // vide -> le front garde son texte par défaut).
+      textePiedDePage: f.Texte_pied_de_page || "",
+      // Bandeau « Version bêta » (colonne bascule facultative
+      // Afficher_bandeau_beta ; colonne absente ou cochée -> affiché).
+      afficherBeta: f.Afficher_bandeau_beta !== false,
     });
   } catch {
-    return json({ nom: "", description: "", sousTitre: "", logoId: null });
+    return json({ nom: "", description: "", sousTitre: "", logoId: null, urlDocumentGrist: "", textePiedDePage: "", afficherBeta: true });
   }
 }
 
