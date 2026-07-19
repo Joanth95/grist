@@ -105,6 +105,17 @@ function periodeCategory(p) {
   return "passe";
 }
 
+/** Délai de grâce (jours) après la fin d'un stage avant verrouillage du
+ *  planning et des rendez-vous. Même valeur côté worker. */
+const JOURS_VERROU_PLANNING = 5;
+
+/** Vrai si le stage est terminé depuis plus de JOURS_VERROU_PLANNING jours :
+ *  planning en lecture seule, rendez-vous non supprimables. */
+function periodeVerrouillee(p) {
+  if (!p || !p.Au || p.En_cours) return false;
+  return isoDate(new Date()) > addDaysIso(p.Au, JOURS_VERROU_PLANNING);
+}
+
 /* ------------------------------------------------------------------ */
 /* API                                                                 */
 /* ------------------------------------------------------------------ */
@@ -1194,7 +1205,24 @@ function renderPlanningPersonnel(st) {
   }
 
   const p = periodes.find((x) => x.id === selectedId);
-  wrap.appendChild(renderMiniPlanning(p));
+  const verrou = periodeVerrouillee(p);
+
+  // Compteur d'heures du stage (fait / prévu / solde).
+  const heures = el("div", "sortie-meta");
+  const soldeTxt = `${p.Solde_heures > 0 ? "+" : ""}${formatH(p.Solde_heures)}`;
+  heures.textContent = `Heures effectuées : ${formatH(p.FAIT)} / ${formatH(p.A_FAIRE)} prévues · Solde ${soldeTxt}`;
+  heures.style.marginTop = "0.4rem";
+  wrap.appendChild(heures);
+
+  if (verrou) {
+    const notice = el("p", "empty",
+      "🔒 Stage terminé depuis plus de 5 jours : le planning, les déclarations et les "
+      + "rendez-vous sont verrouillés. En cas de besoin, contactez l'administrateur.");
+    notice.style.marginTop = "0.4rem";
+    wrap.appendChild(notice);
+  }
+
+  wrap.appendChild(renderMiniPlanning(p, verrou));
 
   const actions = el("div", "");
   actions.style.display = "flex";
@@ -1202,10 +1230,12 @@ function renderPlanningPersonnel(st) {
   actions.style.gap = "0.5rem";
   actions.style.marginTop = "0.6rem";
 
-  const declareBtn = el("button", "btn btn-primary", "+ Déclarer");
-  declareBtn.type = "button";
-  declareBtn.addEventListener("click", () => openSortieDialog(periodes, selectedId));
-  actions.appendChild(declareBtn);
+  if (!verrou) {
+    const declareBtn = el("button", "btn btn-primary", "+ Déclarer");
+    declareBtn.type = "button";
+    declareBtn.addEventListener("click", () => openSortieDialog(periodes, selectedId));
+    actions.appendChild(declareBtn);
+  }
 
   const printBtn = el("button", "btn btn-ghost", "🖨 Imprimer le planning");
   printBtn.type = "button";
@@ -1215,7 +1245,7 @@ function renderPlanningPersonnel(st) {
   wrap.appendChild(actions);
 
   wrap.appendChild(renderSortiesList(p));
-  wrap.appendChild(renderRdvsSection(p));
+  wrap.appendChild(renderRdvsSection(p, verrou));
   return wrap;
 }
 
@@ -1247,8 +1277,9 @@ async function imprimerPlanning(p, btn) {
   }
 }
 
-/** Section « Rendez-vous formateurs » d'une période : liste + bouton d'ajout. */
-function renderRdvsSection(p) {
+/** Section « Rendez-vous formateurs » d'une période : liste + bouton d'ajout.
+ *  Si `verrou`, la suppression n'est plus proposée (contacter l'administrateur). */
+function renderRdvsSection(p, verrou) {
   const wrap = el("div", "");
   wrap.style.marginTop = "1rem";
 
@@ -1258,10 +1289,12 @@ function renderRdvsSection(p) {
   head.style.justifyContent = "space-between";
   head.style.gap = "0.5rem";
   head.appendChild(el("div", "dual-list-title", "Rendez-vous formateurs / tuteur"));
-  const addBtn = el("button", "btn btn-ghost", "+ Rendez-vous");
-  addBtn.type = "button";
-  addBtn.addEventListener("click", () => openRdvDialog(p));
-  head.appendChild(addBtn);
+  if (!verrou) {
+    const addBtn = el("button", "btn btn-ghost", "+ Rendez-vous");
+    addBtn.type = "button";
+    addBtn.addEventListener("click", () => openRdvDialog(p));
+    head.appendChild(addBtn);
+  }
   wrap.appendChild(head);
 
   const rdvs = (state.data.rdvs || []).filter((r) => r.Periode === p.id)
@@ -1282,27 +1315,30 @@ function renderRdvsSection(p) {
     main.appendChild(el("div", "sortie-meta", meta.join(" · ")));
     row.appendChild(main);
 
-    const delBtn = el("button", "btn btn-ghost", "Supprimer");
-    delBtn.type = "button";
-    delBtn.addEventListener("click", async () => {
-      if (!confirm("Supprimer ce rendez-vous ?")) return;
-      delBtn.disabled = true;
-      try {
-        await api("DELETE", `/api/cadre/rdv/${r.id}`);
-        await refresh();
-      } catch (err) {
-        alert(err.message);
-        delBtn.disabled = false;
-      }
-    });
-    row.appendChild(delBtn);
+    if (!verrou) {
+      const delBtn = el("button", "btn btn-ghost", "Supprimer");
+      delBtn.type = "button";
+      delBtn.addEventListener("click", async () => {
+        if (!confirm("Supprimer ce rendez-vous ?")) return;
+        delBtn.disabled = true;
+        try {
+          await api("DELETE", `/api/cadre/rdv/${r.id}`);
+          await refresh();
+        } catch (err) {
+          alert(err.message);
+          delBtn.disabled = false;
+        }
+      });
+      row.appendChild(delBtn);
+    }
     wrap.appendChild(row);
   }
   return wrap;
 }
 
-/** Tableau du planning d'une seule période : une ligne par semaine. */
-function renderMiniPlanning(p) {
+/** Tableau du planning d'une seule période : une ligne par semaine.
+ *  Si `verrou`, les cases sont en lecture seule. */
+function renderMiniPlanning(p, verrou) {
   const weeks = state.data.semaines
     .filter((s) => s.Periode === p.id)
     .sort((a, b) => (a.Semaine_debut || "").localeCompare(b.Semaine_debut || ""));
@@ -1320,7 +1356,7 @@ function renderMiniPlanning(p) {
     const tr = document.createElement("tr");
     tr.appendChild(el("th", "", frDate(week.Semaine_debut)));
     DAYS.forEach((day) => {
-      tr.appendChild(codeCell(week.id, day, week[day] || null));
+      tr.appendChild(codeCell(week.id, day, week[day] || null, null, verrou));
     });
     tbody.appendChild(tr);
   }
@@ -1969,7 +2005,7 @@ function buildDayMap(periodeId) {
 /* Case de planning éditable (clic -> liste déroulante, comme dans Grist) */
 /* ------------------------------------------------------------------ */
 
-function codeCell(semaineId, jour, codeId, extraClass) {
+function codeCell(semaineId, jour, codeId, extraClass, readOnly) {
   const codeById = new Map(state.data.codes.map((c) => [c.id, c]));
   const td = document.createElement("td");
   td.className = "code-cell" + (extraClass ? " " + extraClass : "");
@@ -1981,6 +2017,13 @@ function codeCell(semaineId, jour, codeId, extraClass) {
     if (code) td.title = code.Libelle;
   }
   renderText();
+
+  if (readOnly) {
+    td.classList.add("locked");
+    td.title = (td.title ? td.title + " — " : "")
+      + "Planning verrouillé (stage terminé) : contactez l'administrateur";
+    return td;
+  }
 
   td.addEventListener("click", () => {
     const select = document.createElement("select");

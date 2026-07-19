@@ -772,6 +772,7 @@ async function creerSortiePourEtudiant(request, env, cadre) {
   const body = await request.json().catch(() => ({}));
   const periodeId = Number(body.periodeId);
   const periode = await ensurePeriodeInScope(env, cadre, periodeId);
+  verifierPeriodeNonVerrouillee(periode, "il n'est plus possible d'y déclarer des heures");
 
   const motif = String(body.Motif || "").trim().slice(0, 100);
   const date = String(body.Date || "");
@@ -850,6 +851,22 @@ async function validerSortie(request, env, cadre, rowId) {
   return json({ ok: true });
 }
 
+/** Délai de grâce (jours) après la fin d'un stage avant verrouillage du
+ *  planning et des rendez-vous. Même valeur côté espace-cadre.js. */
+const JOURS_VERROU_PLANNING = 5;
+
+/** Refuse la modification si le stage est terminé depuis plus de
+ *  JOURS_VERROU_PLANNING jours (Au est un epoch à minuit UTC). */
+function verifierPeriodeNonVerrouillee(periode, action) {
+  const au = periode.fields.Au;
+  if (typeof au !== "number" || periode.fields.En_cours) return;
+  const verrouA = au + (JOURS_VERROU_PLANNING + 1) * 86400;
+  if (Date.now() / 1000 >= verrouA) {
+    throw httpError(403, `Ce stage est terminé depuis plus de ${JOURS_VERROU_PLANNING} jours : `
+      + `${action}. En cas de besoin, contactez l'administrateur.`);
+  }
+}
+
 async function updatePlanningJour(request, env, cadre, semaineId) {
   const body = await request.json().catch(() => ({}));
   const jour = String(body.jour || "");
@@ -860,6 +877,7 @@ async function updatePlanningJour(request, env, cadre, semaineId) {
   const rows = await gristFilter(env, T_HEBDO, { id: [semaineId] });
   if (!rows.length) throw httpError(404, "Semaine introuvable");
   const periode = await ensurePeriodeInScope(env, cadre, rows[0].fields.Periode);
+  verifierPeriodeNonVerrouillee(periode, "son planning est verrouillé");
 
   if (codeId !== null) {
     const codes = await gristFilter(env, T_CODES, { id: [codeId] });
@@ -962,6 +980,8 @@ async function creerRdv(request, env, cadre) {
   const periodeId = Number(body.periodeId);
   const periode = await ensurePeriodeInScope(env, cadre, periodeId);
 
+  verifierPeriodeNonVerrouillee(periode, "il n'est plus possible d'y ajouter un rendez-vous");
+
   const type = cleanText(body.Type_de_rendez_vous, 80);
   const date = String(body.Date_rdv || "");
   if (!type) throw httpError(400, "Le type de rendez-vous est obligatoire");
@@ -984,7 +1004,8 @@ async function creerRdv(request, env, cadre) {
 async function supprimerRdv(env, cadre, rowId) {
   const rows = await gristFilter(env, T_RDV, { id: [rowId] });
   if (!rows.length) throw httpError(404, "Rendez-vous introuvable");
-  await ensurePeriodeInScope(env, cadre, rows[0].fields.Periode);
+  const periode = await ensurePeriodeInScope(env, cadre, rows[0].fields.Periode);
+  verifierPeriodeNonVerrouillee(periode, "ses rendez-vous ne peuvent plus être supprimés");
   await grist(env, "POST", `/tables/${T_RDV}/data/delete`, [rowId]);
   return json({ ok: true });
 }
