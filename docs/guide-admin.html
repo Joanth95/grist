@@ -47,9 +47,10 @@
       <a href="#pole">6. Cadres de pôle (CSS)</a>
       <a href="#codes">7. Codes horaires et jours fériés</a>
       <a href="#journal">8. Journal d'activité</a>
-      <a href="#satisfaction">9. Tableau de bord satisfaction</a>
-      <a href="#securite">10. Sécurité — points d'attention</a>
-      <a href="#technique">11. Déploiement technique</a>
+      <a href="#verrou">9. Verrouillage des stages terminés</a>
+      <a href="#satisfaction">10. Tableau de bord satisfaction</a>
+      <a href="#securite">11. Sécurité — points d'attention</a>
+      <a href="#technique">12. Déploiement technique</a>
     </nav>
 
     <section class="guide-section" id="principe" class="guide-section">
@@ -134,16 +135,23 @@
       <ul>
         <li>L'écriture est en <em>best-effort</em> : un échec du journal ne bloque jamais l'utilisateur ;</li>
         <li>Les lignes de plus de <strong>30 jours</strong> sont purgées automatiquement (à chaque connexion, par lots) — pas d'entretien manuel à prévoir.</li>
+        <li>Les actions sensibles y sont tracées, notamment la <strong>suppression d'une période</strong> par un cadre (bouton « Supprimer cette période » dans un dossier étudiant) : elle retire en cascade la période, son planning hebdomadaire et ses rendez-vous. Les semaines de planning devenues <strong>orphelines</strong> (période disparue) et vieilles de plus de 30 jours sont elles aussi purgées automatiquement.</li>
       </ul>
     </section>
 
+    <section class="guide-section" id="verrou">
+      <h2>9. Verrouillage des stages terminés</h2>
+      <p>Côté espace cadre, le planning personnel, les déclarations et les rendez-vous d'un stage se <strong>verrouillent automatiquement 5 jours après la fin du stage</strong> (interface et API). Passé ce délai, le cadre ne peut plus rien y modifier et voit un message l'invitant à <strong>vous contacter</strong>.</p>
+      <p>C'est volontaire : cela fige les données une fois le stage bouclé. Si une correction reste nécessaire au-delà de ce délai (erreur avérée, litige…), vous pouvez toujours intervenir <strong>directement dans le document Grist</strong>, qui n'est pas soumis à ce verrou.</p>
+    </section>
+
     <section class="guide-section" id="satisfaction">
-      <h2>9. Tableau de bord satisfaction</h2>
+      <h2>10. Tableau de bord satisfaction</h2>
       <p>Une page Grist dédiée (« Tableau de bord satisfaction ») affiche les résultats des questionnaires envoyés aux étudiants en fin de stage : KPI globaux (nombre de réponses, note moyenne, taux de recommandation), scores par thème, verbatims (points forts, axes, suggestions) et fréquentation par service. Deux champs de dates permettent de restreindre la période analysée.</p>
     </section>
 
     <section class="guide-section" id="securite">
-      <h2>10. Sécurité — points d'attention</h2>
+      <h2>11. Sécurité — points d'attention</h2>
       <ul>
         <li>Le <strong>code anonymat</strong> étudiant (1<sup>re</sup> lettre prénom + date de naissance + 1<sup>re</sup> lettre nom) est volontairement simple : c'est un choix assumé, les données accessibles se limitent au planning de stage de l'étudiant concerné.</li>
         <li>Le <strong>code d'accès cadre</strong> donne, lui, accès à toutes les données d'un service entier : il doit être long, aléatoire, transmis de façon confidentielle, et révoqué (décochez <span class="code">Utilisateur_de_l_outil</span>) dès qu'un cadre quitte ses fonctions.</li>
@@ -153,7 +161,7 @@
     </section>
 
     <section class="guide-section" id="technique">
-      <h2>11. Déploiement technique</h2>
+      <h2>12. Déploiement technique</h2>
       <p>Cette section concerne uniquement la personne qui héberge et maintient le code de l'application (pas la gestion quotidienne des services et des cadres, décrite ci-dessus).</p>
       <p>L'application repose sur trois briques : le site (GitHub Pages, dossier <span class="code">docs/</span>), un proxy (Cloudflare Worker, dossier <span class="code">worker/</span>) qui protège la clé API Grist, et le document Grist lui-même. Le détail des étapes (clé API, déploiement du worker, configuration du site, sécurisation de l'origine) est décrit dans le <span class="code">README.md</span> du dépôt ; pour déployer une copie de l'outil pour un autre service ou établissement, voir <span class="code">INSTALL.md</span>.</p>
       <div class="callout">En résumé : clé API Grist → secret Cloudflare (<span class="code">wrangler secret put GRIST_API_KEY</span>) → <span class="code">wrangler deploy</span> → URL du worker renseignée dans <span class="code">docs/config.js</span> → site publié via GitHub Pages.</div>
