@@ -26,6 +26,9 @@
    etablissement.js, qui remplit ensuite les .js-etab-* injectés ici. */
 
 (function () {
+  // Lien « Administration (Grist) » par défaut ; remplacé par la colonne
+  // ETABLISSEMENT.Url_document_grist (endpoint /api/config) via
+  // etablissement.js quand elle est renseignée (classe js-etab-admin).
   const GRIST_URL =
     "https://grist.numerique.gouv.fr/o/chr-metz-thionville/qdm9zxQGmCPH/GESTION-ETUDIANT/";
 
@@ -98,7 +101,7 @@
       '<div class="fr-footer-inner">' +
       '<div class="fr-footer-top">' +
       identiteHTML() +
-      '<p class="fr-footer-desc">' +
+      '<p class="fr-footer-desc js-etab-footer-desc">' +
       "Application de suivi des stages étudiants développée par " +
       "<strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant — " +
       "Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville." +
@@ -110,11 +113,11 @@
       '<a href="guide-admin.html">Guide administrateur</a>' +
       (avecAdmin
         ? '<span class="sep">·</span>' +
-          '<a href="' + GRIST_URL + '" target="_blank" rel="noopener">Administration (Grist)</a>'
+          '<a class="js-etab-admin" href="' + GRIST_URL + '" target="_blank" rel="noopener">Administration (Grist)</a>'
         : "") +
       "</div>" +
       '<p class="fr-footer-mention">' +
-      '<span class="beta-tag">Version bêta</span> — vos retours sont les bienvenus · ' +
+      '<span class="js-beta-mention"><span class="beta-tag">Version bêta</span> — vos retours sont les bienvenus · </span>' +
       "© M. Joan THUILLIER — Tous droits réservés." +
       "</p>" +
       "</div>";
