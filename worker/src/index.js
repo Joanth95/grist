@@ -94,7 +94,7 @@ const HEURES_PAR_SEMAINE = 35;
 
 export default {
   async fetch(request, env, ctx) {
-    const cors = corsHeaders(env);
+    const cors = corsHeaders(env, request);
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: cors });
     }
@@ -113,9 +113,16 @@ export default {
   },
 };
 
-function corsHeaders(env) {
+function corsHeaders(env, request) {
+  // ALLOWED_ORIGIN peut contenir plusieurs origines séparées par des virgules
+  const allowed = (env.ALLOWED_ORIGIN || "*").split(",").map((o) => o.trim());
+  const origin = request.headers.get("Origin");
+  const allowOrigin = allowed.includes("*")
+    ? "*"
+    : allowed.includes(origin) ? origin : allowed[0];
   return {
-    "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, X-Student-Code, X-Cadre-Email, X-Cadre-Code",
     "Access-Control-Max-Age": "86400",
@@ -512,9 +519,14 @@ async function getConfigEtablissement(env) {
       // Bandeau « Version bêta » (colonne bascule facultative
       // Afficher_bandeau_beta ; colonne absente ou cochée -> affiché).
       afficherBeta: f.Afficher_bandeau_beta !== false,
+      // Domaine mail de l'établissement (colonne facultative DOMAINE_MAIL,
+      // ex. "chu-exemple.fr" ou "@chu-exemple.fr") : ajuste les champs email
+      // du site (placeholder + complétion automatique). Vide -> comportement
+      // générique.
+      domaineMail: String(f.DOMAINE_MAIL || "").trim().replace(/^@+/, "").toLowerCase(),
     });
   } catch {
-    return json({ nom: "", description: "", sousTitre: "", logoId: null, urlDocumentGrist: "", textePiedDePage: "", afficherBeta: true });
+    return json({ nom: "", description: "", sousTitre: "", logoId: null, urlDocumentGrist: "", textePiedDePage: "", afficherBeta: true, domaineMail: "" });
   }
 }
 
