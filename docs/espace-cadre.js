@@ -790,7 +790,7 @@ function buildStatsReportHtml(s, service) {
     + distTable("Répartition par niveau", s.byNiveau)
     + distTable("Répartition par centre de formation", s.byCentre)
     + distTable("Répartition par formation", s.byFormation)
-    + `<footer>Rapport généré le ${genDate}${moi ? " par " + escapeHtml(moi) : ""} · Espace cadre — CHR Metz-Thionville</footer>`
+    + `<footer>Rapport généré le ${genDate}${moi ? " par " + escapeHtml(moi) : ""} · Espace cadre</footer>`
     + `</body></html>`;
 }
 
@@ -1984,7 +1984,7 @@ function updatePrintHeader(startKey, endKey) {
 
   $("print-footer").innerHTML =
     `Application développée par <strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant — `
-    + `Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville<br>`
+    + `pour l'établissement<br>`
     + `Version bêta ${APP_VERSION} — vos retours sont les bienvenus`;
 }
 

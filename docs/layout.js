@@ -104,7 +104,7 @@
       '<p class="fr-footer-desc js-etab-footer-desc">' +
       "Application de suivi des stages étudiants développée par " +
       "<strong>M. Joan THUILLIER</strong>, Cadre de Santé Apprenant — " +
-      "Pôle 9 Gérontologie-Gériatrie · CHR Metz-Thionville." +
+      "pour l'établissement." +
       "</p>" +
       "</div>" +
       '<div class="fr-footer-links">' +

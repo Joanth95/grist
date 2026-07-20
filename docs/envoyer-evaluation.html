@@ -67,7 +67,7 @@
   <div id="status">Sélectionnez une période de stage...</div>
 
 <script>
-  const EMAIL_FROM_NAME_FALLBACK = "Cadre de santé - CHR Metz-Thionville";
+  const EMAIL_FROM_NAME_FALLBACK = "Cadre de santé";
 
   let studentsById = null;
   let servicesById = null;
@@ -120,7 +120,7 @@
     }
   }
 
-  const ETABLISSEMENT = 'CHR Metz-Thionville';
+  const ETABLISSEMENT = 'Établissement';
   let lastEmail = null;
 
   grist.onRecord(async (record) => {
