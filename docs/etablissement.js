@@ -47,6 +47,22 @@
         el.hidden = true;
       });
     }
+    // Domaine mail de l'établissement (colonne facultative DOMAINE_MAIL) :
+    // ajuste les placeholders des champs email et complète automatiquement
+    // « prenom.nom » en « prenom.nom@domaine » à la sortie du champ.
+    if (cfg.domaineMail) {
+      const dom = cfg.domaineMail;
+      document.querySelectorAll('input[type="email"]').forEach((inp) => {
+        inp.placeholder = "prenom.nom@" + dom;
+        if (inp.dataset.domaineMailBranche) return;
+        inp.dataset.domaineMailBranche = "1";
+        inp.addEventListener("blur", () => {
+          const v = inp.value.trim();
+          if (v && !v.includes("@")) inp.value = v + "@" + dom;
+        });
+      });
+    }
+
     // Logo de l'établissement (pièce jointe Grist servie par le Worker) ;
     // ?v=<logoId> invalide le cache navigateur quand le logo change.
     const api2 = ((window.CONFIG && window.CONFIG.API_URL) || "").replace(/\/$/, "");
