@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mode d'emploi — Administrateurs</title>
-  <link rel="stylesheet" href="styles.css?v=22">
+  <link rel="stylesheet" href="styles.css?v=23">
   <script src="config.js?v=21"></script>
   <style>
     .guide-wrap{max-width:860px;margin:auto;padding:0 1rem}
@@ -159,6 +159,7 @@
         <li>Le <strong>code d'accès cadre</strong> donne, lui, accès à toutes les données d'un service entier : il doit être long, aléatoire, transmis de façon confidentielle, et révoqué (décochez <span class="code">Utilisateur_de_l_outil</span>) dès qu'un cadre quitte ses fonctions.</li>
         <li>La <strong>clé API Grist</strong> qui permet au site web de lire/écrire dans le document n'est jamais stockée dans le code : elle vit uniquement en secret côté Cloudflare Worker (proxy).</li>
         <li>Ni les étudiants ni les cadres ne peuvent accéder aux tables sensibles du document (autres services, autres pôles) : le proxy limite strictement chaque requête à leur périmètre.</li>
+        <li>Un <strong>journal d'activité</strong> (table <span class="code">JOURNAL_ACTIVITE</span>) trace, pour des raisons de sécurité, les connexions et les actions des utilisateurs (auteur, date, étudiant concerné, détail). Les lignes de plus de 30 jours sont purgées automatiquement.</li>
       </ul>
     </section>
 

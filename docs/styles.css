@@ -160,6 +160,12 @@ a { color: var(--bleu); }
 
 .hint { font-size: 0.8rem; color: var(--texte-doux); margin-top: 1.25rem; }
 
+.login-privacy {
+  font-size: 0.8rem; color: var(--texte-doux);
+  margin-top: 1.75rem; padding-top: 1rem;
+  border-top: 1px solid var(--gris-bordure);
+}
+
 /* Tuiles d'accès secondaires (façon fr-tile) */
 .fr-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.25rem; }
 .fr-tile {
