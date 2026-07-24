@@ -170,29 +170,37 @@ async function route(request, env, ctx) {
     const body = await request.json().catch(() => ({}));
     const cadre = await authenticateCadre(env, body.email, body.code);
 
-    // Code PIN auto-choisi : créé à la 1ʳᵉ connexion, redemandé ensuite.
-    // Colonnes gérées dans UTILISATEURS : PIN_hash (le PIN haché) et
-    // Reinit_PIN (case que l'admin coche dans Grist pour forcer un nouveau PIN).
-    await ensureColumns(env, T_UTILISATEURS, [
-      { id: "PIN_hash", label: "PIN (haché)", type: "Text" },
-      { id: "Reinit_PIN", label: "Réinitialiser le PIN", type: "Bool" },
-    ]);
-    const pin = typeof body.pin === "string" ? body.pin.trim() : "";
-    const storedPin = (cadre.fields.PIN_hash || "").trim();
-    const resetDemande = cadre.fields.Reinit_PIN === true;
-    if (!storedPin || resetDemande) {
-      // 1ʳᵉ connexion OU réinitialisation demandée : le PIN saisi devient le nouveau.
-      if (!/^\d{4,6}$/.test(pin)) {
-        throw httpError(400, storedPin
-          ? "Votre PIN a été réinitialisé : choisissez un nouveau code PIN de 4 à 6 chiffres"
-          : "Première connexion : choisissez un code PIN de 4 à 6 chiffres");
+    // Accès administrateur : une clé secrète forte (env.ADMIN_KEY) permet de se
+    // connecter à l'espace d'un cadre SANS son PIN (support / impersonation).
+    // Elle n'est jamais dans le mail d'invitation ; uniquement dans le lien
+    // admin (colonne Grist réservée). Le compte doit rester actif (vérifié plus haut).
+    const accesAdmin = isAdminKey(env, body.adminKey);
+
+    if (!accesAdmin) {
+      // Code PIN auto-choisi : créé à la 1ʳᵉ connexion, redemandé ensuite.
+      // Colonnes gérées dans UTILISATEURS : PIN_hash (le PIN haché) et
+      // Reinit_PIN (case que l'admin coche dans Grist pour forcer un nouveau PIN).
+      await ensureColumns(env, T_UTILISATEURS, [
+        { id: "PIN_hash", label: "PIN (haché)", type: "Text" },
+        { id: "Reinit_PIN", label: "Réinitialiser le PIN", type: "Bool" },
+      ]);
+      const pin = typeof body.pin === "string" ? body.pin.trim() : "";
+      const storedPin = (cadre.fields.PIN_hash || "").trim();
+      const resetDemande = cadre.fields.Reinit_PIN === true;
+      if (!storedPin || resetDemande) {
+        // 1ʳᵉ connexion OU réinitialisation demandée : le PIN saisi devient le nouveau.
+        if (!/^\d{4,6}$/.test(pin)) {
+          throw httpError(400, storedPin
+            ? "Votre PIN a été réinitialisé : choisissez un nouveau code PIN de 4 à 6 chiffres"
+            : "Première connexion : choisissez un code PIN de 4 à 6 chiffres");
+        }
+        const fields = { PIN_hash: await hashPin(pin) };
+        if (resetDemande) fields.Reinit_PIN = false; // consomme la demande de reset
+        await gristUpdate(env, T_UTILISATEURS, cadre.rowId, fields);
+      } else {
+        if (!pin) throw httpError(401, "Code PIN requis");
+        if (!(await verifyPin(pin, storedPin))) throw httpError(401, "Code PIN incorrect");
       }
-      const fields = { PIN_hash: await hashPin(pin) };
-      if (resetDemande) fields.Reinit_PIN = false; // consomme la demande de reset
-      await gristUpdate(env, T_UTILISATEURS, cadre.rowId, fields);
-    } else {
-      if (!pin) throw httpError(401, "Code PIN requis");
-      if (!(await verifyPin(pin, storedPin))) throw httpError(401, "Code PIN incorrect");
     }
 
     const payload = await buildCadrePayload(env, cadre);
@@ -201,6 +209,7 @@ async function route(request, env, ctx) {
       qui: (cadre.fields.Email || "").trim(),
       nom: cadreNomComplet(cadre),
       action: "Connexion",
+      detail: accesAdmin ? "accès administrateur (sans PIN)" : "",
     });
     purgeJournal(env, ctx);
     purgePlanningsOrphelins(env, ctx);
@@ -410,6 +419,22 @@ async function verifyPin(pin, stored) {
   let diff = 0;
   for (let i = 0; i < got.length; i++) diff |= got[i] ^ expected[i];
   return diff === 0;
+}
+
+/** Comparaison de chaînes à temps constant (évite les attaques temporelles). */
+function safeEqual(a, b) {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/** Vraie si `provided` correspond à la clé admin (secret env.ADMIN_KEY). */
+function isAdminKey(env, provided) {
+  const key = (env.ADMIN_KEY || "").trim();
+  if (!key) return false;
+  return safeEqual(typeof provided === "string" ? provided.trim() : "", key);
 }
 
 /** Crée les colonnes manquantes d'une table Grist (un seul GET, POST groupé).
