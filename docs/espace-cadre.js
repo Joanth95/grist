@@ -1,7 +1,7 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 /* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
-const APP_VERSION = "v28"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v33"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -320,8 +320,8 @@ function renderCadreInfo() {
         </div>
       </div>
       <div class="cadre-actions">
-        <button type="button" class="btn-link" id="moi-edit-btn">Modifier le numéro</button>
-        <button type="button" class="btn-link" id="moi-pin-btn">Changer mon code PIN</button>
+        <button type="button" class="btn btn-ghost btn-small" id="moi-edit-btn">Modifier le numéro</button>
+        <button type="button" class="btn btn-ghost btn-small" id="moi-pin-btn">Changer mon code PIN</button>
       </div>
     `;
     infoEl.innerHTML = infoText;
@@ -627,6 +627,7 @@ function renderDashboardTab() {
     }
     table.appendChild(tbody);
 
+    container.appendChild(el("div", "dash-section-title", "Étudiants en cours et à venir"));
     const wrap = el("div", "dash-table-wrap");
     wrap.appendChild(table);
     container.appendChild(wrap);
@@ -645,7 +646,7 @@ function gotoDossierFor(p) {
 /** Section « Échéances (14 prochains jours) » : fins/débuts de stage + RDV. */
 function renderEcheances() {
   const wrap = el("div", "echeances");
-  wrap.appendChild(el("div", "dual-list-title", "Échéances (14 prochains jours)"));
+  wrap.appendChild(el("div", "dash-section-title", "Échéances (14 prochains jours)"));
 
   const today = isoDate(new Date());
   const limit = addDaysIso(today, 14);
