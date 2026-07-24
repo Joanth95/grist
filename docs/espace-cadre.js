@@ -267,17 +267,33 @@ function render() {
 
 let moiEditing = false;
 
+function cadreInitials(nom) {
+  const cleaned = (nom || "").replace(/^(mr|mme|mlle|m\.?)\s+/i, "").trim();
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
 function renderCadreInfo() {
   const moi = state.data.moi || {};
   const infoEl = $("cadre-info");
+  const avatar = `<span class="cadre-avatar" aria-hidden="true">${escapeHtml(cadreInitials(moi.nom))}</span>`;
   let infoText = "";
 
   if (moiEditing) {
     infoText = `
-      <span class="cadre-nom-edit">${escapeHtml(moi.nom || "")}</span>
-      <input type="tel" id="moi-tel-input" value="${escapeHtml(moi.telephone || "")}" placeholder="Numéro de téléphone" maxlength="30" style="width: 12rem; padding: 0.3rem 0.5rem; border: 1px solid var(--gris-bordure); border-radius: 4px; font-size: 0.9rem;">
-      <button type="button" class="btn btn-primary btn-small" id="moi-save-btn">Enregistrer</button>
-      <button type="button" class="btn btn-ghost btn-small" id="moi-cancel-btn">Annuler</button>
+      <div class="cadre-identity">
+        ${avatar}
+        <div class="cadre-identity-text">
+          <span class="cadre-nom-edit">${escapeHtml(moi.nom || "")}</span>
+          <input type="tel" id="moi-tel-input" class="cadre-tel-input" value="${escapeHtml(moi.telephone || "")}" placeholder="Numéro de téléphone" maxlength="30">
+        </div>
+      </div>
+      <div class="cadre-actions">
+        <button type="button" class="btn btn-primary btn-small" id="moi-save-btn">Enregistrer</button>
+        <button type="button" class="btn btn-ghost btn-small" id="moi-cancel-btn">Annuler</button>
+      </div>
     `;
     infoEl.innerHTML = infoText;
     $("moi-cancel-btn").addEventListener("click", () => { moiEditing = false; renderCadreInfo(); });
@@ -296,10 +312,17 @@ function renderCadreInfo() {
     });
   } else {
     infoText = `
-      <span class="cadre-nom">${escapeHtml(moi.nom || "")}</span>
-      ${moi.telephone ? `<span class="cadre-tel">${escapeHtml(moi.telephone)}</span>` : ""}
-      <button type="button" class="btn-link" id="moi-edit-btn">Modifier le numéro</button>
-      <button type="button" class="btn-link" id="moi-pin-btn">Changer mon code PIN</button>
+      <div class="cadre-identity">
+        ${avatar}
+        <div class="cadre-identity-text">
+          <span class="cadre-nom">${escapeHtml(moi.nom || "")}</span>
+          ${moi.telephone ? `<span class="cadre-tel">${escapeHtml(moi.telephone)}</span>` : ""}
+        </div>
+      </div>
+      <div class="cadre-actions">
+        <button type="button" class="btn-link" id="moi-edit-btn">Modifier le numéro</button>
+        <button type="button" class="btn-link" id="moi-pin-btn">Changer mon code PIN</button>
+      </div>
     `;
     infoEl.innerHTML = infoText;
     $("moi-edit-btn").addEventListener("click", () => { moiEditing = true; renderCadreInfo(); });

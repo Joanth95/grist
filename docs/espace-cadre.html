@@ -8,13 +8,15 @@
   <style>
     /* Pleine largeur (surcharge le max-width 860px de styles.css, uniquement ici) */
     .content { max-width: none; padding: 0 2rem; }
-    .app-header { padding: 0.8rem 2rem; justify-content: flex-start; gap: 1.5rem; }
-    @media (max-width: 720px) { .content, .app-header { padding-left: 1rem; padding-right: 1rem; } }
+    .fr-header-body { max-width: none; padding: 0.9rem 2rem; }
+    .app-header { padding: 0.85rem 2rem; justify-content: space-between; gap: 1.25rem; }
+    @media (max-width: 720px) { .content, .app-header, .fr-header-body { padding-left: 1rem; padding-right: 1rem; } }
+    @media (max-width: 640px) { .app-header { justify-content: flex-start; } .service-pickers { border-left: none; padding-left: 0; } }
 
-    .service-pickers { display: flex; gap: 1rem; flex-wrap: nowrap; align-items: flex-end; margin-top: 0.5rem; margin-bottom: 0; }
-    .service-pickers .cadre-service-select { flex: 0 1 200px; min-width: 0; }
+    .service-pickers { display: flex; gap: 1.1rem; flex-wrap: wrap; align-items: flex-end; margin: 0; padding-left: 1.25rem; border-left: 1px solid var(--gris-bordure); }
+    .service-pickers .cadre-service-select { flex: 0 1 190px; min-width: 0; }
     .cadre-service-select { margin: 0; }
-    .cadre-service-select label { display: block; font-size: 0.72rem; font-weight: 600; color: var(--gris-texte, #555); margin: 0 0 0.2rem; }
+    .cadre-service-select label { display: block; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--texte-doux); margin: 0 0 0.25rem; }
     .cadre-service-select select { padding: 0.4rem 0.6rem; border: 1px solid var(--gris-bordure); border-radius: 4px; width: 100%; font-size: 0.9rem; background: var(--blanc); }
 
     /* Sous-onglets (2e niveau) sous la barre de groupes */
@@ -23,11 +25,18 @@
     .group-subtab:hover { background: var(--gris-fond); color: var(--texte); }
     .group-subtab.active { background: var(--bleu); border-color: var(--bleu); color: var(--blanc); }
 
-    .moi-info { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; margin: 0 0 1.5rem; padding: 1rem; background: var(--blanc); border: 1px solid var(--gris-bordure); border-radius: var(--radius); font-size: 0.9rem; }
-    .moi-info .moi-nom { font-weight: 700; font-size: 1rem; }
-    .moi-info .moi-tel { color: var(--texte-doux); }
-    .moi-info input[type="tel"] { padding: 0.3rem 0.5rem; border: 1px solid var(--gris-bordure); border-radius: 4px; font-size: 0.9rem; width: 12rem; }
-    .moi-info .btn-small { padding: 0.25rem 0.6rem; font-size: 0.82rem; }
+    .cadre-info { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .cadre-identity { display: flex; align-items: center; gap: 0.7rem; }
+    .cadre-avatar { display: flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 2.3rem; height: 2.3rem; border-radius: 50%; background: var(--bleu); color: #fff; font-weight: 700; font-size: 0.8rem; letter-spacing: 0.02em; }
+    .cadre-identity-text { display: flex; flex-direction: column; gap: 0.05rem; line-height: 1.25; }
+    .cadre-nom, .cadre-nom-edit { font-weight: 700; font-size: 0.95rem; color: var(--texte); }
+    .cadre-tel { color: var(--texte-doux); font-size: 0.82rem; }
+    .cadre-tel-input { padding: 0.3rem 0.5rem; border: 1px solid var(--gris-bordure); border-radius: 4px; font-size: 0.85rem; width: 12rem; }
+    .cadre-actions { display: flex; align-items: center; gap: 0; padding-left: 1rem; border-left: 1px solid var(--gris-bordure); }
+    .cadre-actions .btn-link { padding: 0.3rem 0.7rem; border-radius: 4px; text-decoration: none; }
+    .cadre-actions .btn-link:hover { background: rgba(0, 0, 145, 0.06); text-decoration: underline; }
+    .cadre-actions .btn-small { padding: 0.3rem 0.7rem; font-size: 0.82rem; }
+    @media (max-width: 640px) { .cadre-actions { border-left: none; padding-left: 0; } }
     .dossier-actions { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.75rem; }
     .dossier-actions-hint { font-size: 0.82rem; color: var(--texte-doux); }
     .dossier-search-bar { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
@@ -67,11 +76,6 @@
     .nouveau-code-form input { padding: 0.4rem 0.5rem; border: 1px solid var(--gris-bordure); border-radius: 4px; font-size: 0.9rem; }
     .nouveau-code-form .checkbox-label { flex-direction: row; align-items: center; gap: 0.4rem; }
     .anonymat-badge { font-family: ui-monospace, monospace; font-weight: 700; background: var(--gris-fond); border: 1px solid var(--gris-bordure); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85rem; }
-
-    #cadre-info { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
-    .cadre-nom { font-weight: 700; font-size: 0.95rem; }
-    .cadre-nom-edit { font-weight: 700; font-size: 0.95rem; }
-    .cadre-tel { color: var(--texte-doux); font-size: 0.9rem; }
 
     .main-tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1.5rem 0 1rem; }
     .main-tab { background: var(--blanc); border: 1px solid var(--gris-bordure); border-bottom: 3px solid transparent; border-radius: var(--radius) var(--radius) 0 0; padding: 0.5rem 0.9rem; font-weight: 600; color: var(--texte-doux); cursor: pointer; font-size: 0.95rem; transition: color 0.15s; }
@@ -202,7 +206,7 @@
     .dist-val { flex: 0 0 auto; color: var(--texte-doux); font-variant-numeric: tabular-nums; }
 
     /* Alignement DSFR des champs définis localement ci-dessus */
-    .moi-info input[type="tel"], .cadre-service-select select, .dossier-search,
+    .cadre-tel-input, .cadre-service-select select, .dossier-search,
     .mail-form input, .mail-form textarea, .etu-fiche input, .etu-fiche select,
     .nouveau-code-form input, .planning-controls input[type="date"],
     .stats-controls input[type="date"] {
@@ -216,7 +220,7 @@
     @media print {
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
       .fr-header, .fr-notice, .fr-footer, .fr-header-tools,
-      .app-header, .moi-info, .cadre-service-select, .service-pickers, .main-tabs, .group-subtabs,
+      .app-header, .cadre-info, .cadre-service-select, .service-pickers, .main-tabs, .group-subtabs,
       .planning-controls, .code-palette, .app-footer,
       .planning-alertes, th.student-col .badge.warn, th.compteurs-col, td.compteurs-col, #tab-dashboard, #tab-declarations,
       #tab-dossier, #tab-inscription, #tab-evaluation, #tab-stats, #tab-codes, #tab-mailbienvenue, .section-note { display: none !important; }
@@ -306,7 +310,7 @@
     </header>
 
     <div class="app-header">
-      <p id="cadre-info" class="subtitle"></p>
+      <div id="cadre-info" class="cadre-info"></div>
       <div class="service-pickers">
         <div class="cadre-service-select" id="cadre-site-select">
           <label for="site-select">Site</label>
@@ -622,6 +626,6 @@
   <script src="config.js?v=21"></script>
   <script src="layout.js?v=24"></script>
   <script src="etablissement.js?v=23"></script>
-  <script src="espace-cadre.js?v=30"></script>
+  <script src="espace-cadre.js?v=31"></script>
 </body>
 </html>
