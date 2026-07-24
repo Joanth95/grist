@@ -273,6 +273,17 @@
             <p id="login-error" class="error" hidden></p>
           </form>
           <p class="hint">
+            <button type="button" class="btn-link" id="pin-forgot-btn">Code PIN oublié ?</button>
+          </p>
+          <div id="pin-forgot-info" class="fr-callout" hidden>
+            <p>Pour réinitialiser votre code PIN, contactez l'administrateur de l'application.
+              Une fois la réinitialisation effectuée, vous pourrez
+              <strong>choisir un nouveau PIN à votre prochaine connexion</strong>.</p>
+            <p style="margin-top:0.6rem">
+              <a id="pin-forgot-mail" class="btn btn-ghost btn-small" href="#">✉ Préparer un e-mail de demande</a>
+            </p>
+          </div>
+          <p class="hint">
             Besoin d'aide ? <a href="guide-cadre.html">Consultez le mode d'emploi</a>.
           </p>
           <p class="hint">
@@ -289,7 +300,7 @@
   <section id="app-screen" class="screen" hidden>
     <header class="fr-header" data-title="Espace cadre" data-tagline="Suivi des stages étudiants" data-tagline-dynamic>
       <div class="fr-header-tools header-actions">
-        <button id="refresh-btn" class="btn btn-ghost" title="Actualiser">🔄</button>
+        <button id="refresh-btn" class="btn btn-ghost" title="Rafraîchir la page">🔄 Rafraîchir</button>
         <button id="logout-btn" class="btn btn-ghost">Se déconnecter</button>
       </div>
     </header>
@@ -586,9 +597,31 @@
     </form>
   </dialog>
 
+  <!-- Changer son code PIN -->
+  <dialog id="pin-dialog">
+    <form id="pin-form" method="dialog">
+      <h2>Changer mon code PIN</h2>
+      <p class="save-hint">Choisissez un nouveau code à 4 à 6 chiffres. Il vous sera redemandé à chaque connexion.</p>
+      <label for="pin-current">Code PIN actuel</label>
+      <input type="password" id="pin-current" inputmode="numeric" autocomplete="off"
+             pattern="\d{4,6}" maxlength="6" placeholder="••••">
+      <label for="pin-new">Nouveau code PIN</label>
+      <input type="password" id="pin-new" inputmode="numeric" autocomplete="off"
+             pattern="\d{4,6}" minlength="4" maxlength="6" required placeholder="4 à 6 chiffres">
+      <label for="pin-new2">Confirmer le nouveau PIN</label>
+      <input type="password" id="pin-new2" inputmode="numeric" autocomplete="off"
+             pattern="\d{4,6}" minlength="4" maxlength="6" required placeholder="••••">
+      <p id="pin-error" class="error" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="pin-cancel-btn">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="pin-save-btn">Changer le PIN</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="config.js?v=21"></script>
   <script src="layout.js?v=24"></script>
   <script src="etablissement.js?v=23"></script>
-  <script src="espace-cadre.js?v=28"></script>
+  <script src="espace-cadre.js?v=29"></script>
 </body>
 </html>

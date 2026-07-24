@@ -184,6 +184,62 @@ $("refresh-btn").addEventListener("click", async () => {
   }
 });
 
+/* ------------------------------------------------------------------ */
+/* Code PIN : changement depuis l'espace + « oublié » sur la connexion  */
+/* ------------------------------------------------------------------ */
+
+function openPinDialog() {
+  $("pin-current").value = "";
+  $("pin-new").value = "";
+  $("pin-new2").value = "";
+  $("pin-error").hidden = true;
+  $("pin-dialog").showModal();
+}
+$("pin-cancel-btn").addEventListener("click", () => $("pin-dialog").close());
+$("pin-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const err = $("pin-error");
+  err.hidden = true;
+  const currentPin = $("pin-current").value.trim();
+  const newPin = $("pin-new").value.trim();
+  const newPin2 = $("pin-new2").value.trim();
+  if (!/^\d{4,6}$/.test(newPin)) {
+    err.textContent = "Le nouveau PIN doit comporter 4 à 6 chiffres."; err.hidden = false; return;
+  }
+  if (newPin !== newPin2) {
+    err.textContent = "Les deux nouveaux PIN ne correspondent pas."; err.hidden = false; return;
+  }
+  const btn = $("pin-save-btn");
+  btn.disabled = true;
+  try {
+    await api("PATCH", "/api/cadre/pin", { currentPin, newPin });
+    $("pin-dialog").close();
+    alert("Votre code PIN a été modifié.");
+  } catch (e2) {
+    err.textContent = e2.message; err.hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// « Code PIN oublié ? » sur l'écran de connexion : affiche la marche à suivre
+// et prépare un e-mail de demande (sans destinataire : le cadre y met son admin).
+const pinForgotBtn = $("pin-forgot-btn");
+if (pinForgotBtn) {
+  pinForgotBtn.addEventListener("click", () => {
+    const info = $("pin-forgot-info");
+    info.hidden = !info.hidden;
+    const mail = $("pin-forgot-mail");
+    if (mail) {
+      const subject = encodeURIComponent("Réinitialisation de mon code PIN — espace cadre");
+      const body = encodeURIComponent(
+        "Bonjour,\n\nJ'ai oublié mon code PIN pour l'espace cadre. Merci de le réinitialiser.\n\n" +
+        "Mon adresse e-mail de connexion : " + ($("login-email").value.trim() || "") + "\n");
+      mail.href = `mailto:?subject=${subject}&body=${body}`;
+    }
+  });
+}
+
 function enterApp() {
   $("login-screen").hidden = true;
   $("app-screen").hidden = false;
@@ -240,9 +296,11 @@ function renderCadreInfo() {
       <span class="cadre-nom">${escapeHtml(moi.nom || "")}</span>
       ${moi.telephone ? `<span class="cadre-tel">${escapeHtml(moi.telephone)}</span>` : ""}
       <button type="button" class="btn-link" id="moi-edit-btn">Modifier le numéro</button>
+      <button type="button" class="btn-link" id="moi-pin-btn">Changer mon code PIN</button>
     `;
     infoEl.innerHTML = infoText;
     $("moi-edit-btn").addEventListener("click", () => { moiEditing = true; renderCadreInfo(); });
+    $("moi-pin-btn").addEventListener("click", openPinDialog);
   }
 }
 
