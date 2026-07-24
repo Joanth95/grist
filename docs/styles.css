@@ -41,6 +41,9 @@ h2 { font-size: 1.15rem; margin: 0 0 1rem; }
 
 .subtitle { color: var(--texte-doux); margin: 0.2rem 0 0; font-size: 0.95rem; }
 
+.student-contact { color: var(--texte-doux); margin: 0.15rem 0 0; font-size: 0.85rem; }
+.student-contact .btn-link { margin-left: 0.6rem; }
+
 .screen { min-height: 100vh; display: flex; flex-direction: column; }
 .screen > .content, .screen > .login-wrap { flex: 1; }
 

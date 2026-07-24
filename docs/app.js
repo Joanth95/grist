@@ -84,8 +84,63 @@ function enterApp() {
   $("app-screen").hidden = false;
   const e = state.data.etudiant;
   $("student-name").textContent = `${e.prenom} ${e.nom}`.trim();
+  renderStudentContact();
   render();
 }
+
+/* ---------- Mes coordonnées (téléphone, e-mail) ---------- */
+
+function renderStudentContact() {
+  const e = state.data.etudiant;
+  const container = $("student-contact");
+  container.innerHTML = "";
+  const parts = [e.telephone, e.email].filter(Boolean);
+  if (parts.length) container.append(document.createTextNode(parts.join(" · ") + " "));
+  const editBtn = el("button", "btn-link", "Modifier mes coordonnées");
+  editBtn.type = "button";
+  editBtn.addEventListener("click", openProfilDialog);
+  container.appendChild(editBtn);
+}
+
+const profilDialog = $("profil-dialog");
+
+function openProfilDialog() {
+  const e = state.data.etudiant;
+  $("profil-tel").value = e.telephone || "";
+  $("profil-email").value = e.email || "";
+  $("profil-error").hidden = true;
+  profilDialog.showModal();
+}
+
+$("profil-cancel-btn").addEventListener("click", () => profilDialog.close());
+
+$("profil-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = $("profil-error");
+  errEl.hidden = true;
+
+  const telephone = $("profil-tel").value.trim();
+  const email = $("profil-email").value.trim();
+
+  const btn = $("profil-save-btn");
+  btn.disabled = true;
+  try {
+    await api("PATCH", "/api/profil", { Numero_de_telephone: telephone, Adresse_mail: email });
+    // L'e-mail sert de 2ᵉ facteur à chaque requête : on met à jour la session
+    // pour rester authentifié après un changement.
+    state.email = email;
+    if (email) sessionStorage.setItem("email", email);
+    else sessionStorage.removeItem("email");
+    profilDialog.close();
+    await refresh();
+    renderStudentContact();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 async function refresh() {
   state.data = await api("GET", "/api/data");

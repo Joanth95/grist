@@ -24,6 +24,7 @@
  *   POST   /api/sorties        { ... }         -> nouvelle déclaration
  *   DELETE /api/sorties/:id                    -> suppression d'une de SES déclarations
  *   POST   /api/periodes       { Service, Niveau, Du, Au } -> nouvelle période de stage (même étudiant)
+ *   PATCH  /api/profil  { Numero_de_telephone?, Adresse_mail? } -> modifie ses coordonnées
  *
  * Espace cadre (email + code d'accès personnel dans X-Cadre-Email / X-Cadre-Code,
  * UTILISATEURS.Code_acces) : un cadre voit/modifie les services dont il est le
@@ -331,6 +332,10 @@ async function route(request, env, ctx) {
     return withLog(env, ctx, whoE, "Nouvelle période de stage", "",
       (info) => creerPeriodeEtudiant(request, env, student, info));
   }
+  if (request.method === "PATCH" && path === "/api/profil") {
+    return withLog(env, ctx, whoE, "Modification de son profil", "",
+      (info) => updateProfilEtudiant(request, env, student, info));
+  }
 
   throw httpError(404, "Route inconnue");
 }
@@ -572,6 +577,8 @@ async function buildPayload(env, student) {
     etudiant: {
       prenom: student.fields.PRENOM || "",
       nom: student.fields.NOM || "",
+      telephone: student.fields.Numero_de_telephone || "",
+      email: student.fields.Adresse_mail || "",
     },
     motifs: MOTIFS,
     periodes: periodes.map((p) => {
@@ -1315,6 +1322,29 @@ async function updateProfilCadre(request, env, cadre, info) {
   await gristUpdate(env, T_UTILISATEURS, cadre.rowId, { Telephone: telephone });
   if (info) info.detail = `téléphone : ${telephone || "(vidé)"}`;
   return json({ ok: true, telephone });
+}
+
+/** L'étudiant modifie son propre téléphone et/ou e-mail (LISTE_DES_ETUDIANTS). */
+async function updateProfilEtudiant(request, env, student, info) {
+  const body = await request.json().catch(() => ({}));
+  if (body.Numero_de_telephone === undefined && body.Adresse_mail === undefined) {
+    throw httpError(400, "Aucune modification fournie");
+  }
+  const fields = {};
+  const details = [];
+  if (body.Numero_de_telephone !== undefined) {
+    fields.Numero_de_telephone = cleanText(body.Numero_de_telephone, 20);
+    details.push(`téléphone : ${fields.Numero_de_telephone || "(vidé)"}`);
+  }
+  if (body.Adresse_mail !== undefined) {
+    const email = cleanText(body.Adresse_mail, 120);
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw httpError(400, "Adresse mail invalide");
+    fields.Adresse_mail = email;
+    details.push(`e-mail : ${email || "(vidé)"}`);
+  }
+  await gristUpdate(env, T_ETUDIANTS, student.rowId, fields);
+  if (info) info.detail = details.join(" · ");
+  return json({ ok: true, telephone: fields.Numero_de_telephone, email: fields.Adresse_mail });
 }
 
 /** Heures comptabilisées un jour donné (réplique la formule Grist Total_h_semaine). */

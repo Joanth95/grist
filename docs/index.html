@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Espace étudiant</title>
-  <link rel="stylesheet" href="styles.css?v=23">
+  <link rel="stylesheet" href="styles.css?v=24">
 
 </head>
 <body>
@@ -87,6 +87,7 @@
         <div>
           <h1>Mon planning de stage</h1>
           <p id="student-name" class="subtitle"></p>
+          <p id="student-contact" class="student-contact"></p>
         </div>
         <button id="add-periode-btn" class="btn btn-ghost">+ Nouvelle période de stage</button>
       </div>
@@ -218,9 +219,31 @@
     </form>
   </dialog>
 
+  <!-- Modifier mes coordonnées -->
+  <dialog id="profil-dialog">
+    <form id="profil-form" method="dialog">
+      <h2>Mes coordonnées</h2>
+      <p class="section-note">Votre e-mail sert de 2ᵉ facteur à la connexion : si vous le changez,
+        vous devrez saisir la nouvelle adresse la prochaine fois.</p>
+
+      <label for="profil-tel">Numéro de téléphone <span class="optional">(facultatif)</span></label>
+      <input type="tel" id="profil-tel" maxlength="20" autocomplete="tel">
+
+      <label for="profil-email">Adresse e-mail <span class="optional">(facultatif)</span></label>
+      <input type="email" id="profil-email" maxlength="120" autocomplete="email">
+
+      <p id="profil-error" class="error" hidden></p>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="profil-cancel-btn">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="profil-save-btn">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="config.js?v=21"></script>
   <script src="layout.js?v=24"></script>
   <script src="etablissement.js?v=23"></script>
-  <script src="app.js?v=25"></script>
+  <script src="app.js?v=26"></script>
 </body>
 </html>
