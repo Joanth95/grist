@@ -837,10 +837,8 @@ async function buildCadrePayload(env, cadre) {
     },
     feries: feriesIso,
     periodes: [...periodes, ...periodesAutres].map((p) => {
-      // Volontairement PAS de date de naissance ni de numéro de téléphone
-      // personnel : ces données sont trop sensibles pour ce niveau de sécurité.
-      // Le code anonymat est en revanche nécessaire : c'est le cadre qui le
-      // redonne à un étudiant qui l'aurait oublié.
+      // Le code anonymat est nécessaire : c'est le cadre qui le redonne à un
+      // étudiant qui l'aurait oublié.
       const etu = etudiantsById.get(p.fields.Etudiant);
       const svc = servicesById.get(p.fields.Service);
       const fait = p.fields.FAIT ?? 0;
@@ -856,6 +854,8 @@ async function buildCadrePayload(env, cadre) {
           formation: etu ? etu.fields.FORMATION || "" : "",
           centre: etu ? etu.fields.Centre_de_formation || "" : "",
           email: etu ? etu.fields.Adresse_mail || "" : "",
+          telephone: etu ? etu.fields.Numero_de_telephone || "" : "",
+          ddn: etu ? epochToIso(etu.fields.DDN) : null,
           anonymat: etu ? etu.fields.Anonymat || "" : "",
         },
         Du: epochToIso(p.fields.Du),

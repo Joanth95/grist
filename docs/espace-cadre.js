@@ -1,7 +1,7 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 /* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
-const APP_VERSION = "v27"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v28"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -1097,6 +1097,12 @@ function renderDossierTab() {
     header.appendChild(left);
     const metaParts = [st.etudiant.formation, st.etudiant.centre].filter(Boolean);
     if (metaParts.length) header.appendChild(el("div", "etu-meta", metaParts.join(" · ")));
+    const contactParts = [st.etudiant.telephone, st.etudiant.email].filter(Boolean);
+    if (st.etudiant.ddn) {
+      const age = calculerAge(st.etudiant.ddn);
+      contactParts.push(`Né(e) le ${frDateCourt(st.etudiant.ddn)}${age != null ? ` (${age} ans)` : ""}`);
+    }
+    if (contactParts.length) header.appendChild(el("div", "etu-meta", contactParts.join(" · ")));
     card.appendChild(header);
 
     const cardActions = el("div", "etu-card-actions");
@@ -2723,6 +2729,17 @@ function frDateCourt(iso) {
   return new Date(iso + "T00:00:00").toLocaleDateString("fr-FR", {
     day: "2-digit", month: "2-digit", year: "numeric",
   });
+}
+
+function calculerAge(iso) {
+  if (!iso) return null;
+  const naissance = new Date(iso + "T00:00:00");
+  if (Number.isNaN(naissance.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - naissance.getFullYear();
+  const m = today.getMonth() - naissance.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < naissance.getDate())) age--;
+  return age;
 }
 
 function formatH(hours) {
