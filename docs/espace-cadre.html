@@ -5,34 +5,29 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Espace cadre</title>
   <script src="theme.js?v=1"></script>
-  <link rel="stylesheet" href="styles.css?v=24">
-  <link rel="stylesheet" href="theme-modern.css?v=1">
+  <link rel="stylesheet" href="styles.css?v=25">
+  <link rel="stylesheet" href="theme-modern.css?v=2">
   <style>
     /* Pleine largeur (surcharge le max-width 860px de styles.css, uniquement ici) */
     .content { max-width: none; padding: 0 2rem; }
     .fr-header-body { max-width: none; padding: 0.9rem 2rem; }
     @media (max-width: 720px) { .content, .fr-header-body { padding-left: 1rem; padding-right: 1rem; } }
 
-    /* ---------- Barre de contexte (identité cadre + site/service) ---------- */
-    .app-header {
-      background: var(--gris-fond);
-      border-bottom: 1px solid var(--gris-bordure);
-      padding: 1rem 2rem;
-      justify-content: space-between;
-      align-items: center;
-      gap: 1.5rem;
-    }
-    @media (max-width: 720px) { .app-header { padding-left: 1rem; padding-right: 1rem; } }
+    /* ---------- Barre de contexte (identité cadre + site/service) ----------
+       Fusionnée dans .fr-header-tools par etablissement.js
+       (relocateHeaderCadre), pour les deux thèmes : plus de barre à part. */
+    .app-header { display: none; }
 
-    .cadre-ctx-wrap { position: relative; margin: 0 0 0 auto; padding-left: 1.5rem; border-left: 1px solid var(--gris-bordure); }
+    .cadre-ctx-wrap { position: relative; }
     .cadre-ctx-btn { display: none; } /* bouton popover : uniquement en thème moderne */
-    .service-pickers { display: flex; gap: 1.1rem; flex-wrap: wrap; align-items: flex-end; }
-    .service-pickers .cadre-service-select { flex: 0 1 190px; min-width: 0; }
+    .app-icon-btn, #moi-logout-btn { display: none; } /* idem : uniquement en thème moderne */
+    .service-pickers { display: flex; gap: 1.1rem; flex-wrap: wrap; align-items: flex-end; padding-left: 1.25rem; border-left: 1px solid var(--gris-bordure); }
+    .service-pickers .cadre-service-select { flex: 0 1 170px; min-width: 0; }
     .cadre-service-select { margin: 0; }
     .cadre-service-select label { display: block; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--texte-doux); margin: 0 0 0.3rem; }
     .cadre-service-select select { padding: 0.5rem 0.65rem; border: 1px solid var(--gris-bordure); border-radius: 4px; width: 100%; font-size: 0.9rem; font-weight: 600; background: var(--blanc); cursor: pointer; }
     .cadre-service-select select:hover { border-color: var(--bleu); }
-    @media (max-width: 640px) { .app-header { justify-content: flex-start; } .cadre-ctx-wrap { border-left: none; padding-left: 0; margin-left: 0; width: 100%; } }
+    @media (max-width: 640px) { .service-pickers { border-left: none; padding-left: 0; } }
 
     /* ---------- Onglets (1er niveau : groupes) ---------- */
     .main-tabs { background: var(--gris-contraste); border-radius: 6px; padding: 0.3rem; display: inline-flex; gap: 0.2rem; }
@@ -50,7 +45,8 @@
     .group-subtab:hover { background: var(--gris-fond); color: var(--texte); }
     .group-subtab.active { background: var(--bleu); border-color: var(--bleu); color: var(--blanc); }
 
-    .cadre-info { display: flex; align-items: center; gap: 0.85rem; flex-wrap: wrap; }
+    .cadre-info { display: flex; align-items: center; gap: 0.85rem; flex-wrap: wrap; padding-left: 1.25rem; border-left: 1px solid var(--gris-bordure); }
+    html[data-theme="modern"] #cadre-info { border-left: none; padding-left: 0; }
     .cadre-popover { display: contents; } /* pas de "popover" en thème public : les enfants restent à plat */
     .cadre-avatar { display: flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 2.6rem; height: 2.6rem; border-radius: 50%; background: var(--bleu); color: #fff; font-weight: 700; font-size: 0.85rem; letter-spacing: 0.02em; }
     .cadre-identity-text { display: flex; flex-direction: column; gap: 0.1rem; line-height: 1.3; }
@@ -259,13 +255,35 @@
       box-shadow: none;
     }
 
+    /* ---------- En-tête : ligne unique (les deux thèmes) ---------- */
+    /* etablissement.js (relocateHeaderCadre) déplace #cadreCtxWrap,
+       #modernRefreshBtn et #cadre-info dans .fr-header-tools au chargement,
+       pour les deux thèmes — .app-header (désormais vide) reste masqué
+       (règle non-thémée ci-dessus). En thème moderne uniquement, les
+       #refresh-btn / #logout-btn d'origine s'effacent au profit de leurs
+       doublons (icône + menu avatar), qui les déclenchent en sous-main. */
+    html[data-theme="modern"] .fr-header-tools { gap: 0.6rem; }
+    html[data-theme="modern"] .fr-header-tools #refresh-btn,
+    html[data-theme="modern"] .fr-header-tools #logout-btn { display: none; }
+
     /* ---------- En-tête : avatar + popover identité ---------- */
-    html[data-theme="modern"] .app-header { background: var(--gris-fond); position: relative; z-index: 5; }
-    html[data-theme="modern"] #cadre-info { position: relative; cursor: pointer; border-radius: 999px; padding: 0.2rem; }
+    html[data-theme="modern"] .cadre-ctx-wrap { order: 1; }
+    html[data-theme="modern"] .app-icon-btn { order: 2; }
+    html[data-theme="modern"] #cadre-info { order: 3; position: relative; cursor: pointer; border-radius: 999px; padding: 0.2rem; }
     html[data-theme="modern"] #cadre-info:hover .cadre-avatar { box-shadow: 0 0 0 3px var(--info-bg); }
+    html[data-theme="modern"] .app-icon-btn {
+      display: flex; align-items: center; justify-content: center;
+      width: 2.3rem; height: 2.3rem; border-radius: 50%; border: none;
+      background: transparent; color: var(--texte-doux); cursor: pointer; transition: background 0.15s, color 0.15s;
+    }
+    html[data-theme="modern"] .app-icon-btn:hover { background: var(--gris-contraste); color: var(--texte); }
+    html[data-theme="modern"] #moi-logout-btn {
+      display: flex; color: var(--rouge); margin-top: 0.4rem; padding-top: 0.6rem; border-top: 1px solid var(--gris-bordure);
+    }
+    html[data-theme="modern"] #moi-logout-btn:hover { background: var(--m-danger-bg); }
     html[data-theme="modern"] .cadre-popover {
       display: flex; flex-direction: column; align-items: stretch;
-      position: absolute; top: calc(100% + 0.6rem); left: 0; z-index: 30;
+      position: absolute; top: calc(100% + 0.6rem); right: 0; z-index: 30;
       background: var(--blanc); border: 1px solid var(--gris-bordure); border-radius: 16px;
       box-shadow: 0 20px 45px -18px hsl(var(--m-shadow) / 0.4);
       padding: 0.9rem; min-width: 15rem;
@@ -279,7 +297,6 @@
     html[data-theme="modern"] .cadre-actions .btn:hover { background: var(--gris-contraste); }
 
     /* ---------- En-tête : bouton contexte + popover site/service ---------- */
-    html[data-theme="modern"] .cadre-ctx-wrap { border-left: none; padding-left: 0; }
     html[data-theme="modern"] .cadre-ctx-btn {
       display: flex; align-items: center; gap: 0.5rem;
       background: var(--blanc); border: 1.5px solid var(--gris-bordure); border-radius: 999px;
@@ -301,8 +318,6 @@
     html[data-theme="modern"] .cadre-ctx-wrap.ctx-open .service-pickers { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
     html[data-theme="modern"] .service-pickers .cadre-service-select { flex: 1 1 auto; }
     @media (max-width: 640px) {
-      html[data-theme="modern"] .app-header { justify-content: space-between; }
-      html[data-theme="modern"] .cadre-ctx-wrap { width: auto; }
       html[data-theme="modern"] .service-pickers { left: 0; right: 0; min-width: 0; }
     }
 
@@ -453,6 +468,9 @@
           </div>
         </div>
       </div>
+      <button type="button" class="app-icon-btn" id="modernRefreshBtn" title="Rafraîchir">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 11A8 8 0 1 0 18.5 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20 5v6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
     </div>
 
     <main class="content">
@@ -756,8 +774,8 @@
   </dialog>
 
   <script src="config.js?v=21"></script>
-  <script src="layout.js?v=24"></script>
-  <script src="etablissement.js?v=24"></script>
-  <script src="espace-cadre.js?v=34"></script>
+  <script src="layout.js?v=25"></script>
+  <script src="etablissement.js?v=27"></script>
+  <script src="espace-cadre.js?v=35"></script>
 </body>
 </html>

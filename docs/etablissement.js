@@ -9,6 +9,25 @@
 (function () {
   const KEY = "etablissement-config";
 
+  /* Espace cadre, thèmes public et moderne : fusionne les deux bandeaux en
+     déplaçant le contexte site/service et l'avatar dans .fr-header-tools
+     (même ligne que le titre de page), plutôt qu'une barre .app-header à
+     part. No-op sur les autres pages (éléments absents). */
+  function relocateHeaderCadre() {
+    // #app-screen a son propre .fr-header-tools, distinct de celui de
+    // #login-screen (toujours présent dans le DOM, même masqué) : cibler
+    // le bon pour ne pas déplacer les éléments dans l'en-tête invisible.
+    const tools = document.querySelector("#app-screen .fr-header-tools");
+    const ctxWrap = document.getElementById("cadreCtxWrap");
+    const iconBtn = document.getElementById("modernRefreshBtn");
+    const info = document.getElementById("cadre-info");
+    if (!tools || !ctxWrap || !iconBtn || !info) return;
+    if (tools.contains(info)) return; // déjà déplacé
+    tools.appendChild(ctxWrap);
+    tools.appendChild(iconBtn);
+    tools.appendChild(info);
+  }
+
   function fill(cfg) {
     if (!cfg) return;
     // Habillage du site : "public" (DSFR, défaut) ou "modern" (colonne
@@ -16,6 +35,7 @@
     // par le script inline en tête de page (cache localStorage) ; ici on
     // recale après la réponse réseau si elle diffère du cache.
     document.documentElement.setAttribute("data-theme", cfg.modeEtablissementPublic === false ? "modern" : "public");
+    relocateHeaderCadre();
     document.querySelectorAll(".js-etab").forEach((bloc) => {
       const nom = bloc.querySelector(".js-etab-nom");
       const desc = bloc.querySelector(".js-etab-desc");

@@ -76,6 +76,10 @@ a { color: var(--bleu); }
 /* Bloc-marque de l'établissement (rempli dynamiquement via /api/config) */
 .brand-block { display: flex; align-items: center; gap: 1.25rem; min-width: 0; }
 
+/* Monogramme d'application (généré par layout.js) : masqué en thème public
+   (DSFR) ; stylé en thème moderne (voir theme-modern.css). */
+.brand-mark { display: none; }
+
 /* Logo de l'établissement (pièce jointe Grist, table ETABLISSEMENT) */
 .js-etab-logo {
   display: block;

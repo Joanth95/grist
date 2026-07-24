@@ -1,7 +1,7 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 /* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
-const APP_VERSION = "v34"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v35"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -197,6 +197,10 @@ $("refresh-btn").addEventListener("click", async () => {
 const cadreCtxWrap = $("cadreCtxWrap");
 const cadreCtxBtn = $("cadreCtxBtn");
 
+// Doublon icône du bouton « Rafraîchir » du bandeau (visible uniquement en
+// thème moderne, à côté de l'avatar) : déclenche le même bouton.
+$("modernRefreshBtn").addEventListener("click", () => $("refresh-btn").click());
+
 $("cadre-info").addEventListener("click", (e) => {
   if (!e.target.closest(".cadre-avatar")) return;
   e.stopPropagation();
@@ -368,12 +372,16 @@ function renderCadreInfo() {
         <div class="cadre-actions">
           <button type="button" class="btn btn-ghost btn-small" id="moi-edit-btn">Modifier le numéro</button>
           <button type="button" class="btn btn-ghost btn-small" id="moi-pin-btn">Changer mon code PIN</button>
+          <button type="button" class="btn btn-ghost btn-small" id="moi-logout-btn">Se déconnecter</button>
         </div>
       </div>
     `;
     infoEl.innerHTML = infoText;
     $("moi-edit-btn").addEventListener("click", () => { moiEditing = true; renderCadreInfo(); });
     $("moi-pin-btn").addEventListener("click", openPinDialog);
+    // Doublon du bouton de déconnexion du bandeau (visible uniquement dans le
+    // menu avatar en thème moderne) : déclenche le même bouton, même logique.
+    $("moi-logout-btn").addEventListener("click", () => $("logout-btn").click());
   }
 }
 

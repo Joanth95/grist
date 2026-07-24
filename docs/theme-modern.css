@@ -70,6 +70,15 @@ html[data-theme="modern"] .code-display {
 }
 html[data-theme="modern"] .code-display { letter-spacing: 0.08em; }
 
+html[data-theme="modern"] .brand-mark {
+  display: flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  width: 2.6rem; height: 2.6rem; border-radius: 12px;
+  background: linear-gradient(155deg, var(--bleu), var(--bleu-hover));
+  color: var(--accent-contrast, #fff);
+  font-weight: 800; font-size: 0.85rem; letter-spacing: 0.02em;
+  font-family: "Avenir Next", "Century Gothic", -apple-system, "Segoe UI Semibold", Arial, sans-serif;
+}
+
 /* ---------- En-tête / bandeau / pied de page ---------- */
 html[data-theme="modern"] .fr-header {
   box-shadow: none;
