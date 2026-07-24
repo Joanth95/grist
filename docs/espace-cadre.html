@@ -4,7 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Espace cadre</title>
+  <script src="theme.js?v=1"></script>
   <link rel="stylesheet" href="styles.css?v=24">
+  <link rel="stylesheet" href="theme-modern.css?v=1">
   <style>
     /* Pleine largeur (surcharge le max-width 860px de styles.css, uniquement ici) */
     .content { max-width: none; padding: 0 2rem; }
@@ -22,13 +24,15 @@
     }
     @media (max-width: 720px) { .app-header { padding-left: 1rem; padding-right: 1rem; } }
 
-    .service-pickers { display: flex; gap: 1.1rem; flex-wrap: wrap; align-items: flex-end; margin: 0 0 0 auto; padding-left: 1.5rem; border-left: 1px solid var(--gris-bordure); }
+    .cadre-ctx-wrap { position: relative; margin: 0 0 0 auto; padding-left: 1.5rem; border-left: 1px solid var(--gris-bordure); }
+    .cadre-ctx-btn { display: none; } /* bouton popover : uniquement en thème moderne */
+    .service-pickers { display: flex; gap: 1.1rem; flex-wrap: wrap; align-items: flex-end; }
     .service-pickers .cadre-service-select { flex: 0 1 190px; min-width: 0; }
     .cadre-service-select { margin: 0; }
     .cadre-service-select label { display: block; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--texte-doux); margin: 0 0 0.3rem; }
     .cadre-service-select select { padding: 0.5rem 0.65rem; border: 1px solid var(--gris-bordure); border-radius: 4px; width: 100%; font-size: 0.9rem; font-weight: 600; background: var(--blanc); cursor: pointer; }
     .cadre-service-select select:hover { border-color: var(--bleu); }
-    @media (max-width: 640px) { .app-header { justify-content: flex-start; } .service-pickers { border-left: none; padding-left: 0; margin-left: 0; width: 100%; } }
+    @media (max-width: 640px) { .app-header { justify-content: flex-start; } .cadre-ctx-wrap { border-left: none; padding-left: 0; margin-left: 0; width: 100%; } }
 
     /* ---------- Onglets (1er niveau : groupes) ---------- */
     .main-tabs { background: var(--gris-contraste); border-radius: 6px; padding: 0.3rem; display: inline-flex; gap: 0.2rem; }
@@ -46,8 +50,8 @@
     .group-subtab:hover { background: var(--gris-fond); color: var(--texte); }
     .group-subtab.active { background: var(--bleu); border-color: var(--bleu); color: var(--blanc); }
 
-    .cadre-info { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
-    .cadre-identity { display: flex; align-items: center; gap: 0.85rem; }
+    .cadre-info { display: flex; align-items: center; gap: 0.85rem; flex-wrap: wrap; }
+    .cadre-popover { display: contents; } /* pas de "popover" en thème public : les enfants restent à plat */
     .cadre-avatar { display: flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 2.6rem; height: 2.6rem; border-radius: 50%; background: var(--bleu); color: #fff; font-weight: 700; font-size: 0.85rem; letter-spacing: 0.02em; }
     .cadre-identity-text { display: flex; flex-direction: column; gap: 0.1rem; line-height: 1.3; }
     .cadre-nom, .cadre-nom-edit { font-weight: 700; font-size: 1rem; color: var(--texte); }
@@ -236,6 +240,107 @@
       box-shadow: inset 0 -2px 0 0 var(--bordure-champ);
     }
 
+    /* ================================================================
+       Thème moderne (ETABLISSEMENT.Mode_etablissement_public décochée)
+       Sans effet en thème public : tout est scopé sous [data-theme="modern"].
+       Les tokens (couleurs, --radius) sont déjà redéfinis par theme-modern.css
+       et se répercutent automatiquement sur la plupart des composants
+       ci-dessus (cartes, badges, boutons…) ; ici, uniquement les ajustements
+       structurels propres à cette page.
+       ================================================================ */
+
+    html[data-theme="modern"] .cadre-tel-input, html[data-theme="modern"] .cadre-service-select select, html[data-theme="modern"] .dossier-search,
+    html[data-theme="modern"] .mail-form input, html[data-theme="modern"] .mail-form textarea, html[data-theme="modern"] .etu-fiche input, html[data-theme="modern"] .etu-fiche select,
+    html[data-theme="modern"] .nouveau-code-form input, html[data-theme="modern"] .planning-controls input[type="date"],
+    html[data-theme="modern"] .stats-controls input[type="date"] {
+      background: var(--blanc);
+      border: 1.5px solid var(--gris-bordure);
+      border-radius: 10px;
+      box-shadow: none;
+    }
+
+    /* ---------- En-tête : avatar + popover identité ---------- */
+    html[data-theme="modern"] .app-header { background: var(--gris-fond); position: relative; z-index: 5; }
+    html[data-theme="modern"] #cadre-info { position: relative; cursor: pointer; border-radius: 999px; padding: 0.2rem; }
+    html[data-theme="modern"] #cadre-info:hover .cadre-avatar { box-shadow: 0 0 0 3px var(--info-bg); }
+    html[data-theme="modern"] .cadre-popover {
+      display: flex; flex-direction: column; align-items: stretch;
+      position: absolute; top: calc(100% + 0.6rem); left: 0; z-index: 30;
+      background: var(--blanc); border: 1px solid var(--gris-bordure); border-radius: 16px;
+      box-shadow: 0 20px 45px -18px hsl(var(--m-shadow) / 0.4);
+      padding: 0.9rem; min-width: 15rem;
+      opacity: 0; transform: translateY(-6px) scale(0.98); pointer-events: none;
+      transition: opacity 0.15s ease, transform 0.15s ease;
+    }
+    html[data-theme="modern"] #cadre-info.ctx-open .cadre-popover { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+    html[data-theme="modern"] .cadre-popover .cadre-identity-text { padding: 0.2rem 0.4rem 0.7rem; border-bottom: 1px solid var(--gris-bordure); margin-bottom: 0.4rem; }
+    html[data-theme="modern"] .cadre-actions { flex-direction: column; align-items: stretch; gap: 0.15rem; border-left: none; padding-left: 0; margin-left: 0; }
+    html[data-theme="modern"] .cadre-actions .btn { display: flex; align-items: center; justify-content: flex-start; text-align: left; border-radius: 8px; padding: 0.5rem 0.6rem; }
+    html[data-theme="modern"] .cadre-actions .btn:hover { background: var(--gris-contraste); }
+
+    /* ---------- En-tête : bouton contexte + popover site/service ---------- */
+    html[data-theme="modern"] .cadre-ctx-wrap { border-left: none; padding-left: 0; }
+    html[data-theme="modern"] .cadre-ctx-btn {
+      display: flex; align-items: center; gap: 0.5rem;
+      background: var(--blanc); border: 1.5px solid var(--gris-bordure); border-radius: 999px;
+      padding: 0.45rem 0.8rem 0.45rem 0.65rem; font: inherit; font-size: 0.86rem; font-weight: 600; color: var(--texte);
+      cursor: pointer; transition: border-color 0.15s, background 0.15s;
+    }
+    html[data-theme="modern"] .cadre-ctx-btn:hover { border-color: var(--bleu); background: var(--info-bg); }
+    html[data-theme="modern"] .cadre-ctx-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--bleu); flex: none; }
+    html[data-theme="modern"] .cadre-ctx-chevron { color: var(--m-ink-faint); transition: transform 0.15s; flex: none; }
+    html[data-theme="modern"] .cadre-ctx-wrap.ctx-open .cadre-ctx-chevron { transform: rotate(180deg); }
+    html[data-theme="modern"] .service-pickers {
+      position: absolute; top: calc(100% + 0.6rem); right: 0; z-index: 30;
+      background: var(--blanc); border: 1px solid var(--gris-bordure); border-radius: 16px;
+      box-shadow: 0 20px 45px -18px hsl(var(--m-shadow) / 0.4);
+      padding: 0.9rem; min-width: 15rem; flex-direction: column; align-items: stretch; gap: 0.75rem;
+      opacity: 0; transform: translateY(-6px) scale(0.98); pointer-events: none;
+      transition: opacity 0.15s ease, transform 0.15s ease;
+    }
+    html[data-theme="modern"] .cadre-ctx-wrap.ctx-open .service-pickers { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+    html[data-theme="modern"] .service-pickers .cadre-service-select { flex: 1 1 auto; }
+    @media (max-width: 640px) {
+      html[data-theme="modern"] .app-header { justify-content: space-between; }
+      html[data-theme="modern"] .cadre-ctx-wrap { width: auto; }
+      html[data-theme="modern"] .service-pickers { left: 0; right: 0; min-width: 0; }
+    }
+
+    /* ---------- Onglets : soulignement plutôt que segments pleins ---------- */
+    html[data-theme="modern"] .main-tabs { background: transparent; border-radius: 0; padding: 0; border-bottom: 1px solid var(--gris-bordure); }
+    html[data-theme="modern"] .main-tab { border-radius: 0; padding: 0.75rem 0.9rem; box-shadow: none; position: relative; }
+    html[data-theme="modern"] .main-tab.active { background: transparent; }
+    html[data-theme="modern"] .main-tab.active::after {
+      content: ""; position: absolute; left: 0.9rem; right: 0.9rem; bottom: -1px; height: 2px;
+      background: var(--bleu); border-radius: 2px 2px 0 0;
+    }
+
+    /* ---------- KPI : pastille d'état plutôt que liseré épais ---------- */
+    html[data-theme="modern"] .kpi-card { border-left-width: 1px; border-left-color: var(--gris-bordure); box-shadow: 0 1px 3px hsl(var(--m-shadow) / 0.08); }
+    html[data-theme="modern"] .kpi-card::before { content: ""; display: block; width: 0.65rem; height: 0.65rem; border-radius: 50%; margin-bottom: 0.7rem; background: var(--m-line-strong); }
+    html[data-theme="modern"] .kpi-info::before { background: var(--bleu); }
+    html[data-theme="modern"] .kpi-ok::before { background: var(--succes); }
+    html[data-theme="modern"] .kpi-warn::before, html[data-theme="modern"] .kpi-pending::before { background: var(--alerte); }
+    html[data-theme="modern"] .kpi-danger::before { background: var(--rouge); }
+    html[data-theme="modern"] .kpi-card:hover { box-shadow: 0 16px 32px -18px hsl(var(--m-shadow) / 0.4); }
+
+    /* ---------- Échéances : chronologie ---------- */
+    html[data-theme="modern"] .echeances-list { gap: 0; }
+    html[data-theme="modern"] .echeance-item { position: relative; padding: 0.55rem 0 0.85rem 1.4rem; border-bottom: none; }
+    html[data-theme="modern"] .echeance-item::before {
+      content: ""; position: absolute; left: 0.15rem; top: 0.85rem; width: 7px; height: 7px;
+      border-radius: 50%; background: var(--bleu); box-shadow: 0 0 0 3px var(--info-bg);
+    }
+    html[data-theme="modern"] .echeance-item::after {
+      content: ""; position: absolute; left: 0.4rem; top: 1.1rem; bottom: -0.15rem; width: 1px; background: var(--m-line-strong);
+    }
+    html[data-theme="modern"] .echeance-item:last-child::after { display: none; }
+
+    @media (prefers-reduced-motion: reduce) {
+      html[data-theme="modern"] .cadre-popover, html[data-theme="modern"] .service-pickers,
+      html[data-theme="modern"] .cadre-ctx-chevron, html[data-theme="modern"] .kpi-card { transition: none; }
+    }
+
     #print-header, #print-footer { display: none; }
     @media print {
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
@@ -331,14 +436,21 @@
 
     <div class="app-header">
       <div id="cadre-info" class="cadre-info"></div>
-      <div class="service-pickers">
-        <div class="cadre-service-select" id="cadre-site-select">
-          <label for="site-select">Site</label>
-          <select id="site-select"></select>
-        </div>
-        <div class="cadre-service-select">
-          <label for="service-select">Service</label>
-          <select id="service-select"></select>
+      <div class="cadre-ctx-wrap" id="cadreCtxWrap">
+        <button type="button" class="cadre-ctx-btn" id="cadreCtxBtn" aria-haspopup="true" aria-expanded="false">
+          <span class="cadre-ctx-dot" aria-hidden="true"></span>
+          <span id="cadreCtxSummary"></span>
+          <svg class="cadre-ctx-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="service-pickers">
+          <div class="cadre-service-select" id="cadre-site-select">
+            <label for="site-select">Site</label>
+            <select id="site-select"></select>
+          </div>
+          <div class="cadre-service-select">
+            <label for="service-select">Service</label>
+            <select id="service-select"></select>
+          </div>
         </div>
       </div>
     </div>
@@ -645,7 +757,7 @@
 
   <script src="config.js?v=21"></script>
   <script src="layout.js?v=24"></script>
-  <script src="etablissement.js?v=23"></script>
-  <script src="espace-cadre.js?v=33"></script>
+  <script src="etablissement.js?v=24"></script>
+  <script src="espace-cadre.js?v=34"></script>
 </body>
 </html>

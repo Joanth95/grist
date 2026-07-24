@@ -11,6 +11,11 @@
 
   function fill(cfg) {
     if (!cfg) return;
+    // Habillage du site : "public" (DSFR, défaut) ou "modern" (colonne
+    // ETABLISSEMENT.Mode_etablissement_public décochée). Posé au plus tôt
+    // par le script inline en tête de page (cache localStorage) ; ici on
+    // recale après la réponse réseau si elle diffère du cache.
+    document.documentElement.setAttribute("data-theme", cfg.modeEtablissementPublic === false ? "modern" : "public");
     document.querySelectorAll(".js-etab").forEach((bloc) => {
       const nom = bloc.querySelector(".js-etab-nom");
       const desc = bloc.querySelector(".js-etab-desc");

@@ -675,9 +675,14 @@ async function getConfigEtablissement(env) {
       // du site (placeholder + complétion automatique). Vide -> comportement
       // générique.
       domaineMail: String(f.DOMAINE_MAIL || "").trim().replace(/^@+/, "").toLowerCase(),
+      // Habillage visuel du site (colonne bascule facultative
+      // Mode_etablissement_public ; colonne absente ou cochée -> rendu DSFR
+      // conforme aux conventions des services publics ; décochée -> habillage
+      // "moderne" alternatif). Défaut à true = comportement actuel inchangé.
+      modeEtablissementPublic: f.Mode_etablissement_public !== false,
     });
   } catch {
-    return json({ nom: "", description: "", sousTitre: "", logoId: null, urlDocumentGrist: "", textePiedDePage: "", afficherBeta: true, domaineMail: "" });
+    return json({ nom: "", description: "", sousTitre: "", logoId: null, urlDocumentGrist: "", textePiedDePage: "", afficherBeta: true, domaineMail: "", modeEtablissementPublic: true });
   }
 }
 

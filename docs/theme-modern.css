@@ -1,0 +1,208 @@
+/* Habillage "moderne" — alternative non-DSFR activée par la colonne Grist
+   ETABLISSEMENT.Mode_etablissement_public (décochée). Entièrement scopé sous
+   html[data-theme="modern"] : sans effet quand le thème est "public" (DSFR,
+   comportement par défaut). Chargé après styles.css sur toutes les pages
+   publiques ; les overrides spécifiques à l'espace cadre (contexte, avatar,
+   tableau de bord) vivent dans le <style> propre à espace-cadre.html.
+   © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
+
+/* ---------- Tokens ---------- */
+html[data-theme="modern"] {
+  --bleu: #0E7A72;
+  --bleu-hover: #0B5E58;
+  --rouge: #C1402F;
+  --gris-fond: #F3F6F5;
+  --gris-contraste: #EBF1F0;
+  --gris-bordure: #E1E8E6;
+  --bordure-champ: #C9D6D3;
+  --texte: #16211F;
+  --texte-doux: #5C6B68;
+  --blanc: #FFFFFF;
+  --radius: 14px;
+  --focus: #0E7A72;
+  --info: #0E7A72;
+  --info-bg: #E1F2EF;
+  --succes: #1F9254;
+  --succes-bg: #E4F6EA;
+  --alerte: #B9790E;
+  --alerte-bg: #FBF0DD;
+  /* Tokens additionnels propres au thème moderne */
+  --m-line-strong: #CBD8D5;
+  --m-ink-faint: #8B9996;
+  --m-shadow: 170 30% 20%;
+  --m-danger-bg: #FBEAE7;
+}
+@media (prefers-color-scheme: dark) {
+  html[data-theme="modern"] {
+    --bleu: #52D6C6;
+    --bleu-hover: #7FE6D8;
+    --rouge: #FF8B7A;
+    --gris-fond: #101615;
+    --gris-contraste: #1E2725;
+    --gris-bordure: #283330;
+    --bordure-champ: #37443F;
+    --texte: #EAF2F0;
+    --texte-doux: #9DAEAA;
+    --blanc: #171F1E;
+    --focus: #52D6C6;
+    --info: #52D6C6;
+    --info-bg: #14302C;
+    --succes: #57D68C;
+    --succes-bg: #12301E;
+    --alerte: #F0B84C;
+    --alerte-bg: #362809;
+    --m-line-strong: #37443F;
+    --m-ink-faint: #67766F;
+    --m-shadow: 170 60% 2%;
+    --m-danger-bg: #3A1712;
+  }
+}
+
+html[data-theme="modern"] body {
+  font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+html[data-theme="modern"] h1,
+html[data-theme="modern"] .brand-service .service-title,
+html[data-theme="modern"] .kpi-value,
+html[data-theme="modern"] .panel-title,
+html[data-theme="modern"] .code-display {
+  font-family: "Avenir Next", "Century Gothic", -apple-system, "Segoe UI Semibold", Arial, sans-serif;
+}
+html[data-theme="modern"] .code-display { letter-spacing: 0.08em; }
+
+/* ---------- En-tête / bandeau / pied de page ---------- */
+html[data-theme="modern"] .fr-header {
+  box-shadow: none;
+  border-bottom: 1px solid var(--gris-bordure);
+}
+html[data-theme="modern"] .brand-mark-fallback,
+html[data-theme="modern"] .fr-notice { background: var(--info-bg); }
+html[data-theme="modern"] .fr-footer {
+  border-top: 1px solid var(--gris-bordure);
+}
+html[data-theme="modern"] .beta-tag {
+  border-radius: 999px;
+}
+
+/* ---------- Boutons ---------- */
+html[data-theme="modern"] .btn {
+  border-radius: 999px;
+  font-weight: 600;
+  padding: 0.55rem 1.3rem;
+  transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+html[data-theme="modern"] .btn-primary {
+  box-shadow: 0 6px 16px -6px hsl(var(--m-shadow) / 0.55);
+}
+html[data-theme="modern"] .btn-primary:active { transform: translateY(1px); }
+html[data-theme="modern"] .btn-ghost:hover { background: var(--gris-contraste); }
+html[data-theme="modern"] .btn-danger {
+  border-radius: 999px;
+  border-color: var(--rouge);
+}
+
+/* ---------- Champs ---------- */
+html[data-theme="modern"] input,
+html[data-theme="modern"] textarea,
+html[data-theme="modern"] select {
+  background: var(--blanc);
+  border: 1.5px solid var(--gris-bordure);
+  border-radius: 10px;
+  box-shadow: none;
+  transition: border-color 0.15s;
+}
+html[data-theme="modern"] input:hover,
+html[data-theme="modern"] textarea:hover,
+html[data-theme="modern"] select:hover { border-color: var(--m-line-strong); }
+html[data-theme="modern"] input:focus-visible,
+html[data-theme="modern"] textarea:focus-visible,
+html[data-theme="modern"] select:focus-visible {
+  border-color: var(--bleu);
+  outline: 3px solid color-mix(in srgb, var(--bleu) 20%, transparent);
+  outline-offset: 0;
+}
+html[data-theme="modern"] input[type="checkbox"],
+html[data-theme="modern"] input[type="radio"] { border-radius: 4px; }
+
+/* ---------- Badges / pastilles ---------- */
+html[data-theme="modern"] .badge {
+  border-radius: 999px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+html[data-theme="modern"] .tag { border-radius: 999px; }
+
+/* ---------- Cartes & panneaux (sans var(--radius)) ---------- */
+html[data-theme="modern"] .login-card,
+html[data-theme="modern"] .fr-tile,
+html[data-theme="modern"] .periode-card,
+html[data-theme="modern"] .week-card,
+html[data-theme="modern"] .sortie-row,
+html[data-theme="modern"] .cadre-contact,
+html[data-theme="modern"] .fr-callout,
+html[data-theme="modern"] .code-display,
+html[data-theme="modern"] .type-option,
+html[data-theme="modern"] .guide-section,
+html[data-theme="modern"] nav.toc,
+html[data-theme="modern"] .callout {
+  border-radius: var(--radius);
+  border-color: var(--gris-bordure);
+}
+html[data-theme="modern"] .guide-section,
+html[data-theme="modern"] nav.toc { background: var(--blanc); }
+html[data-theme="modern"] .login-card {
+  box-shadow: 0 20px 45px -24px hsl(var(--m-shadow) / 0.35);
+  border-color: var(--gris-bordure);
+}
+html[data-theme="modern"] .fr-tile {
+  border-bottom-width: 1px;
+  border-radius: var(--radius);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+html[data-theme="modern"] .fr-tile:hover {
+  background: var(--blanc);
+  border-color: var(--bleu);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px -16px hsl(var(--m-shadow) / 0.4);
+}
+html[data-theme="modern"] .fr-tile h3 a::after { content: " →"; }
+html[data-theme="modern"] .type-option:has(input:checked) {
+  border-color: var(--bleu);
+  outline-color: var(--bleu);
+  background: var(--info-bg);
+}
+html[data-theme="modern"] .periode-card { border-left-width: 4px; border-left-color: var(--bleu); }
+
+html[data-theme="modern"] dialog {
+  border-radius: 20px;
+  box-shadow: 0 30px 70px -20px hsl(var(--m-shadow) / 0.55);
+  border: 1px solid var(--gris-bordure);
+}
+html[data-theme="modern"] dialog::backdrop { background: hsl(var(--m-shadow) / 0.45); backdrop-filter: blur(2px); }
+
+/* ---------- Tableaux génériques (guides) ---------- */
+html[data-theme="modern"] table th,
+html[data-theme="modern"] table td { border-color: var(--gris-bordure); }
+html[data-theme="modern"] table th { background: var(--gris-contraste); }
+
+/* ---------- Espace étudiant : semaines & déclarations ---------- */
+html[data-theme="modern"] .periode-tabs { border-bottom-color: var(--gris-bordure); gap: 0.4rem; }
+html[data-theme="modern"] .periode-tab {
+  border-radius: 10px 10px 0 0;
+  border-color: var(--gris-bordure);
+}
+html[data-theme="modern"] .periode-tab.active { box-shadow: inset 0 3px 0 0 var(--bleu); }
+html[data-theme="modern"] .day-cell.readonly { border-radius: 10px; }
+html[data-theme="modern"] .day-cell.today.readonly { box-shadow: inset 0 0 0 2px var(--bleu); }
+html[data-theme="modern"] .day-cell.ferie { border-radius: 10px; outline-color: var(--alerte); }
+html[data-theme="modern"] .day-cell.recup { border-radius: 10px; outline-color: var(--succes); }
+html[data-theme="modern"] .sortie-delete:hover { background: var(--gris-contraste); border-radius: 999px; }
+
+/* Respecte la préférence de mouvement réduit sur les micro-interactions ajoutées */
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme="modern"] .btn,
+  html[data-theme="modern"] .fr-tile,
+  html[data-theme="modern"] input,
+  html[data-theme="modern"] select,
+  html[data-theme="modern"] textarea { transition: none; }
+}

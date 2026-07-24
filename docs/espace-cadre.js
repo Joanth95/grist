@@ -1,7 +1,7 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 /* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
-const APP_VERSION = "v33"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v34"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -188,6 +188,53 @@ $("refresh-btn").addEventListener("click", async () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* En-tête (thème moderne uniquement) : popovers identité et contexte  */
+/* site/service. Sans effet visuel en thème public (DSFR) : les mêmes  */
+/* éléments (site-select, service-select, moi-edit-btn…) restent       */
+/* utilisés tels quels, seule leur présentation change en CSS.         */
+/* ------------------------------------------------------------------ */
+
+const cadreCtxWrap = $("cadreCtxWrap");
+const cadreCtxBtn = $("cadreCtxBtn");
+
+$("cadre-info").addEventListener("click", (e) => {
+  if (!e.target.closest(".cadre-avatar")) return;
+  e.stopPropagation();
+  $("cadre-info").classList.toggle("ctx-open");
+  cadreCtxWrap.classList.remove("ctx-open");
+  cadreCtxBtn.setAttribute("aria-expanded", "false");
+});
+
+cadreCtxBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const open = cadreCtxWrap.classList.toggle("ctx-open");
+  cadreCtxBtn.setAttribute("aria-expanded", String(open));
+  $("cadre-info").classList.remove("ctx-open");
+});
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#cadre-info")) $("cadre-info").classList.remove("ctx-open");
+  if (!e.target.closest("#cadreCtxWrap")) {
+    cadreCtxWrap.classList.remove("ctx-open");
+    cadreCtxBtn.setAttribute("aria-expanded", "false");
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  $("cadre-info").classList.remove("ctx-open");
+  cadreCtxWrap.classList.remove("ctx-open");
+  cadreCtxBtn.setAttribute("aria-expanded", "false");
+});
+
+/** Résumé « Site · Service » affiché sur le bouton de contexte (thème moderne). */
+function updateCtxSummary() {
+  const service = state.data.services.find((s) => s.id === state.selectedServiceId);
+  const multiSite = !$("cadre-site-select").hidden;
+  const summary = $("cadreCtxSummary");
+  summary.textContent = service ? (multiSite ? `${state.selectedSite} · ${service.Nom}` : service.Nom) : (state.selectedSite || "");
+}
+
+/* ------------------------------------------------------------------ */
 /* Code PIN : changement depuis l'espace + « oublié » sur la connexion  */
 /* ------------------------------------------------------------------ */
 
@@ -283,16 +330,16 @@ function renderCadreInfo() {
 
   if (moiEditing) {
     infoText = `
-      <div class="cadre-identity">
-        ${avatar}
+      ${avatar}
+      <div class="cadre-popover">
         <div class="cadre-identity-text">
           <span class="cadre-nom-edit">${escapeHtml(moi.nom || "")}</span>
           <input type="tel" id="moi-tel-input" class="cadre-tel-input" value="${escapeHtml(moi.telephone || "")}" placeholder="Numéro de téléphone" maxlength="30">
         </div>
-      </div>
-      <div class="cadre-actions">
-        <button type="button" class="btn btn-primary btn-small" id="moi-save-btn">Enregistrer</button>
-        <button type="button" class="btn btn-ghost btn-small" id="moi-cancel-btn">Annuler</button>
+        <div class="cadre-actions">
+          <button type="button" class="btn btn-primary btn-small" id="moi-save-btn">Enregistrer</button>
+          <button type="button" class="btn btn-ghost btn-small" id="moi-cancel-btn">Annuler</button>
+        </div>
       </div>
     `;
     infoEl.innerHTML = infoText;
@@ -312,16 +359,16 @@ function renderCadreInfo() {
     });
   } else {
     infoText = `
-      <div class="cadre-identity">
-        ${avatar}
+      ${avatar}
+      <div class="cadre-popover">
         <div class="cadre-identity-text">
           <span class="cadre-nom">${escapeHtml(moi.nom || "")}</span>
           ${moi.telephone ? `<span class="cadre-tel">${escapeHtml(moi.telephone)}</span>` : ""}
         </div>
-      </div>
-      <div class="cadre-actions">
-        <button type="button" class="btn btn-ghost btn-small" id="moi-edit-btn">Modifier le numéro</button>
-        <button type="button" class="btn btn-ghost btn-small" id="moi-pin-btn">Changer mon code PIN</button>
+        <div class="cadre-actions">
+          <button type="button" class="btn btn-ghost btn-small" id="moi-edit-btn">Modifier le numéro</button>
+          <button type="button" class="btn btn-ghost btn-small" id="moi-pin-btn">Changer mon code PIN</button>
+        </div>
       </div>
     `;
     infoEl.innerHTML = infoText;
@@ -336,6 +383,7 @@ function updateServiceSubtitle() {
   if (subtitle && service) {
     subtitle.textContent = escapeHtml(service.Nom);
   }
+  updateCtxSummary();
 }
 
 function renderServiceSelect() {
