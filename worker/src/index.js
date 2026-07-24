@@ -124,7 +124,7 @@ function corsHeaders(env, request) {
     "Access-Control-Allow-Origin": allowOrigin,
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, X-Student-Code, X-Cadre-Email, X-Cadre-Code",
+    "Access-Control-Allow-Headers": "Content-Type, X-Student-Code, X-Student-Email, X-Cadre-Email, X-Cadre-Code",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -154,7 +154,7 @@ async function route(request, env, ctx) {
   }
   if (request.method === "POST" && path === "/api/login") {
     const body = await request.json().catch(() => ({}));
-    const student = await authenticateCode(env, body.code);
+    const student = await authenticateCode(env, body.code, body.email);
     const payload = await buildPayload(env, student);
     logActivite(env, ctx, {
       role: "Étudiant",
@@ -169,6 +169,21 @@ async function route(request, env, ctx) {
   if (request.method === "POST" && path === "/api/cadre/login") {
     const body = await request.json().catch(() => ({}));
     const cadre = await authenticateCadre(env, body.email, body.code);
+
+    // Code PIN auto-choisi : créé à la 1ʳᵉ connexion, redemandé ensuite.
+    const pin = typeof body.pin === "string" ? body.pin.trim() : "";
+    const storedPin = (cadre.fields.PIN_hash || "").trim();
+    if (!storedPin) {
+      if (!/^\d{4,6}$/.test(pin)) {
+        throw httpError(400, "Première connexion : choisissez un code PIN de 4 à 6 chiffres");
+      }
+      await ensureColumn(env, T_UTILISATEURS, "PIN_hash", "PIN (haché)");
+      await gristUpdate(env, T_UTILISATEURS, cadre.rowId, { PIN_hash: await hashPin(pin) });
+    } else {
+      if (!pin) throw httpError(401, "Code PIN requis");
+      if (!(await verifyPin(pin, storedPin))) throw httpError(401, "Code PIN incorrect");
+    }
+
     const payload = await buildCadrePayload(env, cadre);
     logActivite(env, ctx, {
       role: "Cadre",
@@ -249,6 +264,10 @@ async function route(request, env, ctx) {
       return withLog(env, ctx, who, "Modification de son profil", "",
         (info) => updateProfilCadre(request, env, cadre, info));
     }
+    if (request.method === "PATCH" && path === "/api/cadre/pin") {
+      return withLog(env, ctx, who, "Modification du code PIN", "",
+        (info) => changePin(request, env, cadre, info));
+    }
     const svm = path.match(/^\/api\/cadre\/services\/(\d+)$/);
     if (request.method === "PATCH" && svm) {
       return withLog(env, ctx, who, "Modification des codes horaires du service", `service #${svm[1]}`,
@@ -267,7 +286,11 @@ async function route(request, env, ctx) {
   }
 
   // --- Endpoints authentifiés ---
-  const student = await authenticateCode(env, request.headers.get("X-Student-Code"));
+  const student = await authenticateCode(
+    env,
+    request.headers.get("X-Student-Code"),
+    request.headers.get("X-Student-Email")
+  );
 
   const whoE = { role: "Étudiant", qui: student.code, nom: nomCompletEtudiant(student) };
   if (request.method === "GET" && path === "/api/data") {
@@ -304,12 +327,87 @@ function normalizeCode(code) {
   return code;
 }
 
-async function authenticateCode(env, rawCode) {
+async function authenticateCode(env, rawCode, rawEmail) {
   const code = normalizeCode(rawCode);
   if (!code) throw httpError(401, "Code anonymat invalide");
   const records = await gristFilter(env, T_ETUDIANTS, { Anonymat: [code] });
   if (records.length !== 1) throw httpError(401, "Code anonymat invalide");
-  return { rowId: records[0].id, code, fields: records[0].fields };
+  const student = { rowId: records[0].id, code, fields: records[0].fields };
+
+  // 2ᵉ facteur : l'e-mail du dossier. Vérifié seulement si un e-mail y figure
+  // (les dossiers sans e-mail restent accessibles au seul code, pas de blocage).
+  const dossierEmail = (student.fields.Adresse_mail || "").trim().toLowerCase();
+  if (dossierEmail) {
+    const provided = (typeof rawEmail === "string" ? rawEmail : "").trim().toLowerCase();
+    if (!provided) throw httpError(401, "Adresse e-mail requise (celle de votre dossier)");
+    if (provided !== dossierEmail) {
+      throw httpError(401, "L'adresse e-mail ne correspond pas à celle de votre dossier");
+    }
+  }
+  return student;
+}
+
+/* ------------------------------------------------------------------ */
+/* Hachage du code PIN cadre (PBKDF2-HMAC-SHA256, sel aléatoire)        */
+/* ------------------------------------------------------------------ */
+
+// Itérations PBKDF2. Volontairement modéré : le hash n'est jamais exposé
+// (il vit dans Grist, accès contrôlé) et le PIN est un facteur secondaire ;
+// la vraie défense contre le brute-force en ligne est la limitation de débit.
+// Calibré pour rester sous le budget CPU d'une requête Worker (~10 ms/plan
+// gratuit). verifyPin lit le nombre d'itérations dans le hash stocké : cette
+// valeur peut donc être augmentée plus tard sans invalider les PIN existants.
+const PIN_ITERATIONS = 10000;
+
+function bytesToB64(bytes) {
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s);
+}
+function b64ToBytes(b64) {
+  const s = atob(b64);
+  const a = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i);
+  return a;
+}
+
+async function derivePin(pin, salt, iterations) {
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(pin), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations, hash: "SHA-256" }, key, 256);
+  return new Uint8Array(bits);
+}
+
+/** Renvoie une chaîne stockable : "pbkdf2$<iter>$<selB64>$<hashB64>". */
+async function hashPin(pin) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const h = await derivePin(pin, salt, PIN_ITERATIONS);
+  return `pbkdf2$${PIN_ITERATIONS}$${bytesToB64(salt)}$${bytesToB64(h)}`;
+}
+
+/** Compare un PIN saisi au hash stocké (temps constant). */
+async function verifyPin(pin, stored) {
+  const parts = String(stored || "").split("$");
+  if (parts.length !== 4 || parts[0] !== "pbkdf2") return false;
+  const iterations = parseInt(parts[1], 10);
+  if (!Number.isInteger(iterations) || iterations < 1) return false;
+  const salt = b64ToBytes(parts[2]);
+  const expected = b64ToBytes(parts[3]);
+  const got = await derivePin(pin, salt, iterations);
+  if (got.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < got.length; i++) diff |= got[i] ^ expected[i];
+  return diff === 0;
+}
+
+/** Crée une colonne texte dans une table Grist si elle n'existe pas déjà. */
+async function ensureColumn(env, table, colId, label) {
+  const data = await grist(env, "GET", `/tables/${table}/columns`);
+  if ((data.columns || []).some((c) => c.id === colId)) return;
+  await grist(env, "POST", `/tables/${table}/columns`, {
+    columns: [{ id: colId, fields: { label, type: "Text" } }],
+  });
 }
 
 /** Ids contenus dans une cellule Grist de type Référence (nombre) ou Liste de références (["L", id, ...]). */
@@ -1145,6 +1243,24 @@ async function creerCodeHoraire(request, env, cadre, info) {
 
   if (info) info.detail = `${code} — ${libelle}`;
   return json({ id: newId }, 201);
+}
+
+/** Le cadre change son code PIN. Le PIN actuel est exigé s'il en existe déjà un. */
+async function changePin(request, env, cadre, info) {
+  const body = await request.json().catch(() => ({}));
+  const current = typeof body.currentPin === "string" ? body.currentPin.trim() : "";
+  const next = typeof body.newPin === "string" ? body.newPin.trim() : "";
+  const stored = (cadre.fields.PIN_hash || "").trim();
+  if (stored && !(await verifyPin(current, stored))) {
+    throw httpError(401, "Code PIN actuel incorrect");
+  }
+  if (!/^\d{4,6}$/.test(next)) {
+    throw httpError(400, "Le nouveau PIN doit comporter 4 à 6 chiffres");
+  }
+  await ensureColumn(env, T_UTILISATEURS, "PIN_hash", "PIN (haché)");
+  await gristUpdate(env, T_UTILISATEURS, cadre.rowId, { PIN_hash: await hashPin(next) });
+  if (info) info.detail = "PIN modifié";
+  return json({ ok: true });
 }
 
 /** Le cadre modifie son propre numéro de téléphone (UTILISATEURS.Telephone). */
