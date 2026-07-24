@@ -18,10 +18,14 @@
        (relocateHeaderCadre), pour les deux thèmes : plus de barre à part. */
     .app-header { display: none; }
 
-    .cadre-ctx-wrap { position: relative; }
+    /* flex-shrink:0 : évite qu'en tant qu'item flex de .fr-header-tools, ce
+       bloc soit compressé en dessous de sa largeur naturelle — ce qui force
+       .service-pickers (lui-même flex-wrap) à empiler Site/Service au lieu
+       de les garder côte à côte. */
+    .cadre-ctx-wrap { position: relative; flex-shrink: 0; }
     .cadre-ctx-btn { display: none; } /* bouton popover : uniquement en thème moderne */
     .app-icon-btn, #moi-logout-btn { display: none; } /* idem : uniquement en thème moderne */
-    .service-pickers { display: flex; gap: 1.1rem; flex-wrap: wrap; align-items: flex-end; padding-left: 1.25rem; border-left: 1px solid var(--gris-bordure); }
+    .service-pickers { display: flex; gap: 1.1rem; flex-wrap: nowrap; align-items: flex-end; padding-left: 1.25rem; border-left: 1px solid var(--gris-bordure); }
     .service-pickers .cadre-service-select { flex: 0 1 170px; min-width: 0; }
     .cadre-service-select { margin: 0; }
     .cadre-service-select label { display: block; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--texte-doux); margin: 0 0 0.3rem; }
@@ -45,7 +49,7 @@
     .group-subtab:hover { background: var(--gris-fond); color: var(--texte); }
     .group-subtab.active { background: var(--bleu); border-color: var(--bleu); color: var(--blanc); }
 
-    .cadre-info { display: flex; align-items: center; gap: 0.85rem; flex-wrap: wrap; padding-left: 1.25rem; border-left: 1px solid var(--gris-bordure); }
+    .cadre-info { display: flex; align-items: center; gap: 0.85rem; flex-wrap: nowrap; flex-shrink: 0; padding-left: 1.25rem; border-left: 1px solid var(--gris-bordure); }
     html[data-theme="modern"] #cadre-info { border-left: none; padding-left: 0; }
     .cadre-popover { display: contents; } /* pas de "popover" en thème public : les enfants restent à plat */
     .cadre-avatar { display: flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 2.6rem; height: 2.6rem; border-radius: 50%; background: var(--bleu); color: #fff; font-weight: 700; font-size: 0.85rem; letter-spacing: 0.02em; }
