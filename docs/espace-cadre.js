@@ -68,9 +68,14 @@ const urlParams = new URLSearchParams(location.search);
 const urlEmail = urlParams.get("email");
 const urlCadreCode = urlParams.get("code");
 if (urlEmail && urlCadreCode) {
-  sessionStorage.setItem("cadre_email", urlEmail.trim());
-  sessionStorage.setItem("cadre_code", urlCadreCode.trim());
   history.replaceState(null, "", location.pathname);
+  // On pré-remplit email + code ; le cadre valide avec son code PIN.
+  const emailEl = document.getElementById("login-email");
+  const codeEl = document.getElementById("login-code");
+  const pinEl = document.getElementById("login-pin");
+  if (emailEl) emailEl.value = urlEmail.trim();
+  if (codeEl) codeEl.value = urlCadreCode.trim();
+  if (pinEl) pinEl.focus();
 }
 
 const state = {
@@ -148,7 +153,8 @@ $("login-form").addEventListener("submit", async (e) => {
   try {
     state.email = $("login-email").value.trim();
     state.code = $("login-code").value.trim();
-    state.data = await api("POST", "/api/cadre/login", { email: state.email, code: state.code });
+    const pin = $("login-pin").value.trim();
+    state.data = await api("POST", "/api/cadre/login", { email: state.email, code: state.code, pin });
     sessionStorage.setItem("cadre_email", state.email);
     sessionStorage.setItem("cadre_code", state.code);
     enterApp();

@@ -264,6 +264,11 @@
               <span class="fr-hint-text">Transmis par l'administrateur de l'application</span>
             </label>
             <input type="password" id="login-code" autocomplete="current-password" required>
+            <label for="login-pin">Code PIN
+              <span class="fr-hint-text">1ʳᵉ connexion : choisissez un PIN de 4 à 6 chiffres. Il vous sera redemandé ensuite.</span>
+            </label>
+            <input type="password" id="login-pin" inputmode="numeric" autocomplete="off"
+                   pattern="\d{4,6}" minlength="4" maxlength="6" required placeholder="••••">
             <button type="submit" class="btn btn-primary" id="login-btn">Se connecter</button>
             <p id="login-error" class="error" hidden></p>
           </form>
@@ -584,6 +589,6 @@
   <script src="config.js?v=21"></script>
   <script src="layout.js?v=24"></script>
   <script src="etablissement.js?v=23"></script>
-  <script src="espace-cadre.js?v=27"></script>
+  <script src="espace-cadre.js?v=28"></script>
 </body>
 </html>

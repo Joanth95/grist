@@ -9,12 +9,15 @@ const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dima
 // ressaisir le code anonymat (ex. lien fourni depuis Grist).
 const urlCode = new URLSearchParams(location.search).get("code");
 if (urlCode) {
-  sessionStorage.setItem("code", urlCode.trim().toUpperCase());
   history.replaceState(null, "", location.pathname);
+  // On pré-remplit le code ; l'étudiant confirme avec l'e-mail de son dossier.
+  const el = document.getElementById("login-code");
+  if (el) el.value = urlCode.trim().toUpperCase();
 }
 
 const state = {
   code: sessionStorage.getItem("code") || null,
+  email: sessionStorage.getItem("email") || null,
   data: null, // { etudiant, motifs, periodes, semaines, codes, sorties }
   selectedPeriodeId: null, // période affichée (onglet actif)
 };
@@ -29,6 +32,7 @@ async function api(method, path, body) {
     headers: {
       "Content-Type": "application/json",
       ...(state.code ? { "X-Student-Code": state.code } : {}),
+      ...(state.email ? { "X-Student-Email": state.email } : {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
@@ -50,11 +54,15 @@ $("login-form").addEventListener("submit", async (e) => {
   btn.textContent = "Connexion…";
   try {
     state.code = $("login-code").value.trim().toUpperCase();
-    state.data = await api("POST", "/api/login", { code: state.code });
+    state.email = $("login-email").value.trim();
+    state.data = await api("POST", "/api/login", { code: state.code, email: state.email });
     sessionStorage.setItem("code", state.code);
+    if (state.email) sessionStorage.setItem("email", state.email);
+    else sessionStorage.removeItem("email");
     enterApp();
   } catch (err) {
     state.code = null;
+    state.email = null;
     errEl.textContent = err.message;
     errEl.hidden = false;
   } finally {
