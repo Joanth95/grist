@@ -171,14 +171,25 @@ async function route(request, env, ctx) {
     const cadre = await authenticateCadre(env, body.email, body.code);
 
     // Code PIN auto-choisi : créé à la 1ʳᵉ connexion, redemandé ensuite.
+    // Colonnes gérées dans UTILISATEURS : PIN_hash (le PIN haché) et
+    // Reinit_PIN (case que l'admin coche dans Grist pour forcer un nouveau PIN).
+    await ensureColumns(env, T_UTILISATEURS, [
+      { id: "PIN_hash", label: "PIN (haché)", type: "Text" },
+      { id: "Reinit_PIN", label: "Réinitialiser le PIN", type: "Bool" },
+    ]);
     const pin = typeof body.pin === "string" ? body.pin.trim() : "";
     const storedPin = (cadre.fields.PIN_hash || "").trim();
-    if (!storedPin) {
+    const resetDemande = cadre.fields.Reinit_PIN === true;
+    if (!storedPin || resetDemande) {
+      // 1ʳᵉ connexion OU réinitialisation demandée : le PIN saisi devient le nouveau.
       if (!/^\d{4,6}$/.test(pin)) {
-        throw httpError(400, "Première connexion : choisissez un code PIN de 4 à 6 chiffres");
+        throw httpError(400, storedPin
+          ? "Votre PIN a été réinitialisé : choisissez un nouveau code PIN de 4 à 6 chiffres"
+          : "Première connexion : choisissez un code PIN de 4 à 6 chiffres");
       }
-      await ensureColumn(env, T_UTILISATEURS, "PIN_hash", "PIN (haché)");
-      await gristUpdate(env, T_UTILISATEURS, cadre.rowId, { PIN_hash: await hashPin(pin) });
+      const fields = { PIN_hash: await hashPin(pin) };
+      if (resetDemande) fields.Reinit_PIN = false; // consomme la demande de reset
+      await gristUpdate(env, T_UTILISATEURS, cadre.rowId, fields);
     } else {
       if (!pin) throw httpError(401, "Code PIN requis");
       if (!(await verifyPin(pin, storedPin))) throw httpError(401, "Code PIN incorrect");
@@ -401,13 +412,21 @@ async function verifyPin(pin, stored) {
   return diff === 0;
 }
 
-/** Crée une colonne texte dans une table Grist si elle n'existe pas déjà. */
-async function ensureColumn(env, table, colId, label) {
+/** Crée les colonnes manquantes d'une table Grist (un seul GET, POST groupé).
+ *  specs = [{ id, label, type }] (type par défaut : "Text"). */
+async function ensureColumns(env, table, specs) {
   const data = await grist(env, "GET", `/tables/${table}/columns`);
-  if ((data.columns || []).some((c) => c.id === colId)) return;
+  const existing = new Set((data.columns || []).map((c) => c.id));
+  const missing = specs.filter((s) => !existing.has(s.id));
+  if (!missing.length) return;
   await grist(env, "POST", `/tables/${table}/columns`, {
-    columns: [{ id: colId, fields: { label, type: "Text" } }],
+    columns: missing.map((s) => ({ id: s.id, fields: { label: s.label, type: s.type || "Text" } })),
   });
+}
+
+/** Crée une colonne unique si elle n'existe pas déjà. */
+async function ensureColumn(env, table, colId, label, type) {
+  await ensureColumns(env, table, [{ id: colId, label, type }]);
 }
 
 /** Ids contenus dans une cellule Grist de type Référence (nombre) ou Liste de références (["L", id, ...]). */
