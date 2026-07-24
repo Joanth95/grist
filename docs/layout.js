@@ -32,19 +32,6 @@
   const GRIST_URL =
     "https://grist.numerique.gouv.fr/o/chr-metz-thionville/qdm9zxQGmCPH/GESTION-ETUDIANT/";
 
-  // Monogramme de l'application (2 lettres), affiché à côté du titre de page
-  // en thème moderne uniquement (masqué en DSFR — voir .brand-mark dans
-  // styles.css / theme-modern.css). Ex. « Espace cadre » -> « EC ».
-  function brandInitials(title) {
-    const diacritics = new RegExp("[̀-ͯ]", "g");
-    const words = (title || "")
-      .normalize("NFD").replace(diacritics, "")
-      .trim().split(/\s+/).filter(Boolean);
-    if (!words.length) return "";
-    if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-    return (words[0].charAt(0) + words[1].replace(/^[^A-Za-z]+/, "").charAt(0)).toUpperCase();
-  }
-
   // Bloc identité établissement, commun à l'en-tête et au pied.
   // Rempli par etablissement.js (nom, description, logo) depuis Grist.
   function identiteHTML() {
@@ -72,10 +59,12 @@
     brand.className = "brand-block";
     brand.innerHTML = identiteHTML();
 
+    // Monogramme de repli (initiales de l'établissement), rempli par
+    // etablissement.js — affiché en thème moderne uniquement, et seulement
+    // en l'absence de logo Grist (voir .brand-mark).
     const mark = document.createElement("span");
     mark.className = "brand-mark";
     mark.setAttribute("aria-hidden", "true");
-    mark.textContent = brandInitials(titre);
     brand.appendChild(mark);
 
     const service = document.createElement("div");

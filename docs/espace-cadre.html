@@ -249,7 +249,7 @@
        structurels propres à cette page.
        ================================================================ */
 
-    html[data-theme="modern"] .cadre-tel-input, html[data-theme="modern"] .cadre-service-select select, html[data-theme="modern"] .dossier-search,
+    html[data-theme="modern"] .cadre-tel-input, html[data-theme="modern"] .dossier-search,
     html[data-theme="modern"] .mail-form input, html[data-theme="modern"] .mail-form textarea, html[data-theme="modern"] .etu-fiche input, html[data-theme="modern"] .etu-fiche select,
     html[data-theme="modern"] .nouveau-code-form input, html[data-theme="modern"] .planning-controls input[type="date"],
     html[data-theme="modern"] .stats-controls input[type="date"] {
@@ -320,7 +320,21 @@
       transition: opacity 0.15s ease, transform 0.15s ease;
     }
     html[data-theme="modern"] .cadre-ctx-wrap.ctx-open .service-pickers { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
-    html[data-theme="modern"] .service-pickers .cadre-service-select { flex: 1 1 auto; }
+    /* Champs en lignes de liste, même principe que le menu avatar
+       (.cadre-actions .btn) plutôt qu'en champs de formulaire encadrés. */
+    html[data-theme="modern"] .service-pickers { gap: 0.15rem; }
+    html[data-theme="modern"] .service-pickers .cadre-service-select {
+      flex: 1 1 auto; margin: 0; padding: 0.4rem 0.6rem; border-radius: 8px; transition: background 0.15s;
+    }
+    html[data-theme="modern"] .cadre-service-select:hover,
+    html[data-theme="modern"] .cadre-service-select:focus-within { background: var(--gris-contraste); }
+    html[data-theme="modern"] .cadre-service-select label { font-size: 0.68rem; margin: 0 0 0.15rem; }
+    html[data-theme="modern"] .cadre-service-select select {
+      appearance: none; -webkit-appearance: none;
+      background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%235C6B68' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right center;
+      border: none; border-radius: 0; box-shadow: none; padding: 0 1.1rem 0 0; width: 100%;
+      font-weight: 700; font-size: 0.92rem; color: var(--texte); cursor: pointer;
+    }
     @media (max-width: 640px) {
       html[data-theme="modern"] .service-pickers { left: 0; right: 0; min-width: 0; }
     }
@@ -778,8 +792,8 @@
   </dialog>
 
   <script src="config.js?v=21"></script>
-  <script src="layout.js?v=25"></script>
-  <script src="etablissement.js?v=27"></script>
+  <script src="layout.js?v=26"></script>
+  <script src="etablissement.js?v=28"></script>
   <script src="espace-cadre.js?v=35"></script>
 </body>
 </html>

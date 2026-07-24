@@ -28,6 +28,20 @@
     tools.appendChild(info);
   }
 
+  /* Monogramme de repli (2 lettres) affiché à côté du titre de page en
+     thème moderne, uniquement quand l'établissement n'a pas de logo Grist
+     (voir fill()) — même principe que le carré généré sur la fiche de stage
+     imprimée. Ex. « UN CHR » -> « UC ». */
+  function brandInitials(name) {
+    const diacritics = new RegExp("[̀-ͯ]", "g");
+    const words = (name || "")
+      .normalize("NFD").replace(diacritics, "")
+      .trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return "";
+    if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+    return (words[0].charAt(0) + words[1].replace(/^[^A-Za-z]+/, "").charAt(0)).toUpperCase();
+  }
+
   function fill(cfg) {
     if (!cfg) return;
     // Habillage du site : "public" (DSFR, défaut) ou "modern" (colonne
@@ -99,6 +113,14 @@
         img.hidden = true;
         img.removeAttribute("src");
       }
+    });
+
+    // Monogramme de repli (initiales de l'établissement) : seulement en
+    // l'absence de logo, pour ne pas doubler l'identité visuelle.
+    const hasLogo = !!(cfg.logoId && api2);
+    document.querySelectorAll(".brand-mark").forEach((m) => {
+      m.style.display = hasLogo ? "none" : "";
+      if (!hasLogo) m.textContent = brandInitials(cfg.nom);
     });
   }
 
