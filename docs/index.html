@@ -30,17 +30,17 @@
         <div class="login-card">
           <h2>Se connecter avec son code anonymat</h2>
           <form id="login-form">
+            <label for="login-email">Adresse e-mail
+              <span class="fr-hint-text">Celle enregistrée dans votre dossier (laissez vide si vous n'en avez pas communiqué)</span>
+            </label>
+            <input type="email" id="login-email" autocomplete="email"
+                   placeholder="prenom.nom@exemple.fr">
             <label for="login-code">Code anonymat
               <span class="fr-hint-text">Format attendu : 1ère lettre du prénom + date de naissance JJMMAA + 1ère lettre du nom</span>
             </label>
             <input type="text" id="login-code" autocomplete="off" autocapitalize="characters"
                    placeholder="Ex. : J150398D" required
                    title="1ère lettre du prénom + date de naissance JJMMAA + 1ère lettre du nom">
-            <label for="login-email">Adresse e-mail
-              <span class="fr-hint-text">Celle enregistrée dans votre dossier (laissez vide si vous n'en avez pas communiqué)</span>
-            </label>
-            <input type="email" id="login-email" autocomplete="email"
-                   placeholder="prenom.nom@exemple.fr">
             <button type="submit" class="btn btn-primary" id="login-btn">Se connecter</button>
             <p id="login-error" class="error" hidden></p>
           </form>
