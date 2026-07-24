@@ -67,15 +67,18 @@ const groupOfTab = (tabId) => TAB_GROUPS.find((g) => g.tabs.includes(tabId)) || 
 const urlParams = new URLSearchParams(location.search);
 const urlEmail = urlParams.get("email");
 const urlCadreCode = urlParams.get("code");
+// Clé admin (?admin=...) : lien réservé à l'administrateur. Présente = connexion
+// directe sans PIN (impersonation d'un cadre). Traitée au démarrage, plus bas.
+const urlAdmin = urlParams.get("admin");
 if (urlEmail && urlCadreCode) {
   history.replaceState(null, "", location.pathname);
-  // On pré-remplit email + code ; le cadre valide avec son code PIN.
+  // Sans clé admin : on pré-remplit email + code ; le cadre valide avec son PIN.
   const emailEl = document.getElementById("login-email");
   const codeEl = document.getElementById("login-code");
   const pinEl = document.getElementById("login-pin");
   if (emailEl) emailEl.value = urlEmail.trim();
   if (codeEl) codeEl.value = urlCadreCode.trim();
-  if (pinEl) pinEl.focus();
+  if (pinEl && !urlAdmin) pinEl.focus();
 }
 
 const state = {
@@ -2712,7 +2715,25 @@ function formatH(hours) {
 /* Démarrage                                                           */
 /* ------------------------------------------------------------------ */
 
-if (state.email && state.code) {
+if (urlAdmin && urlEmail && urlCadreCode) {
+  // Accès administrateur : connexion directe sans PIN via la clé admin.
+  (async () => {
+    const errEl = document.getElementById("login-error");
+    try {
+      state.email = urlEmail.trim();
+      state.code = urlCadreCode.trim();
+      state.data = await api("POST", "/api/cadre/login",
+        { email: state.email, code: state.code, adminKey: urlAdmin });
+      sessionStorage.setItem("cadre_email", state.email);
+      sessionStorage.setItem("cadre_code", state.code);
+      enterApp();
+    } catch (e) {
+      state.email = null;
+      state.code = null;
+      if (errEl) { errEl.textContent = e.message; errEl.hidden = false; }
+    }
+  })();
+} else if (state.email && state.code) {
   api("GET", "/api/cadre/data")
     .then((data) => { state.data = data; enterApp(); })
     .catch(() => { sessionStorage.clear(); state.email = null; state.code = null; });
