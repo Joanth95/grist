@@ -15,23 +15,56 @@
 
     /* ---------- Barre de contexte (identité cadre + site/service) ----------
        Fusionnée dans .fr-header-tools par etablissement.js
-       (relocateHeaderCadre), pour les deux thèmes : plus de barre à part. */
+       (relocateHeaderCadre), pour les deux thèmes : plus de barre à part.
+       Interaction (déclencheur compact + popover) identique dans les deux
+       thèmes ; seul l'habillage (couleurs, --radius) change via les tokens
+       redéfinis par theme-modern.css. */
     .app-header { display: none; }
 
+    .fr-header-tools { gap: 0.6rem; }
+    .fr-header-tools #refresh-btn, .fr-header-tools #logout-btn { display: none; }
+
     /* flex-shrink:0 : évite qu'en tant qu'item flex de .fr-header-tools, ce
-       bloc soit compressé en dessous de sa largeur naturelle — ce qui force
-       .service-pickers (lui-même flex-wrap) à empiler Site/Service au lieu
-       de les garder côte à côte. */
-    .cadre-ctx-wrap { position: relative; flex-shrink: 0; }
-    .cadre-ctx-btn { display: none; } /* bouton popover : uniquement en thème moderne */
-    .app-icon-btn, #moi-logout-btn { display: none; } /* idem : uniquement en thème moderne */
-    .service-pickers { display: flex; gap: 1.1rem; flex-wrap: nowrap; align-items: flex-end; padding-left: 1.25rem; border-left: 1px solid var(--gris-bordure); }
-    .service-pickers .cadre-service-select { flex: 0 1 170px; min-width: 0; }
-    .cadre-service-select { margin: 0; }
-    .cadre-service-select label { display: block; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--texte-doux); margin: 0 0 0.3rem; }
-    .cadre-service-select select { padding: 0.5rem 0.65rem; border: 1px solid var(--gris-bordure); border-radius: 4px; width: 100%; font-size: 0.9rem; font-weight: 600; background: var(--blanc); cursor: pointer; }
-    .cadre-service-select select:hover { border-color: var(--bleu); }
-    @media (max-width: 640px) { .service-pickers { border-left: none; padding-left: 0; } }
+       bloc soit compressé en dessous de sa largeur naturelle. */
+    .cadre-ctx-wrap { position: relative; flex-shrink: 0; order: 1; }
+    .app-icon-btn { order: 2; }
+
+    .cadre-ctx-btn {
+      display: flex; align-items: center; gap: 0.5rem;
+      background: var(--blanc); border: 1.5px solid var(--gris-bordure); border-radius: 999px;
+      padding: 0.45rem 0.8rem 0.45rem 0.65rem; font: inherit; font-size: 0.86rem; font-weight: 600; color: var(--texte);
+      cursor: pointer; transition: border-color 0.15s, background 0.15s;
+    }
+    .cadre-ctx-btn:hover { border-color: var(--bleu); background: var(--info-bg); }
+    .cadre-ctx-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--bleu); flex: none; }
+    .cadre-ctx-chevron { color: var(--texte-doux); transition: transform 0.15s; flex: none; }
+    .cadre-ctx-wrap.ctx-open .cadre-ctx-chevron { transform: rotate(180deg); }
+
+    .service-pickers {
+      position: absolute; top: calc(100% + 0.6rem); right: 0; z-index: 30;
+      background: var(--blanc); border: 1px solid var(--gris-bordure); border-radius: var(--radius);
+      box-shadow: 0 20px 45px -18px rgba(0, 0, 0, 0.28);
+      padding: 0.9rem; min-width: 15rem; display: flex; flex-direction: column; align-items: stretch; gap: 0.15rem;
+      opacity: 0; transform: translateY(-6px) scale(0.98); pointer-events: none;
+      transition: opacity 0.15s ease, transform 0.15s ease;
+    }
+    .cadre-ctx-wrap.ctx-open .service-pickers { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+    /* Champs en lignes de liste, même principe que le menu avatar
+       (.cadre-actions .btn) plutôt qu'en champs de formulaire encadrés. */
+    .cadre-service-select { margin: 0; padding: 0.4rem 0.6rem; border-radius: 6px; transition: background 0.15s; position: relative; }
+    .cadre-service-select:hover, .cadre-service-select:focus-within { background: var(--gris-contraste); }
+    .cadre-service-select label { display: block; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--texte-doux); margin: 0 0 0.15rem; }
+    .cadre-service-select select {
+      appearance: none; -webkit-appearance: none;
+      background: none; border: none; box-shadow: none; padding: 0 1.1rem 0 0; width: 100%;
+      font-weight: 700; font-size: 0.92rem; color: var(--texte); cursor: pointer;
+    }
+    .cadre-service-select::after {
+      content: ""; position: absolute; right: 0.7rem; bottom: 0.65rem;
+      width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent;
+      border-top: 5px solid var(--texte-doux); pointer-events: none;
+    }
+    @media (max-width: 640px) { .service-pickers { left: 0; right: 0; min-width: 0; } }
 
     /* ---------- Onglets (1er niveau : groupes) ---------- */
     .main-tabs { background: var(--gris-contraste); border-radius: 6px; padding: 0.3rem; display: inline-flex; gap: 0.2rem; }
@@ -49,17 +82,39 @@
     .group-subtab:hover { background: var(--gris-fond); color: var(--texte); }
     .group-subtab.active { background: var(--bleu); border-color: var(--bleu); color: var(--blanc); }
 
-    .cadre-info { display: flex; align-items: center; gap: 0.85rem; flex-wrap: nowrap; flex-shrink: 0; padding-left: 1.25rem; border-left: 1px solid var(--gris-bordure); }
-    html[data-theme="modern"] #cadre-info { border-left: none; padding-left: 0; }
-    .cadre-popover { display: contents; } /* pas de "popover" en thème public : les enfants restent à plat */
+    /* En-tête : avatar + popover identité (même principe dans les deux
+       thèmes : déclencheur circulaire, menu flottant). */
+    #cadre-info { order: 3; flex-shrink: 0; position: relative; cursor: pointer; border-radius: 999px; padding: 0.2rem; display: flex; align-items: center; }
+    #cadre-info:hover .cadre-avatar { box-shadow: 0 0 0 3px var(--info-bg); }
     .cadre-avatar { display: flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 2.6rem; height: 2.6rem; border-radius: 50%; background: var(--bleu); color: #fff; font-weight: 700; font-size: 0.85rem; letter-spacing: 0.02em; }
+    .cadre-popover {
+      display: flex; flex-direction: column; align-items: stretch;
+      position: absolute; top: calc(100% + 0.6rem); right: 0; z-index: 30;
+      background: var(--blanc); border: 1px solid var(--gris-bordure); border-radius: var(--radius);
+      box-shadow: 0 20px 45px -18px rgba(0, 0, 0, 0.28);
+      padding: 0.9rem; min-width: 15rem;
+      opacity: 0; transform: translateY(-6px) scale(0.98); pointer-events: none;
+      transition: opacity 0.15s ease, transform 0.15s ease;
+    }
+    #cadre-info.ctx-open .cadre-popover { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+    .cadre-popover .cadre-identity-text { padding: 0.2rem 0.4rem 0.7rem; border-bottom: 1px solid var(--gris-bordure); margin-bottom: 0.4rem; }
     .cadre-identity-text { display: flex; flex-direction: column; gap: 0.1rem; line-height: 1.3; }
     .cadre-nom, .cadre-nom-edit { font-weight: 700; font-size: 1rem; color: var(--texte); }
     .cadre-tel { color: var(--texte-doux); font-size: 0.82rem; }
     .cadre-tel-input { padding: 0.3rem 0.5rem; border: 1px solid var(--gris-bordure); border-radius: 4px; font-size: 0.85rem; width: 12rem; }
-    .cadre-actions { display: flex; align-items: center; gap: 0.15rem; padding-left: 1.1rem; margin-left: 0.15rem; border-left: 1px solid var(--gris-bordure); }
-    .cadre-actions .btn { font-size: 0.8rem; padding: 0.35rem 0.7rem; }
-    @media (max-width: 640px) { .cadre-actions { border-left: none; padding-left: 0; margin-left: 0; width: 100%; } }
+    .cadre-actions { display: flex; flex-direction: column; align-items: stretch; gap: 0.15rem; }
+    .cadre-actions .btn { display: flex; align-items: center; justify-content: flex-start; text-align: left; font-size: 0.8rem; border-radius: 6px; padding: 0.5rem 0.6rem; }
+    .cadre-actions .btn:hover { background: var(--gris-contraste); }
+    .app-icon-btn {
+      display: flex; align-items: center; justify-content: center;
+      width: 2.3rem; height: 2.3rem; border-radius: 50%; border: none;
+      background: transparent; color: var(--texte-doux); cursor: pointer; transition: background 0.15s, color 0.15s;
+    }
+    .app-icon-btn:hover { background: var(--gris-contraste); color: var(--texte); }
+    #moi-logout-btn {
+      display: flex; color: var(--rouge); margin-top: 0.4rem; padding-top: 0.6rem; border-top: 1px solid var(--gris-bordure);
+    }
+    #moi-logout-btn:hover { background: color-mix(in srgb, var(--rouge) 10%, transparent); }
     .dossier-actions { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.75rem; }
     .dossier-actions-hint { font-size: 0.82rem; color: var(--texte-doux); }
     .dossier-search-bar { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
@@ -257,86 +312,6 @@
       border: 1.5px solid var(--gris-bordure);
       border-radius: 10px;
       box-shadow: none;
-    }
-
-    /* ---------- En-tête : ligne unique (les deux thèmes) ---------- */
-    /* etablissement.js (relocateHeaderCadre) déplace #cadreCtxWrap,
-       #modernRefreshBtn et #cadre-info dans .fr-header-tools au chargement,
-       pour les deux thèmes — .app-header (désormais vide) reste masqué
-       (règle non-thémée ci-dessus). En thème moderne uniquement, les
-       #refresh-btn / #logout-btn d'origine s'effacent au profit de leurs
-       doublons (icône + menu avatar), qui les déclenchent en sous-main. */
-    html[data-theme="modern"] .fr-header-tools { gap: 0.6rem; }
-    html[data-theme="modern"] .fr-header-tools #refresh-btn,
-    html[data-theme="modern"] .fr-header-tools #logout-btn { display: none; }
-
-    /* ---------- En-tête : avatar + popover identité ---------- */
-    html[data-theme="modern"] .cadre-ctx-wrap { order: 1; }
-    html[data-theme="modern"] .app-icon-btn { order: 2; }
-    html[data-theme="modern"] #cadre-info { order: 3; position: relative; cursor: pointer; border-radius: 999px; padding: 0.2rem; }
-    html[data-theme="modern"] #cadre-info:hover .cadre-avatar { box-shadow: 0 0 0 3px var(--info-bg); }
-    html[data-theme="modern"] .app-icon-btn {
-      display: flex; align-items: center; justify-content: center;
-      width: 2.3rem; height: 2.3rem; border-radius: 50%; border: none;
-      background: transparent; color: var(--texte-doux); cursor: pointer; transition: background 0.15s, color 0.15s;
-    }
-    html[data-theme="modern"] .app-icon-btn:hover { background: var(--gris-contraste); color: var(--texte); }
-    html[data-theme="modern"] #moi-logout-btn {
-      display: flex; color: var(--rouge); margin-top: 0.4rem; padding-top: 0.6rem; border-top: 1px solid var(--gris-bordure);
-    }
-    html[data-theme="modern"] #moi-logout-btn:hover { background: var(--m-danger-bg); }
-    html[data-theme="modern"] .cadre-popover {
-      display: flex; flex-direction: column; align-items: stretch;
-      position: absolute; top: calc(100% + 0.6rem); right: 0; z-index: 30;
-      background: var(--blanc); border: 1px solid var(--gris-bordure); border-radius: 16px;
-      box-shadow: 0 20px 45px -18px hsl(var(--m-shadow) / 0.4);
-      padding: 0.9rem; min-width: 15rem;
-      opacity: 0; transform: translateY(-6px) scale(0.98); pointer-events: none;
-      transition: opacity 0.15s ease, transform 0.15s ease;
-    }
-    html[data-theme="modern"] #cadre-info.ctx-open .cadre-popover { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
-    html[data-theme="modern"] .cadre-popover .cadre-identity-text { padding: 0.2rem 0.4rem 0.7rem; border-bottom: 1px solid var(--gris-bordure); margin-bottom: 0.4rem; }
-    html[data-theme="modern"] .cadre-actions { flex-direction: column; align-items: stretch; gap: 0.15rem; border-left: none; padding-left: 0; margin-left: 0; }
-    html[data-theme="modern"] .cadre-actions .btn { display: flex; align-items: center; justify-content: flex-start; text-align: left; border-radius: 8px; padding: 0.5rem 0.6rem; }
-    html[data-theme="modern"] .cadre-actions .btn:hover { background: var(--gris-contraste); }
-
-    /* ---------- En-tête : bouton contexte + popover site/service ---------- */
-    html[data-theme="modern"] .cadre-ctx-btn {
-      display: flex; align-items: center; gap: 0.5rem;
-      background: var(--blanc); border: 1.5px solid var(--gris-bordure); border-radius: 999px;
-      padding: 0.45rem 0.8rem 0.45rem 0.65rem; font: inherit; font-size: 0.86rem; font-weight: 600; color: var(--texte);
-      cursor: pointer; transition: border-color 0.15s, background 0.15s;
-    }
-    html[data-theme="modern"] .cadre-ctx-btn:hover { border-color: var(--bleu); background: var(--info-bg); }
-    html[data-theme="modern"] .cadre-ctx-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--bleu); flex: none; }
-    html[data-theme="modern"] .cadre-ctx-chevron { color: var(--m-ink-faint); transition: transform 0.15s; flex: none; }
-    html[data-theme="modern"] .cadre-ctx-wrap.ctx-open .cadre-ctx-chevron { transform: rotate(180deg); }
-    html[data-theme="modern"] .service-pickers {
-      position: absolute; top: calc(100% + 0.6rem); right: 0; z-index: 30;
-      background: var(--blanc); border: 1px solid var(--gris-bordure); border-radius: 16px;
-      box-shadow: 0 20px 45px -18px hsl(var(--m-shadow) / 0.4);
-      padding: 0.9rem; min-width: 15rem; flex-direction: column; align-items: stretch; gap: 0.75rem;
-      opacity: 0; transform: translateY(-6px) scale(0.98); pointer-events: none;
-      transition: opacity 0.15s ease, transform 0.15s ease;
-    }
-    html[data-theme="modern"] .cadre-ctx-wrap.ctx-open .service-pickers { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
-    /* Champs en lignes de liste, même principe que le menu avatar
-       (.cadre-actions .btn) plutôt qu'en champs de formulaire encadrés. */
-    html[data-theme="modern"] .service-pickers { gap: 0.15rem; }
-    html[data-theme="modern"] .service-pickers .cadre-service-select {
-      flex: 1 1 auto; margin: 0; padding: 0.4rem 0.6rem; border-radius: 8px; transition: background 0.15s;
-    }
-    html[data-theme="modern"] .cadre-service-select:hover,
-    html[data-theme="modern"] .cadre-service-select:focus-within { background: var(--gris-contraste); }
-    html[data-theme="modern"] .cadre-service-select label { font-size: 0.68rem; margin: 0 0 0.15rem; }
-    html[data-theme="modern"] .cadre-service-select select {
-      appearance: none; -webkit-appearance: none;
-      background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5L6 8l3.5-3.5' stroke='%235C6B68' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right center;
-      border: none; border-radius: 0; box-shadow: none; padding: 0 1.1rem 0 0; width: 100%;
-      font-weight: 700; font-size: 0.92rem; color: var(--texte); cursor: pointer;
-    }
-    @media (max-width: 640px) {
-      html[data-theme="modern"] .service-pickers { left: 0; right: 0; min-width: 0; }
     }
 
     /* ---------- Onglets : soulignement plutôt que segments pleins ---------- */
