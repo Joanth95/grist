@@ -2102,10 +2102,19 @@ async function listerOrganisationAdmin(env) {
         CSS: schema.poleCSS ? refIds(p.fields[schema.poleCSS]) : [],
       }))
       .sort((a, b) => a.Nom.localeCompare(b.Nom, "fr")),
-    // Cadres proposés comme référents ou cadres sup : les comptes actifs.
+    // TOUS les comptes, actifs ou non. Un référent désactivé (départ, mutation)
+    // reste le référent tant qu'on ne l'a pas remplacé : son nom doit
+    // s'afficher, et surtout rester dans la liste de la fiche — sinon
+    // l'enregistrer effacerait le référent sans le dire. Le front ne propose
+    // que les comptes actifs, plus celui déjà en place.
     cadres: users
-      .filter((u) => u.fields.Utilisateur_de_l_outil === true)
-      .map((u) => ({ id: u.id, nom: cadreNomComplet(u), telephone: u.fields.Telephone || "", email: (u.fields.Email || "").trim() }))
+      .map((u) => ({
+        id: u.id,
+        nom: cadreNomComplet(u),
+        telephone: u.fields.Telephone || "",
+        email: (u.fields.Email || "").trim(),
+        actif: u.fields.Utilisateur_de_l_outil === true,
+      }))
       .sort((a, b) => a.nom.localeCompare(b.nom, "fr")),
     codes: codes
       .map((c) => ({

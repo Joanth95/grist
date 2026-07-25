@@ -10,7 +10,7 @@
    case UTILISATEURS.Administrateur est cochée passent la porte. Le contrôle
    qui compte est côté Worker : ici, on n'affiche que ce qui est autorisé. */
 
-const APP_VERSION = "v4"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-admin.html)
+const APP_VERSION = "v5"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-admin.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 
@@ -664,11 +664,32 @@ async function chargerServices() {
   rendreOrganigramme();
 }
 
-/** Nom d'un cadre depuis son identifiant (« compte désactivé » sinon : le
- *  cadre existe toujours dans Grist, mais n'est plus proposé). */
-function nomCadreId(id) {
-  const c = (state.svc.cadres || []).find((x) => x.id === id);
-  return c ? c.nom : "compte désactivé";
+/** Un cadre depuis son identifiant, actif ou non. */
+function cadreParId(id) {
+  return (state.svc.cadres || []).find((x) => x.id === id) || null;
+}
+
+/** Nom d'un cadre depuis son identifiant. Un compte désactivé garde son nom —
+ *  il reste référent tant qu'on ne l'a pas remplacé — avec la mention qui va
+ *  bien. Un identifiant qui ne correspond à rien signale une ligne supprimée
+ *  dans Grist alors que des services y renvoyaient encore. */
+function nomCadreId(id, avecMention) {
+  const c = cadreParId(id);
+  if (!c) return `cadre supprimé (#${id})`;
+  return c.nom + (avecMention !== false && !c.actif ? " (compte désactivé)" : "");
+}
+
+/** Cadres à proposer dans une liste : les comptes actifs, plus celui qui est
+ *  déjà en place même s'il est désactivé — sans quoi enregistrer la fiche
+ *  effacerait le rattachement sans prévenir. */
+function cadresProposables(dejaChoisis) {
+  const gardes = new Set(dejaChoisis || []);
+  return (state.svc.cadres || []).filter((c) => c.actif || gardes.has(c.id));
+}
+
+/** Libellé d'un cadre dans une liste de choix. */
+function libelleCadre(c) {
+  return c.nom + (c.actif ? "" : " — compte désactivé");
 }
 
 function servicesAffiches() {
@@ -692,8 +713,6 @@ function rendreServicesEcran() {
     wrap.appendChild(p);
     return;
   }
-
-  const nomCadre = new Map((state.svc.cadres || []).map((c) => [c.id, c.nom]));
 
   const parSite = new Map();
   for (const s of liste) {
@@ -733,7 +752,7 @@ function rendreServicesEcran() {
       tr.appendChild(cellule(nom));
       tr.appendChild(cellule(s.Code_UF || "—"));
       tr.appendChild(cellule(s.Pole || "—"));
-      tr.appendChild(cellule(s.Cadre_ref ? (nomCadre.get(s.Cadre_ref) || "compte désactivé") : "—"));
+      tr.appendChild(cellule(s.Cadre_ref ? nomCadreId(s.Cadre_ref) : "—"));
 
       // Rattachements secondaires + CSS de pôle : ce qui ouvre l'accès au service.
       const rattaches = s.Cadres_secondaires.length + s.Pole_CSS.length;
@@ -797,7 +816,11 @@ function ouvrirFicheService(svc) {
   const selRef = $("s-ref");
   selRef.textContent = "";
   selRef.appendChild(option("", "— Aucun référent —"));
-  for (const c of state.svc.cadres || []) selRef.appendChild(option(String(c.id), c.nom));
+  // Le référent en place reste dans la liste même désactivé : sans lui,
+  // enregistrer la fiche le remplacerait par « aucun ».
+  for (const c of cadresProposables(svc && svc.Cadre_ref ? [svc.Cadre_ref] : [])) {
+    selRef.appendChild(option(String(c.id), libelleCadre(c)));
+  }
   selRef.value = svc && svc.Cadre_ref ? String(svc.Cadre_ref) : "";
 
   // Pôle : proposé seulement si le document sait relier un service à un pôle.
@@ -971,7 +994,7 @@ function rendrePoles() {
     nom.textContent = p.Nom;
     tr.appendChild(cellule(nom));
 
-    tr.appendChild(cellule(p.CSS.length ? p.CSS.map(nomCadreId).join(", ") : "—"));
+    tr.appendChild(cellule(p.CSS.length ? p.CSS.map((id) => nomCadreId(id)).join(", ") : "—"));
 
     const rattaches = (state.svc.services || []).filter((s) => s.PoleId === p.id);
     const svc = document.createElement("div");
@@ -1021,14 +1044,14 @@ function ouvrirFichePole(pole) {
   } else if (schema.poleCSSListe) {
     const liste = document.createElement("div");
     liste.className = "css-picker";
-    for (const c of state.svc.cadres || []) {
+    for (const c of cadresProposables([...choisis])) {
       const label = document.createElement("label");
       const input = document.createElement("input");
       input.type = "checkbox";
       input.value = String(c.id);
       input.checked = choisis.has(c.id);
       const texte = document.createElement("span");
-      texte.textContent = c.nom;
+      texte.textContent = libelleCadre(c);
       label.appendChild(input);
       label.appendChild(texte);
       liste.appendChild(label);
@@ -1038,7 +1061,9 @@ function ouvrirFichePole(pole) {
     const sel = document.createElement("select");
     sel.id = "p-css-select";
     sel.appendChild(option("", "— Aucun —"));
-    for (const c of state.svc.cadres || []) sel.appendChild(option(String(c.id), c.nom));
+    for (const c of cadresProposables([...choisis])) {
+      sel.appendChild(option(String(c.id), libelleCadre(c)));
+    }
     sel.value = choisis.size ? String([...choisis][0]) : "";
     wrap.appendChild(sel);
   }
@@ -1095,7 +1120,7 @@ function rendreOrganigramme() {
     [(state.svc.sites || []).length, "site(s)"],
     [(state.svc.poles || []).length, "pôle(s)"],
     [services.length, `service(s) — ${ouverts} ouvert(s)`],
-    [cadres.length, "cadre(s) actif(s)"],
+    [cadres.filter((c) => c.actif).length, "cadre(s) actif(s)"],
   ];
   for (const [n, libelle] of compteurs) {
     const span = document.createElement("span");
@@ -1146,7 +1171,7 @@ function rendreOrganigramme() {
       if (infoPole && infoPole.CSS.length) {
         const css = document.createElement("span");
         css.className = "css";
-        css.textContent = ` — cadre sup. : ${infoPole.CSS.map(nomCadreId).join(", ")}`;
+        css.textContent = ` — cadre sup. : ${infoPole.CSS.map((id) => nomCadreId(id)).join(", ")}`;
         titre.appendChild(css);
       }
       wrap.appendChild(titre);
@@ -1163,17 +1188,28 @@ function rendreOrganigramme() {
   h.textContent = "Par cadre";
   wrap.appendChild(h);
 
-  if (!cadres.length) {
+  // Les comptes désactivés n'apparaissent que s'ils tiennent encore un rôle :
+  // c'est exactement l'anomalie à voir (un référent parti, jamais remplacé).
+  const roleDe = (c) => ({
+    refs: services.filter((s) => s.Cadre_ref === c.id),
+    secondaires: services.filter((s) => s.Cadres_secondaires.includes(c.id)),
+    polesCSS: (state.svc.poles || []).filter((p) => p.CSS.includes(c.id)),
+  });
+  const aUnRole = (r) => r.refs.length || r.secondaires.length || r.polesCSS.length;
+  const listables = cadres.filter((c) => c.actif || aUnRole(roleDe(c)));
+
+  if (!listables.length) {
     wrap.appendChild(messageVide("Aucun cadre actif."));
     return;
   }
-  for (const c of cadres) {
+  for (const c of listables) {
     const bloc = document.createElement("div");
     bloc.className = "orga-personne";
 
     const qui = document.createElement("div");
     qui.className = "qui";
     qui.textContent = c.nom;
+    if (!c.actif) qui.appendChild(badge("Compte désactivé", "warn"));
     if (c.email) {
       const mail = document.createElement("span");
       mail.className = "ou";
@@ -1183,9 +1219,7 @@ function rendreOrganigramme() {
     bloc.appendChild(qui);
 
     const roles = [];
-    const refs = services.filter((s) => s.Cadre_ref === c.id);
-    const secondaires = services.filter((s) => s.Cadres_secondaires.includes(c.id));
-    const polesCSS = (state.svc.poles || []).filter((p) => p.CSS.includes(c.id));
+    const { refs, secondaires, polesCSS } = roleDe(c);
     if (refs.length) roles.push(`référent de ${refs.map(nomServiceOrga).join(", ")}`);
     if (secondaires.length) roles.push(`rattaché à ${secondaires.map(nomServiceOrga).join(", ")}`);
     if (polesCSS.length) {
@@ -1227,9 +1261,9 @@ function carteService(s) {
   const morceaux = [];
   if (s.Cadre_ref) morceaux.push(["référent : ", nomCadreId(s.Cadre_ref)]);
   if (s.Cadres_secondaires.length) {
-    morceaux.push(["aussi : ", s.Cadres_secondaires.map(nomCadreId).join(", ")]);
+    morceaux.push(["aussi : ", s.Cadres_secondaires.map((id) => nomCadreId(id)).join(", ")]);
   }
-  if (s.Pole_CSS.length) morceaux.push(["cadre sup. : ", s.Pole_CSS.map(nomCadreId).join(", ")]);
+  if (s.Pole_CSS.length) morceaux.push(["cadre sup. : ", s.Pole_CSS.map((id) => nomCadreId(id)).join(", ")]);
 
   if (!morceaux.length) {
     gens.className = "gens orga-vide";
