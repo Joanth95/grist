@@ -55,11 +55,11 @@
       <a href="#stats">12. Statistiques</a>
       <a href="#codes">13. Codes horaires</a>
       <a href="#mailbienvenue">14. Mail de bienvenue</a>
-      <a href="#cadre">15. Vos coordonnées</a>
+      <a href="#cadre">15. Votre compte et votre PIN</a>
       <a href="#tracabilite">16. Traçabilité</a>
     </nav>
 
-    <section class="guide-section" id="principe" class="guide-section">
+    <section class="guide-section" id="principe">
       <h2>1. Principe général</h2>
       <p>Chaque étudiant dispose de son propre <strong>espace en ligne</strong> pour consulter son planning de stage et déclarer ses écarts d'heures (retard, rattrapage, sortie de formation). Vous disposez de votre côté d'un <strong>espace cadre</strong> qui vous permet de piloter les étudiants de votre service : même planning, mêmes déclarations, avec en plus les actions de gestion (validation, édition du planning, fiches de stage).</p>
       <p>L'étudiant n'a pas d'identifiant classique : il s'identifie par un <strong>code anonymat</strong> personnel (1<sup>re</sup> lettre du prénom + date de naissance JJMMAA + 1<sup>re</sup> lettre du nom).</p>
@@ -67,16 +67,36 @@
 
     <section class="guide-section" id="connexion">
       <h2>2. Se connecter à l'espace cadre</h2>
-      <p>Rendez-vous sur <a href="espace-cadre.html">espace-cadre.html</a> et connectez-vous avec votre <strong>adresse email</strong> et votre <strong>code d'accès personnel</strong> (transmis par l'administrateur de l'application).</p>
-      <p>Vous pouvez aussi recevoir un <strong>lien de connexion directe</strong> intégrant déjà vos identifiants : un simple clic vous connecte, sans ressaisir email ni code.</p>
-      <p>Vous ne voyez et ne modifiez <strong>que les services dont vous êtes responsable</strong>. Si vous couvrez plusieurs services, deux sélecteurs en haut de page permettent de passer de l'un à l'autre : d'abord le <strong>site</strong> (ex. Hôpital A, Hôpital B…), puis le <strong>service</strong> — filtré selon le site choisi, pour éviter toute confusion entre services homonymes de sites différents. Le sélecteur de site n'apparaît que si vous couvrez plusieurs sites.</p>
-      <div class="callout warn">Le code d'accès donne accès à toutes les données de votre service : gardez-le confidentiel, comme un mot de passe.</div>
+      <p>Rendez-vous sur <a href="espace-cadre.html">espace-cadre.html</a>. La connexion demande <strong>trois informations</strong> :</p>
+      <table>
+        <tr><th>Champ</th><th>Ce que vous saisissez</th></tr>
+        <tr><td><strong>Adresse email</strong></td><td>Votre e-mail professionnel, tel qu'il est enregistré par l'administrateur.</td></tr>
+        <tr><td><strong>Code d'accès</strong></td><td>Le code personnel transmis par l'administrateur de l'application (il figure dans votre mail d'invitation).</td></tr>
+        <tr><td><strong>Code PIN</strong></td><td>4 à 6 chiffres <strong>que vous choisissez vous-même</strong> à la première connexion, puis redemandés à chaque fois.</td></tr>
+      </table>
+      <h3>Première connexion</h3>
+      <p>Votre PIN ne vous est pas transmis et n'est écrit nulle part : le code que vous tapez dans le champ « Code PIN » à votre <strong>première</strong> connexion <strong>devient</strong> votre PIN. Choisissez-le comme un code de carte bancaire — évitez <span class="code">1234</span>, <span class="code">0000</span> ou une date de naissance.</p>
+      <h3>PIN oublié</h3>
+      <p>Le bouton <strong>« Code PIN oublié ? »</strong>, sous le formulaire, rappelle la marche à suivre et prépare au besoin l'e-mail de demande à l'administrateur. Personne ne peut vous « redonner » votre PIN — il est stocké sous forme illisible. L'administrateur le <strong>réinitialise</strong> : vous en choisissez alors un nouveau à la connexion suivante, comme la première fois.</p>
+      <p>Une fois connecté, vous pouvez changer votre PIN à tout moment depuis le menu de votre avatar (voir <a href="#cadre">section 15</a>).</p>
+      <h3>Lien de connexion directe</h3>
+      <p>Le lien qui peut vous être fourni (depuis Grist ou par mail) <strong>pré-remplit</strong> votre e-mail et votre code d'accès : il ne reste plus qu'à saisir votre PIN. C'est précisément le rôle du PIN — un lien qui circule ne suffit pas à ouvrir votre espace.</p>
+      <div class="callout warn">Code d'accès et PIN donnent accès à toutes les données de votre service : gardez-les confidentiels, comme un mot de passe, et ne les transmettez pas à un collègue (les actions sont attribuées au compte connecté, voir <a href="#tracabilite">section 16</a>).</div>
+      <p>Vous ne voyez et ne modifiez <strong>que les services dont vous êtes responsable</strong> ; le passage d'un service à l'autre se fait depuis la barre du haut (voir <a href="#onglets">section 3</a>).</p>
       <p>Vous êtes étudiant par erreur sur cette page ? <a href="index.html">Accédez à l'espace étudiant</a>.</p>
     </section>
 
     <section class="guide-section" id="onglets">
       <h2>3. Organisation de l'espace</h2>
-      <p>L'espace cadre est organisé en <strong>4 groupes</strong>, chacun regroupant un ou plusieurs onglets :</p>
+      <h3>La barre du haut</h3>
+      <p>Trois éléments, à droite de l'en-tête :</p>
+      <ul>
+        <li>Une <strong>pastille de contexte</strong> qui affiche en permanence le site et le service consultés. Un clic ouvre les sélecteurs : d'abord le <strong>site</strong> (ex. Hôpital A, Hôpital B…), puis le <strong>service</strong> — filtré selon le site choisi, pour éviter toute confusion entre services homonymes de sites différents. Seuls vos services apparaissent, et le sélecteur de site n'est présent que si vous en couvrez plusieurs.</li>
+        <li>Le bouton <strong>🔄 Rafraîchir</strong>, qui recharge les données (utile si un collègue vient de modifier quelque chose de son côté).</li>
+        <li>Votre <strong>avatar</strong> (vos initiales). Un clic ouvre votre menu personnel : nom et téléphone, « Modifier le numéro », « Changer mon code PIN » et « Se déconnecter » (voir <a href="#cadre">section 15</a>).</li>
+      </ul>
+      <h3>Les onglets</h3>
+      <p>Le reste de l'espace est organisé en <strong>4 groupes</strong>, chacun regroupant un ou plusieurs onglets :</p>
       <table>
         <tr><th>Groupe</th><th>Onglets</th><th>À quoi ça sert</th></tr>
         <tr><td><strong>Tableau de bord</strong></td><td>Tableau de bord</td><td>Vue synthétique du service : indicateurs, étudiants en cours et à venir, échéances.</td></tr>
@@ -104,7 +124,8 @@
         <li><strong>À venir</strong> — le stage n'a pas encore commencé ;</li>
         <li><strong>Passé</strong> — le stage est terminé (l'historique des étudiants déjà passés dans le service est conservé).</li>
       </ul>
-      <p>Sous le nom de chaque étudiant s'affichent son <strong>code anonymat</strong> (à lui redonner s'il l'a oublié) et les <strong>dates de son stage</strong>. Un bouton <strong>« ✉ Mail de bienvenue »</strong> permet de lui (ré)envoyer le mail d'accueil du service (voir section 14). Chaque dossier se compose de deux sous-onglets :</p>
+      <p>Sous le nom de chaque étudiant s'affichent son <strong>code anonymat</strong> (à lui redonner s'il l'a oublié) et les <strong>dates de son stage</strong>, puis sa <strong>formation</strong> et son <strong>centre de formation</strong>. Une dernière ligne donne ses <strong>coordonnées</strong> — téléphone, e-mail — et sa <strong>date de naissance</strong> avec son âge, pour joindre l'étudiant sans quitter son dossier. L'étudiant tient lui-même son téléphone et son e-mail à jour depuis son espace. Le reste de son identité (nom, date de naissance, formation, centre) ne se modifie pas depuis l'espace cadre : en cas d'erreur de saisie, signalez-la à l'administrateur de l'application.</p>
+      <p>Un bouton <strong>« ✉ Mail de bienvenue »</strong> permet de lui (ré)envoyer le mail d'accueil du service (voir section 14). Chaque dossier se compose de deux sous-onglets :</p>
       <h3>Historique des stages</h3>
       <p>La fiche de chaque stage : tuteur, niveau, dates de début et de fin. Elle reste <strong>modifiable tant que le stage est en cours</strong> ; une fois le stage terminé, elle passe automatiquement en lecture seule. Le parcours complet de l'étudiant est visible, y compris ses stages dans d'autres services : ceux-ci s'affichent en <strong>consultation seule</strong> (vous ne modifiez que les stages de votre propre service).</p>
       <p>Tant que le stage n'est pas terminé, un bouton rouge <strong>« Supprimer cette période »</strong> permet de retirer une période <strong>déclarée par erreur</strong>. Après une confirmation explicite, la période est supprimée définitivement, avec son planning hebdomadaire et ses rendez-vous rattachés.</p>
@@ -229,15 +250,21 @@
     </section>
 
     <section class="guide-section" id="cadre">
-      <h2>15. Vos coordonnées de cadre</h2>
-      <p>Votre nom et vos coordonnées (mail, téléphone) s'affichent à l'étudiant sur sa fiche de stage et dans le message d'inscription. Assurez-vous qu'elles soient à jour auprès de l'administrateur de l'application.</p>
-      <div class="callout">Tant que votre téléphone n'est pas renseigné, seul le mail s'affiche à l'étudiant.</div>
+      <h2>15. Votre compte : coordonnées et code PIN</h2>
+      <p>Votre <strong>avatar</strong>, en haut à droite, ouvre votre menu personnel. Il affiche votre nom et votre téléphone, et propose trois actions :</p>
+      <ul>
+        <li><strong>Modifier le numéro</strong> : votre téléphone, que vous tenez à jour vous-même, sans passer par l'administrateur. Il s'affiche à l'étudiant sur sa fiche de stage et dans le message d'inscription, à côté de votre mail ; tant qu'il n'est pas renseigné, seul le mail s'affiche.</li>
+        <li><strong>Changer mon code PIN</strong> : saisissez votre PIN actuel, puis le nouveau (4 à 6 chiffres, à confirmer). À faire au moindre doute sur sa confidentialité.</li>
+        <li><strong>Se déconnecter</strong>.</li>
+      </ul>
+      <p>Votre <strong>nom</strong>, votre <strong>e-mail</strong> et votre <strong>code d'accès</strong> ne se modifient pas ici : ils relèvent de l'administrateur de l'application. Signalez-lui toute erreur — votre nom apparaît sur les plannings imprimés et dans les mails envoyés aux étudiants.</p>
     </section>
 
     <section class="guide-section" id="tracabilite">
       <h2>16. Traçabilité des actions</h2>
-      <p>Pour des raisons de sécurité, l'application tient un <strong>journal d'activité</strong> : les connexions et les actions réalisées dans l'espace cadre (validation d'une déclaration, inscription, modification d'un planning ou d'une fiche, suppression…) sont enregistrées, avec l'auteur, la date et l'étudiant concerné.</p>
-      <div class="callout warn">Ce journal permet de retrouver l'origine d'une modification en cas de besoin (erreur, litige). Utilisez votre code d'accès de façon strictement personnelle et confidentielle : les actions sont attribuées au compte connecté.</div>
+      <p>Pour des raisons de sécurité, l'application tient un <strong>journal d'activité</strong> : les connexions et les actions réalisées dans l'espace cadre (validation d'une déclaration, inscription, modification d'un planning ou d'une fiche, suppression…) sont enregistrées, avec l'auteur, la date, le service et l'étudiant concerné. Le journal note <strong>ce qui a réellement changé</strong> (par exemple <em>« Mardi 14/07/2026 : MAT → AS »</em>), ainsi que les <strong>consultations</strong> : ouverture de l'espace cadre et ouverture du dossier d'un étudiant.</p>
+      <p>Les lignes de plus de <strong>30 jours</strong> sont supprimées automatiquement : le journal sert à retrouver l'origine d'une modification récente, pas à conserver un historique durable.</p>
+      <div class="callout warn">Ce journal permet de retrouver l'origine d'une modification en cas de besoin (erreur, litige). Utilisez votre code d'accès et votre PIN de façon strictement personnelle et confidentielle : les actions sont attribuées au compte connecté.</div>
     </section>
     </div>
   </main>

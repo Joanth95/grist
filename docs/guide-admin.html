@@ -55,7 +55,7 @@
       <a href="#technique">12. Déploiement technique</a>
     </nav>
 
-    <section class="guide-section" id="principe" class="guide-section">
+    <section class="guide-section" id="principe">
       <h2>1. Principe général</h2>
       <p>L'outil propose <strong>trois espaces</strong> :</p>
       <ul>
@@ -84,7 +84,10 @@
         <tr><td><span class="code">Description</span> / <span class="code">Sous_titre</span></td><td>Textes complémentaires de l'en-tête (baseline, sous-titre).</td></tr>
         <tr><td><span class="code">Logo</span></td><td>Pièce jointe (image) : le logo affiché dans l'en-tête. La première pièce jointe de la cellule est utilisée ; elle est servie via le Worker (la clé API reste protégée).</td></tr>
         <tr><td><span class="code">Texte_pied_de_page</span></td><td>Texte facultatif remplaçant la description affichée dans le pied de page. Laisser vide pour garder le texte par défaut.</td></tr>
+        <tr><td><span class="code">Url_document_grist</span></td><td>Lien « Administration (Grist) » du pied de page. Vide : le site garde son lien par défaut.</td></tr>
         <tr><td><span class="code">Afficher_bandeau_beta</span></td><td>Bascule (case à cocher) facultative : décochée, le bandeau « Version bêta » en haut des pages et sa mention dans le pied de page disparaissent. Colonne absente ou cochée : bandeau affiché.</td></tr>
+        <tr><td><span class="code">DOMAINE_MAIL</span></td><td>Domaine mail de l'établissement (ex. <span class="code">chu-exemple.fr</span>). Renseigné, il adapte tous les champs e-mail du site : l'exemple affiché devient <span class="code">prenom.nom@<em>votre-domaine</em></span> et une saisie sans « @ » est complétée automatiquement à la sortie du champ. Vide : comportement générique.</td></tr>
+        <tr><td><span class="code">Mode_etablissement_public</span></td><td>Bascule facultative choisissant l'<strong>habillage visuel</strong> du site. Colonne absente ou cochée : rendu <strong>DSFR</strong>, conforme aux conventions des services publics (comportement par défaut). Décochée : habillage <strong>« moderne »</strong> alternatif (coins arrondis, palette plus douce), pour un établissement qui n'est pas soumis à ces conventions. Les fonctionnalités sont identiques dans les deux cas.</td></tr>
       </table>
       <div class="callout">Si la table est absente ou vide, le site garde son affichage générique.</div>
     </section>
@@ -112,11 +115,20 @@
         <tr><th>Colonne</th><th>Rôle</th></tr>
         <tr><td><span class="code">Civilite</span> / <span class="code">Nom</span> / <span class="code">Prenom</span></td><td>Identité affichée aux étudiants et sur les documents imprimés (planning, en-tête).</td></tr>
         <tr><td><span class="code">Email</span></td><td>Identifiant de connexion à l'espace cadre (calculé automatiquement).</td></tr>
-        <tr><td><span class="code">Telephone</span></td><td>Affiché aux étudiants en plus du mail — à renseigner pour chaque cadre.</td></tr>
-        <tr><td><span class="code">Code_acces</span></td><td>Mot de passe personnel du cadre pour se connecter. Choisissez un code <strong>long et aléatoire</strong> (contrairement au code anonymat étudiant, volontairement simple, celui-ci donne accès à tout un service) et transmettez-le au cadre de façon sécurisée.</td></tr>
+        <tr><td><span class="code">Telephone</span></td><td>Affiché aux étudiants en plus du mail. À renseigner à la création ; le cadre peut ensuite le corriger lui-même depuis le menu de son avatar.</td></tr>
+        <tr><td><span class="code">Code_acces</span></td><td><strong>1<sup>er</sup> facteur</strong> : le mot de passe personnel du cadre, que <strong>vous</strong> choisissez et lui transmettez de façon sécurisée. Prenez un code <strong>long et aléatoire</strong> (contrairement au code anonymat étudiant, volontairement simple, celui-ci donne accès à tout un service).</td></tr>
+        <tr><td><span class="code">PIN_hash</span></td><td><strong>2<sup>e</sup> facteur</strong> : le code PIN du cadre, stocké <strong>haché</strong> (PBKDF2-SHA256, sel aléatoire) — donc illisible, y compris pour vous. Colonne <strong>créée automatiquement</strong> à la première connexion ; ne la remplissez jamais à la main. Vide = le cadre choisira son PIN à sa prochaine connexion.</td></tr>
+        <tr><td><span class="code">Reinit_PIN</span></td><td>Case à cocher : votre bouton « réinitialiser le PIN ». Cochez-la à la demande d'un cadre qui a oublié son PIN — il en choisira un nouveau à sa prochaine connexion, et la case se <strong>décoche d'elle-même</strong> une fois la demande consommée.</td></tr>
         <tr><td><span class="code">Utilisateur_de_l_outil</span></td><td>Case à cocher qui active/désactive le compte. Décochez-la pour bloquer immédiatement la connexion d'un cadre (mutation de service, départ…) sans supprimer ses données historiques.</td></tr>
       </table>
       <div class="callout warn">Un compte désactivé (<span class="code">Utilisateur_de_l_outil</span> décoché) reçoit un message d'erreur explicite à la connexion : « Ce compte a été désactivé : contactez l'administrateur ».</div>
+      <h3>Le code PIN, en pratique</h3>
+      <p>La connexion cadre demande <strong>email + code d'accès + code PIN</strong>. Le PIN n'est pas transmis par vous : le cadre le <strong>choisit lui-même</strong> (4 à 6 chiffres) à sa première connexion, et peut le changer ensuite depuis le menu de son avatar. Deux conséquences pour vous :</p>
+      <ul>
+        <li>Un <strong>lien de connexion directe</strong> (email + code d'accès dans l'URL) ne suffit plus à ouvrir un espace : le PIN reste à saisir. C'est ce qui rend ces liens acceptables.</li>
+        <li>Vous ne pouvez pas retrouver un PIN oublié, seulement le <strong>réinitialiser</strong> : cochez <span class="code">Reinit_PIN</span> sur la ligne du cadre et prévenez-le. Le bouton « Code PIN oublié ? » de l'écran de connexion prépare justement cette demande sous forme d'e-mail.</li>
+      </ul>
+      <div class="callout">Un cadre qui a changé de poste et dont vous décochez <span class="code">Utilisateur_de_l_outil</span> est bloqué quel que soit son PIN : la désactivation du compte reste la mesure à prendre en priorité.</div>
     </section>
 
     <section class="guide-section" id="pole">
@@ -161,8 +173,10 @@
     <section class="guide-section" id="securite">
       <h2>11. Sécurité — points d'attention</h2>
       <ul>
-        <li>Le <strong>code anonymat</strong> étudiant (1<sup>re</sup> lettre prénom + date de naissance + 1<sup>re</sup> lettre nom) est volontairement simple : c'est un choix assumé, les données accessibles se limitent au planning de stage de l'étudiant concerné.</li>
-        <li>Le <strong>code d'accès cadre</strong> donne, lui, accès à toutes les données d'un service entier : il doit être long, aléatoire, transmis de façon confidentielle, et révoqué (décochez <span class="code">Utilisateur_de_l_outil</span>) dès qu'un cadre quitte ses fonctions.</li>
+        <li>Le <strong>code anonymat</strong> étudiant (1<sup>re</sup> lettre prénom + date de naissance + 1<sup>re</sup> lettre nom) est volontairement simple, parce qu'un étudiant doit pouvoir le recomposer de mémoire. Il est donc complété par un <strong>2<sup>e</sup> facteur</strong> : l'<strong>adresse e-mail du dossier</strong>, exigée dès qu'une adresse y figure. Un dossier sans e-mail reste accessible au seul code — renseigner l'adresse des étudiants est ce qui protège leur espace.</li>
+        <li>L'étudiant peut modifier lui-même son téléphone et son e-mail depuis son espace : changer l'e-mail change <strong>son propre</strong> 2<sup>e</sup> facteur, et rien d'autre.</li>
+        <li>Le <strong>code d'accès cadre</strong> donne, lui, accès à toutes les données d'un service entier : il doit être long, aléatoire, transmis de façon confidentielle, et révoqué (décochez <span class="code">Utilisateur_de_l_outil</span>) dès qu'un cadre quitte ses fonctions. Il est doublé d'un <strong>code PIN</strong> choisi par le cadre et stocké haché (voir section 5) : ni vous ni le document Grist ne permettent de le lire.</li>
+        <li>Une <strong>clé d'accès administrateur</strong>, gardée comme secret côté Worker (jamais dans le code ni dans les mails d'invitation), permet d'ouvrir l'espace d'un cadre <strong>sans son PIN</strong> — pour du dépannage. Toute connexion de ce type est signalée comme telle dans le journal d'activité. Traitez cette clé comme le secret le plus sensible de l'installation.</li>
         <li>La <strong>clé API Grist</strong> qui permet au site web de lire/écrire dans le document n'est jamais stockée dans le code : elle vit uniquement en secret côté Cloudflare Worker (proxy).</li>
         <li>Ni les étudiants ni les cadres ne peuvent accéder aux tables sensibles du document (autres services, autres pôles) : le proxy limite strictement chaque requête à leur périmètre.</li>
         <li>Un <strong>journal d'activité</strong> (table <span class="code">JOURNAL_ACTIVITE</span>) trace, pour des raisons de sécurité, les connexions et les actions des utilisateurs (auteur, date, étudiant concerné, détail). Les lignes de plus de 30 jours sont purgées automatiquement.</li>
@@ -174,6 +188,7 @@
       <p>Cette section concerne uniquement la personne qui héberge et maintient le code de l'application (pas la gestion quotidienne des services et des cadres, décrite ci-dessus).</p>
       <p>L'application repose sur trois briques : le site (GitHub Pages, dossier <span class="code">docs/</span>), un proxy (Cloudflare Worker, dossier <span class="code">worker/</span>) qui protège la clé API Grist, et le document Grist lui-même. Le détail des étapes (clé API, déploiement du worker, configuration du site, sécurisation de l'origine) est décrit dans le <span class="code">README.md</span> du dépôt ; pour déployer une copie de l'outil pour un autre service ou établissement, voir <span class="code">INSTALL.md</span>.</p>
       <div class="callout">En résumé : clé API Grist → secret Cloudflare (<span class="code">wrangler secret put GRIST_API_KEY</span>) → <span class="code">wrangler deploy</span> → URL du worker renseignée dans <span class="code">docs/config.js</span> → site publié via GitHub Pages.</div>
+      <p>Un second secret, facultatif, est posé de la même façon : <span class="code">wrangler secret put ADMIN_KEY</span>. C'est la clé d'accès administrateur évoquée en section 11 (connexion à l'espace d'un cadre sans son PIN, pour du dépannage). Tant qu'elle n'est pas définie, cet accès n'existe simplement pas.</p>
     </section>
     </div>
   </main>

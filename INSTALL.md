@@ -53,7 +53,11 @@ document d'origine (nouvel établissement, nouvelle organisation Grist).
     de votre établissement (colonne formule, panneau latéral « Colonne »).
   - `Code_acces` (Texte) : à remplir vous-même pour chaque cadre — un code
     personnel assez long/aléatoire (10-12 caractères), transmis en dehors de
-    l'outil. C'est ce code + l'email qui donnent accès à l'espace cadre.
+    l'outil. C'est le 1ᵉʳ facteur, avec l'email.
+  - `PIN_hash` et `Reinit_PIN` : **ne pas créer à la main**, le worker les
+    ajoute tout seul. 2ᵉ facteur : le cadre choisit un PIN de 4 à 6 chiffres
+    à sa première connexion (stocké haché). Cocher `Reinit_PIN` sur une ligne
+    permet au cadre concerné d'en choisir un nouveau.
 - **`CODES_HORAIRES`** : gardez ou adaptez les codes (M, S, N, R, ABS, RF…),
   leurs horaires et si chacun compte comme temps de stage.
 - **`JOURS_FERIES`** : liste des jours fériés à jour pour l'année en cours.
@@ -154,7 +158,9 @@ certains navigateurs garderont l'ancienne version en cache.
   `entree-stage.html` (code anonymat calculé automatiquement).
 - **Cadres** : transmettez à chacun son email professionnel + le
   `Code_acces` que vous avez saisi à l'étape 1, avec l'URL
-  `https://votrecompte.github.io/nom-du-depot/espace-cadre.html`.
+  `https://votrecompte.github.io/nom-du-depot/espace-cadre.html`. Précisez-lui
+  qu'il **choisit lui-même son code PIN** (4 à 6 chiffres) au premier écran de
+  connexion : ce PIN n'est pas à transmettre, et vous ne pourrez pas le lire.
 
 ---
 

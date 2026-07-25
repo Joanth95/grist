@@ -47,7 +47,7 @@ Le proxy s'appuie sur la structure existante du document :
 
 | Table | Usage |
 |---|---|
-| `LISTE_DES_ETUDIANTS` | Authentification via `Anonymat` ; **création** lors de l'entrée en stage |
+| `LISTE_DES_ETUDIANTS` | Authentification via `Anonymat` + `Adresse_mail` (2ᵉ facteur) ; **création** lors de l'entrée en stage ; l'étudiant met à jour ses coordonnées |
 | `PERIODES_DE_STAGE` | Périodes de l'étudiant ; **création** lors de l'entrée en stage |
 | `PLANNING_HEBDO` | Planning établi par le service — **lecture seule** pour l'étudiant |
 | `Sortie_de_stage` | Déclarations de l'étudiant : rattrapage (+h), retard (−h)… **création/suppression** de ses propres lignes |
@@ -109,10 +109,23 @@ npx wrangler deploy
 - La clé API Grist n'est stockée **que** dans le secret Cloudflare, jamais dans
   le code ni sur GitHub.
 - ⚠️ Le code anonymat est **devinable** par quiconque connaît le nom et la date
-  de naissance d'un étudiant (format documenté sur l'écran de connexion).
-  C'est un choix assumé de simplicité ; les données exposées se limitent au
-  planning de stage. Pour durcir : ajouter un suffixe aléatoire aux codes.
-- Le proxy ne permet ni suppression ni accès aux tables sensibles du document.
+  de naissance d'un étudiant (format documenté sur l'écran de connexion). Il est
+  donc complété par un **2ᵉ facteur** : l'adresse e-mail du dossier, exigée dès
+  qu'une adresse y figure (un dossier sans e-mail reste accessible au seul code).
+- Côté cadre, le `Code_acces` (1ᵉʳ facteur, transmis par l'administrateur) est
+  complété par un **code PIN** de 4 à 6 chiffres que le cadre choisit à sa
+  première connexion, stocké haché (PBKDF2-HMAC-SHA256, sel aléatoire). Un lien
+  de connexion directe ne suffit donc pas à ouvrir un espace cadre.
+- Le secret facultatif `ADMIN_KEY` permet à l'administrateur d'ouvrir l'espace
+  d'un cadre **sans son PIN** (dépannage) ; la connexion est marquée comme telle
+  dans `JOURNAL_ACTIVITE`. Non défini = accès inexistant.
+- Le proxy n'expose pas les tables sensibles du document et limite chaque requête
+  au périmètre de l'appelant : son dossier pour l'étudiant, ses services pour le
+  cadre. Les suppressions se limitent à des cas précis et journalisés (l'étudiant
+  retire une déclaration **non validée** ; le cadre retire une période ou un RDV
+  de son service, un stage terminé étant verrouillé au bout de 5 jours).
+- Les connexions et actions sont consignées dans `JOURNAL_ACTIVITE` (purge
+  automatique au-delà de 30 jours).
 
 ## Développement local
 
