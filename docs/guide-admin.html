@@ -158,9 +158,54 @@
         vous désactiver et vous retirer vos droits d'administration. Sans ce garde-fou, une fausse
         manœuvre fermerait l'espace administrateur à tout le monde, sans moyen de le rouvrir depuis
         le site. Un <em>autre</em> administrateur, lui, peut le faire — d'où l'intérêt d'être deux.</div>
+      <p>Le rattachement se fait par <strong>deux listes déroulantes</strong> — le site, puis le
+        service — et ce qui est retenu s'affiche juste en dessous, groupé par site, avec une croix
+        pour retirer. Passer par le site d'abord évite de confondre deux services de même nom sur
+        des sites différents (plusieurs « EHPAD HEB », par exemple).</p>
+
+      <h3>L'onglet « Services »</h3>
+      <p>Le second onglet de l'espace administrateur gère la table <span class="code">SERVICES</span>
+        et la table <span class="code">SITES</span> : créer un site, créer un service, changer son
+        nom, son code UF, son site, son <strong>pôle</strong>, son <strong>cadre référent</strong>,
+        et l'ouvrir ou le fermer aux étudiants. Les services y sont présentés groupés par site,
+        avec le nombre de cadres rattachés en plus du référent.</p>
+      <p>La fiche d'un service porte aussi ses <strong>codes horaires</strong>
+        (<span class="code">SERVICES.Codes_horaires</span>) : les codes cochés sont les seuls
+        proposés aux cadres du service dans le planning. <strong>Aucun coché = tous les codes</strong>
+        du document — c'est la même règle que l'onglet « Codes horaires » de l'espace cadre, avec
+        lequel cet écran est interchangeable.</p>
+
+      <h3>L'onglet « Pôles »</h3>
+      <p>Créer un pôle, le renommer, et surtout désigner son ou ses <strong>cadres supérieurs</strong>,
+        qui accèdent alors à tous les services du pôle. Le tableau montre, pour chaque pôle, ses
+        cadres supérieurs et les services qui lui sont rattachés (le rattachement lui-même se
+        règle sur la fiche du service).</p>
+      <div class="callout">La table <span class="code">Pole</span> vient du document d'origine et
+        n'a pas de forme imposée : le Worker <strong>détecte</strong> ses colonnes (nom du pôle,
+        cadre(s) supérieur(s)) ainsi que la colonne de <span class="code">SERVICES</span> qui
+        pointe vers le pôle. Selon que la colonne accepte une ou plusieurs références, l'écran
+        propose une liste déroulante ou des cases à cocher. Si la table ou ces colonnes manquent,
+        l'écran le dit au lieu d'écrire au mauvais endroit — <strong>aucune colonne n'est créée
+        automatiquement</strong> dans ce document-là.</div>
+
+      <h3>L'onglet « Organigramme »</h3>
+      <p>Une vue de synthèse en lecture seule, imprimable : le récapitulatif par lieu
+        (<strong>site → pôle → service</strong>, avec pour chaque service son référent, les cadres
+        rattachés et le cadre supérieur), puis le récapitulatif <strong>par cadre</strong> — ce dont
+        chacun s'occupe et où. Les comptes sans aucun service y apparaissent explicitement : ce
+        sont ceux qui ne peuvent pas ouvrir l'espace cadre.</p>
+      <div class="callout warn">Un service <strong>ne se supprime pas</strong> depuis cet écran :
+        des périodes de stage, des plannings et des déclarations lui sont rattachés, et les
+        effacer emporterait cet historique. Décochez « Accueille des étudiants » : le service
+        disparaît de la page d'inscription et n'est plus proposé, sans rien perdre. Une vraie
+        suppression, si elle est justifiée, reste à faire dans Grist en connaissance de cause.</div>
+      <div class="callout">Deux services de même nom sur le <strong>même site</strong> sont refusés
+        (ils seraient indiscernables partout, à commencer par la page d'inscription). Sur deux
+        sites différents, c'est permis — c'est justement le cas des EHPAD.</div>
       <div class="callout">Chaque action est écrite dans <span class="code">JOURNAL_ACTIVITE</span>
-        sous le rôle <strong>Administrateur</strong>, avec le compte concerné et ce qui a changé.
-        Grist reste évidemment utilisable en parallèle : les deux écrivent dans les mêmes tables.</div>
+        sous le rôle <strong>Administrateur</strong>, avec le compte ou le service concerné et ce
+        qui a changé. Grist reste évidemment utilisable en parallèle : les deux écrivent dans les
+        mêmes tables.</div>
     </section>
 
     <section class="guide-section" id="pole">

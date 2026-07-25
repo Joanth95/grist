@@ -25,12 +25,73 @@
     .badges{display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.2rem}
     .svc-list{color:var(--texte-doux);font-size:.85em;max-width:20rem}
 
-    /* Liste des services dans la fiche : cases à cocher sur deux colonnes. */
-    .svc-picker{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:.3rem .9rem;
-      max-height:14rem;overflow-y:auto;border:1px solid var(--gris-bordure);border-radius:4px;padding:.6rem}
-    .svc-picker label{display:flex;gap:.45rem;align-items:flex-start;font-weight:400;margin:0;font-size:.9rem}
-    .svc-picker input{margin-top:.2rem}
-    .svc-picker .fige{color:var(--texte-doux)}
+    /* Onglets de l'espace admin */
+    .admin-tabs{display:inline-flex;gap:.2rem;background:var(--gris-contraste);border-radius:6px;padding:.3rem;margin:0 0 1.25rem}
+    .admin-tab{background:transparent;border:none;border-radius:4px;padding:.5rem 1.1rem;font:inherit;
+      font-weight:600;font-size:.92rem;color:var(--texte-doux);cursor:pointer;transition:background .15s,color .15s}
+    .admin-tab:hover{color:var(--texte)}
+    .admin-tab.active{color:var(--bleu);background:var(--blanc);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+
+    /* Choix des services d'un cadre : deux listes déroulantes (site puis
+       service), et le récapitulatif de ce qui est retenu juste en dessous. */
+    .svc-choix{display:flex;gap:.75rem;flex-wrap:wrap;margin:.2rem 0 .1rem}
+    .svc-champ{flex:1;min-width:12rem;display:flex;flex-direction:column;gap:.2rem}
+    .svc-champ label{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+      color:var(--texte-doux);margin:0}
+    .svc-champ select{margin:0}
+
+    .svc-recap{list-style:none;margin:.5rem 0 0;padding:.6rem .7rem;border:1px solid var(--gris-bordure);border-radius:4px}
+    .svc-recap:empty{display:none}
+    .svc-recap .site{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+      color:var(--texte-doux);padding-bottom:.2rem;border-bottom:1px solid var(--gris-bordure);margin:.5rem 0 .25rem}
+    .svc-recap .site:first-child{margin-top:0}
+    .svc-recap .ligne{display:flex;align-items:center;gap:.5rem;padding:.15rem 0;font-size:.92rem}
+    .svc-recap .ligne .nom{flex:1}
+    .svc-recap .role{color:var(--texte-doux);font-size:.85em}
+    .svc-recap .retirer{border:none;background:transparent;color:var(--rouge);font:inherit;font-size:1.05rem;
+      line-height:1;cursor:pointer;padding:0 .25rem;border-radius:4px}
+    .svc-recap .retirer:hover{background:var(--alerte-bg)}
+    .svc-vide{color:var(--texte-doux);font-size:.9rem;margin:.5rem 0 0}
+
+    /* Écran des services */
+    .svc-groupe-titre{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+      color:var(--texte-doux);margin:1.2rem 0 .3rem}
+    .site-ligne{display:flex;gap:.5rem;align-items:flex-end}
+    .site-ligne > div{flex:1}
+
+    /* Codes horaires d'un service, et cadres supérieurs d'un pôle : mêmes
+       listes de cases à cocher, compactes et défilantes. */
+    .codes-picker,.css-picker{display:grid;grid-template-columns:repeat(auto-fill,minmax(11rem,1fr));
+      gap:.15rem .8rem;max-height:11rem;overflow-y:auto;
+      border:1px solid var(--gris-bordure);border-radius:4px;padding:.6rem}
+    .codes-picker label,.css-picker label{display:flex;gap:.45rem;align-items:flex-start;
+      font-weight:400;margin:0;font-size:.9rem}
+    .codes-picker input,.css-picker input{margin-top:.2rem}
+    .codes-picker .horaire{color:var(--texte-doux);font-size:.85em}
+
+    /* Organigramme */
+    .orga-chiffres{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.9rem;color:var(--texte-doux)}
+    .orga-chiffres b{color:var(--texte);font-size:1.05rem}
+    .orga-site{margin:1.5rem 0 .4rem;padding-bottom:.3rem;border-bottom:2px solid var(--bleu);
+      font-size:1.05rem;font-weight:700}
+    .orga-pole{margin:.9rem 0 .3rem;font-size:.72rem;font-weight:700;text-transform:uppercase;
+      letter-spacing:.04em;color:var(--texte-doux)}
+    .orga-pole .css{text-transform:none;letter-spacing:0;color:var(--bleu);font-weight:600}
+    .orga-service{border:1px solid var(--gris-bordure);border-radius:4px;padding:.55rem .75rem;margin:.3rem 0}
+    .orga-service.ferme{opacity:.6}
+    .orga-service .titre{font-weight:600;display:flex;gap:.5rem;align-items:baseline;flex-wrap:wrap}
+    .orga-service .uf{color:var(--texte-doux);font-size:.85em;font-weight:400}
+    .orga-service .gens{font-size:.9rem;margin-top:.15rem}
+    .orga-service .gens .role{color:var(--texte-doux)}
+    .orga-personne{border-bottom:1px solid var(--gris-bordure);padding:.5rem 0}
+    .orga-personne:last-child{border-bottom:none}
+    .orga-personne .qui{font-weight:600}
+    .orga-personne .ou{font-size:.9rem;color:var(--texte-doux)}
+    .orga-vide{color:var(--texte-doux);font-style:italic}
+    @media print{
+      .admin-tabs,.admin-bar,.fr-header,.fr-footer,.fr-notice{display:none!important}
+      .orga-service{break-inside:avoid}
+    }
 
     .fiche-section{border-top:1px solid var(--gris-bordure);margin-top:.4rem;padding-top:.8rem}
     .fiche-section h3{margin:0 0 .5rem;font-size:1rem}
@@ -105,7 +166,14 @@
     </header>
 
     <main class="content">
-      <section>
+      <div class="admin-tabs">
+        <button type="button" class="admin-tab active" data-onglet="cadres">Cadres</button>
+        <button type="button" class="admin-tab" data-onglet="services">Services</button>
+        <button type="button" class="admin-tab" data-onglet="poles">Pôles</button>
+        <button type="button" class="admin-tab" data-onglet="organigramme">Organigramme</button>
+      </div>
+
+      <section id="tab-cadres">
         <h2>Comptes des cadres</h2>
         <p class="section-note">Créer un compte, le rattacher à ses services, réinitialiser un
           code PIN oublié, débloquer un compte après plusieurs essais manqués, ou régénérer un
@@ -119,6 +187,53 @@
         </div>
 
         <div id="cadres-wrap" class="admin-table-wrap"></div>
+      </section>
+
+      <section id="tab-services" hidden>
+        <h2>Services et sites</h2>
+        <p class="section-note">Les services que voient les étudiants et les cadres. Un service
+          n'accueille des étudiants que si sa case est cochée : c'est ce qui le fait apparaître
+          dans la page d'inscription. Un service ne se supprime pas — il se ferme, pour ne pas
+          perdre les stages qui s'y rattachent.</p>
+
+        <div class="admin-bar">
+          <input type="search" id="search-svc" placeholder="Rechercher un service (nom, code UF, site)…"
+                 autocomplete="off" spellcheck="false">
+          <label class="checkbox-label"><input type="checkbox" id="voir-fermes" checked> Voir les services fermés</label>
+          <button type="button" class="btn btn-ghost" id="new-site-btn">+ Nouveau site</button>
+          <button type="button" class="btn btn-primary" id="new-service-btn">+ Nouveau service</button>
+        </div>
+
+        <div id="services-wrap" class="admin-table-wrap"></div>
+      </section>
+
+      <section id="tab-poles" hidden>
+        <h2>Pôles et cadres supérieurs</h2>
+        <p class="section-note">Le cadre supérieur de santé d'un pôle accède à
+          <strong>tous les services de son pôle</strong>, sans avoir à être rattaché service par
+          service. Le rattachement d'un service à son pôle se règle dans l'onglet
+          <strong>Services</strong>.</p>
+
+        <div class="admin-bar">
+          <div class="spacer"></div>
+          <button type="button" class="btn btn-primary" id="new-pole-btn">+ Nouveau pôle</button>
+        </div>
+
+        <div id="poles-wrap" class="admin-table-wrap"></div>
+      </section>
+
+      <section id="tab-organigramme" hidden>
+        <h2>Organigramme</h2>
+        <p class="section-note">Qui fait quoi, et où. Récapitulatif construit à partir des sites,
+          des pôles, des services et des rattachements de chaque cadre.</p>
+
+        <div class="admin-bar">
+          <div id="orga-chiffres" class="orga-chiffres"></div>
+          <div class="spacer"></div>
+          <button type="button" class="btn btn-ghost" id="print-orga-btn">🖨 Imprimer</button>
+        </div>
+
+        <div id="orga-wrap"></div>
       </section>
     </main>
 
@@ -158,10 +273,23 @@
         désactiver, ni vous retirer vos droits d'administration. Un autre administrateur le peut.</p>
 
       <label>Services rattachés</label>
-      <div class="svc-picker" id="f-services"></div>
-      <p class="save-hint">Un cadre doit être rattaché à au moins un service ouvert aux
-        étudiants pour ouvrir l'espace cadre. Les services dont il est le <strong>référent</strong>
-        (ou dont il est CSS de pôle) sont affichés mais se modifient dans Grist.</p>
+      <div class="svc-choix">
+        <div class="svc-champ">
+          <label for="f-site">Site</label>
+          <select id="f-site"></select>
+        </div>
+        <div class="svc-champ">
+          <label for="f-service">Service</label>
+          <select id="f-service"></select>
+        </div>
+      </div>
+      <ul class="svc-recap" id="f-recap"></ul>
+      <p class="svc-vide" id="f-recap-vide" hidden>Aucun service rattaché pour l'instant.</p>
+      <p class="save-hint">Choisissez un site, puis un service : il s'ajoute à la liste
+        ci-dessus. Un cadre doit être rattaché à au moins un service ouvert aux étudiants pour
+        ouvrir l'espace cadre. Les services dont il est le <strong>référent</strong> (ou dont il
+        est CSS de pôle) apparaissent dans la liste mais ne s'y retirent pas : cela se change
+        depuis l'onglet <strong>Services</strong>.</p>
 
       <div class="fiche-section" id="f-acces" hidden>
         <h3>Accès et sécurité</h3>
@@ -209,9 +337,90 @@
     </form>
   </dialog>
 
+  <!-- Fiche d'un service (création et modification) -->
+  <dialog id="service-dialog">
+    <form id="service-form" method="dialog">
+      <h2 id="service-dialog-title">Nouveau service</h2>
+
+      <label for="s-nom">Nom du service</label>
+      <input type="text" id="s-nom" maxlength="80" required autocomplete="off"
+             placeholder="SMR GERIATRIQUE">
+
+      <label for="s-uf">Code UF <span class="optional">(facultatif)</span></label>
+      <input type="text" id="s-uf" maxlength="30" autocomplete="off">
+
+      <label for="s-site">Site</label>
+      <select id="s-site"></select>
+
+      <div id="s-pole-wrap">
+        <label for="s-pole">Pôle <span class="optional">(facultatif)</span></label>
+        <select id="s-pole"></select>
+      </div>
+      <p id="s-pole-absent" class="save-hint" hidden></p>
+
+      <label for="s-ref">Cadre référent <span class="optional">(facultatif)</span></label>
+      <select id="s-ref"></select>
+
+      <label class="checkbox-label"><input type="checkbox" id="s-ouvert"> Accueille des étudiants</label>
+
+      <label>Codes horaires du service</label>
+      <div class="codes-picker" id="s-codes"></div>
+      <p class="save-hint" id="s-codes-note"></p>
+      <p class="save-hint">Décochée, cette case retire le service de la page d'inscription et
+        ferme l'espace cadre pour ceux qui n'ont que celui-ci. Les stages déjà enregistrés
+        restent intacts.</p>
+
+      <p id="service-error" class="error" hidden></p>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="service-cancel-btn">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="service-save-btn">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Fiche d'un pôle -->
+  <dialog id="pole-dialog">
+    <form id="pole-form" method="dialog">
+      <h2 id="pole-dialog-title">Nouveau pôle</h2>
+
+      <label for="p-nom">Nom du pôle</label>
+      <input type="text" id="p-nom" maxlength="80" required autocomplete="off"
+             placeholder="Pôle Gérontologie-Gériatrie">
+
+      <label id="p-css-label">Cadre supérieur de santé</label>
+      <div id="p-css-wrap"></div>
+      <p class="save-hint">Le cadre supérieur accède à tous les services rattachés à ce pôle,
+        avec les mêmes droits qu'un cadre de service.</p>
+
+      <p id="pole-error" class="error" hidden></p>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="pole-cancel-btn">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="pole-save-btn">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Nouveau site -->
+  <dialog id="site-dialog">
+    <form id="site-form" method="dialog">
+      <h2>Nouveau site</h2>
+      <p class="save-hint">Le site regroupe des services : un hôpital, un EHPAD, une résidence.</p>
+      <label for="site-nom">Nom du site</label>
+      <input type="text" id="site-nom" maxlength="80" required autocomplete="off"
+             placeholder="Hôpital Bel Air">
+      <p id="site-error" class="error" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="site-cancel-btn">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="site-save-btn">Créer le site</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="config.js?v=21"></script>
   <script src="layout.js?v=26"></script>
   <script src="etablissement.js?v=29"></script>
-  <script src="espace-admin.js?v=1"></script>
+  <script src="espace-admin.js?v=4"></script>
 </body>
 </html>

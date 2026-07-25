@@ -69,6 +69,21 @@
  *                                                                 services rattachés, et les actions
  *                                                                 réservées à l'admin : reinitPin,
  *                                                                 debloquerPin, regenererCode
+ *   GET    /api/admin/organisation                             -> sites, pôles, services, codes
+ *                                                                 horaires et cadres
+ *   POST   /api/admin/services  { Nom, Code_UF, SiteId, ... }  -> crée un service
+ *   PATCH  /api/admin/services/:id  { ... }                    -> nom, code UF, site, pôle,
+ *                                                                 référent, accueil des étudiants,
+ *                                                                 codes horaires du service
+ *   POST   /api/admin/sites  { NOM }                           -> crée un site
+ *   POST   /api/admin/poles  { Nom, CSS: [ids] }               -> crée un pôle
+ *   PATCH  /api/admin/poles/:id  { Nom?, CSS? }                -> renomme, change le cadre sup
+ *
+ * La table Pole n'a pas de schéma imposé (elle vient du document d'origine) :
+ * ses colonnes — nom du pôle, cadre(s) supérieur(s), et la référence qui relie
+ * un service à son pôle — sont DÉTECTÉES au vol (voir schemaOrganisation).
+ * Aucune colonne n'est créée : si la table ou ses colonnes manquent, l'écran
+ * le dit au lieu d'écrire n'importe où.
  */
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
@@ -86,6 +101,7 @@ const T_EVALUATIONS = "EVALUATION_STAGE_ETUDIANT";
 const T_RDV = "RDV_FORMATEUR";
 const T_JOURNAL = "JOURNAL_ACTIVITE";
 const T_ETABLISSEMENT = "ETABLISSEMENT";
+const T_POLE = "Pole";
 
 const DAY_COLUMNS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
@@ -428,6 +444,31 @@ async function route(request, env, ctx) {
     if (request.method === "PATCH" && acm) {
       return withLog(env, ctx, whoA, "Modification d'un compte cadre", "",
         (info) => modifierCadreAdmin(request, env, admin, Number(acm[1]), info));
+    }
+    if (request.method === "GET" && path === "/api/admin/organisation") {
+      return json(await listerOrganisationAdmin(env));
+    }
+    if (request.method === "POST" && path === "/api/admin/services") {
+      return withLog(env, ctx, whoA, "Création d'un service", "",
+        (info) => creerServiceAdmin(request, env, info));
+    }
+    const asm = path.match(/^\/api\/admin\/services\/(\d+)$/);
+    if (request.method === "PATCH" && asm) {
+      return withLog(env, ctx, whoA, "Modification d'un service", "",
+        (info) => modifierServiceAdmin(request, env, Number(asm[1]), info));
+    }
+    if (request.method === "POST" && path === "/api/admin/sites") {
+      return withLog(env, ctx, whoA, "Création d'un site", "",
+        (info) => creerSiteAdmin(request, env, info));
+    }
+    if (request.method === "POST" && path === "/api/admin/poles") {
+      return withLog(env, ctx, whoA, "Création d'un pôle", "",
+        (info) => creerPoleAdmin(request, env, info));
+    }
+    const apm = path.match(/^\/api\/admin\/poles\/(\d+)$/);
+    if (request.method === "PATCH" && apm) {
+      return withLog(env, ctx, whoA, "Modification d'un pôle", "",
+        (info) => modifierPoleAdmin(request, env, Number(apm[1]), info));
     }
     throw httpError(404, "Route inconnue");
   }
@@ -1972,6 +2013,329 @@ async function modifierCadreAdmin(request, env, admin, cadreId, info) {
   // Toute écriture ci-dessus (code d'accès, PIN, droits) change l'empreinte du
   // compte : les sessions ouvertes de CE cadre tombent d'elles-mêmes.
   return json({ ok: true, ...(nouveauCode ? { Code_acces: nouveauCode } : {}) });
+}
+
+/* ------------------------------------------------------------------ */
+/* Espace administrateur : les services et les sites                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Schéma réel des pôles, détecté dans le document. La table Pole vient du
+ * document d'origine et n'a jamais eu de forme imposée : plutôt que de deviner
+ * des noms de colonnes — et de créer des colonnes parasites en cas d'erreur —
+ * on lit ce qui existe et on s'y adapte. Renvoie ce qu'on a trouvé, et de quoi
+ * l'expliquer à l'administrateur quand il manque quelque chose.
+ */
+async function schemaOrganisation(env) {
+  const schema = {
+    poleTable: false, // la table Pole existe
+    poleNom: null, // colonne du nom du pôle
+    poleCSS: null, // colonne du/des cadre(s) supérieur(s)
+    poleCSSListe: false, // CSS est une liste de références
+    servicePole: null, // colonne de SERVICES qui pointe vers le pôle
+    servicePoleListe: false, // … et c'est une liste de références
+  };
+
+  const estTexte = (c) => /^Text$|^Choice$/.test((c.fields && c.fields.type) || "") && !c.fields.isFormula;
+  const versUtilisateurs = (c) => /^(Ref|RefList):UTILISATEURS$/.test((c.fields && c.fields.type) || "");
+  const versPole = (c) => new RegExp(`^(Ref|RefList):${T_POLE}$`).test((c.fields && c.fields.type) || "");
+
+  try {
+    const cols = (await grist(env, "GET", `/tables/${T_POLE}/columns`)).columns || [];
+    schema.poleTable = true;
+    const parId = new Map(cols.map((c) => [c.id, c]));
+    schema.poleNom = ["Nom", "NOM", "Libelle", "Libellé", "Pole", "POLE"]
+      .find((id) => parId.has(id) && estTexte(parId.get(id)))
+      || (cols.find(estTexte) || {}).id || null;
+    const colCSS = ["CSS", "Cadre_sup", "CSS_pole", "Cadre_superieur"]
+      .map((id) => parId.get(id)).find((c) => c && versUtilisateurs(c))
+      || cols.find(versUtilisateurs);
+    if (colCSS) {
+      schema.poleCSS = colCSS.id;
+      schema.poleCSSListe = /^RefList:/.test(colCSS.fields.type);
+    }
+  } catch {
+    schema.poleTable = false; // table absente : les écrans le diront
+  }
+
+  if (schema.poleTable) {
+    const svcCols = (await grist(env, "GET", `/tables/${T_SERVICES}/columns`)).columns || [];
+    const lien = svcCols.find((c) => versPole(c) && !c.fields.isFormula);
+    if (lien) {
+      schema.servicePole = lien.id;
+      schema.servicePoleListe = /^RefList:/.test(lien.fields.type);
+    }
+  }
+  return schema;
+}
+
+/** Valeur à écrire dans une colonne Référence : un nombre, ou ["L", …] pour
+ *  une liste. `null`/0 efface le lien. */
+function valeurReference(ids, liste) {
+  if (liste) return ids.length ? ["L", ...ids] : null;
+  return ids.length ? ids[0] : 0;
+}
+
+/** Tout ce qu'affichent les écrans Services, Pôles et Organigramme. */
+async function listerOrganisationAdmin(env) {
+  const schema = await schemaOrganisation(env);
+  const [services, sites, users, codes, poles] = await Promise.all([
+    gristAll(env, T_SERVICES),
+    gristAll(env, T_SITES),
+    gristAll(env, T_UTILISATEURS),
+    gristAll(env, T_CODES),
+    schema.poleTable ? gristAll(env, T_POLE) : Promise.resolve([]),
+  ]);
+  const sitesById = new Map(sites.map((s) => [s.id, s]));
+  const nomPole = (p) => (schema.poleNom ? (p.fields[schema.poleNom] || "") : "") || `Pôle #${p.id}`;
+  const polesById = new Map(poles.map((p) => [p.id, p]));
+
+  return {
+    schema,
+    sites: sites
+      .map((s) => ({ id: s.id, NOM: s.fields.NOM || "" }))
+      .sort((a, b) => a.NOM.localeCompare(b.NOM, "fr")),
+    poles: poles
+      .map((p) => ({
+        id: p.id,
+        Nom: nomPole(p),
+        CSS: schema.poleCSS ? refIds(p.fields[schema.poleCSS]) : [],
+      }))
+      .sort((a, b) => a.Nom.localeCompare(b.Nom, "fr")),
+    // Cadres proposés comme référents ou cadres sup : les comptes actifs.
+    cadres: users
+      .filter((u) => u.fields.Utilisateur_de_l_outil === true)
+      .map((u) => ({ id: u.id, nom: cadreNomComplet(u), telephone: u.fields.Telephone || "", email: (u.fields.Email || "").trim() }))
+      .sort((a, b) => a.nom.localeCompare(b.nom, "fr")),
+    codes: codes
+      .map((c) => ({
+        id: c.id,
+        Code: c.fields.Code || "",
+        Libelle: c.fields.Libelle || "",
+        Heure_debut: c.fields.Heure_debut || "",
+        Heure_fin: c.fields.Heure_fin || "",
+        Compte_stage: c.fields.Compte_stage !== false,
+      }))
+      .sort((a, b) => a.Code.localeCompare(b.Code, "fr")),
+    services: services.map((s) => {
+      const poleId = schema.servicePole ? (refIds(s.fields[schema.servicePole])[0] || null) : null;
+      return {
+        id: s.id,
+        Nom: s.fields.Nom || "",
+        Code_UF: s.fields.Code_UF || "",
+        // L'écran a besoin de l'identifiant du site pour le modifier, et de son
+        // nom pour l'afficher : les deux sont renvoyés.
+        SiteId: s.fields.Site || null,
+        Site: siteName(s, sitesById),
+        PoleId: poleId,
+        Pole: poleId && polesById.has(poleId) ? nomPole(polesById.get(poleId)) : "",
+        Cadre_ref: s.fields.Cadre_ref || null,
+        Cadres_secondaires: refIds(s.fields.Cadres_secondaires),
+        Pole_CSS: refIds(s.fields.Pole_CSS),
+        Recoit_des_etudiant: !!s.fields.Recoit_des_etudiant,
+        // Codes horaires actifs du service ; liste vide = tous les codes.
+        Codes: refIds(s.fields.Codes_horaires),
+      };
+    }),
+  };
+}
+
+/** L'administrateur crée un pôle. */
+async function creerPoleAdmin(request, env, info) {
+  const body = await request.json().catch(() => ({}));
+  const schema = await schemaOrganisation(env);
+  if (!schema.poleTable) throw httpError(400, "Ce document n'a pas de table « Pole »");
+  if (!schema.poleNom) throw httpError(400, "La table « Pole » n'a pas de colonne de nom exploitable");
+
+  const nom = cleanText(body.Nom, 80);
+  if (!nom) throw httpError(400, "Le nom du pôle est obligatoire");
+  const poles = await gristAll(env, T_POLE);
+  if (poles.some((p) => (p.fields[schema.poleNom] || "").trim().toLowerCase() === nom.toLowerCase())) {
+    throw httpError(409, `Le pôle « ${nom} » existe déjà`);
+  }
+
+  const fields = { [schema.poleNom]: nom };
+  if (schema.poleCSS && Array.isArray(body.CSS)) {
+    fields[schema.poleCSS] = valeurReference(idsValides(body.CSS), schema.poleCSSListe);
+  }
+  const cree = await grist(env, "POST", `/tables/${T_POLE}/records`, { records: [{ fields }] });
+  if (info) info.detail = nom;
+  return json({ id: cree.records[0].id }, 201);
+}
+
+/** L'administrateur renomme un pôle ou en change le(s) cadre(s) supérieur(s). */
+async function modifierPoleAdmin(request, env, poleId, info) {
+  const body = await request.json().catch(() => ({}));
+  const schema = await schemaOrganisation(env);
+  if (!schema.poleTable) throw httpError(400, "Ce document n'a pas de table « Pole »");
+
+  const poles = await gristAll(env, T_POLE);
+  const cible = poles.find((p) => p.id === poleId);
+  if (!cible) throw httpError(404, "Ce pôle est introuvable");
+
+  const fields = {};
+  const faits = [];
+  if (body.Nom !== undefined) {
+    if (!schema.poleNom) throw httpError(400, "La table « Pole » n'a pas de colonne de nom exploitable");
+    const nom = cleanText(body.Nom, 80);
+    if (!nom) throw httpError(400, "Le nom du pôle est obligatoire");
+    if (poles.some((p) => p.id !== poleId
+      && (p.fields[schema.poleNom] || "").trim().toLowerCase() === nom.toLowerCase())) {
+      throw httpError(409, `Le pôle « ${nom} » existe déjà`);
+    }
+    fields[schema.poleNom] = nom;
+    faits.push(`renommé « ${nom} »`);
+  }
+  if (body.CSS !== undefined) {
+    if (!schema.poleCSS) throw httpError(400, "La table « Pole » n'a pas de colonne de cadre supérieur");
+    const ids = idsValides(body.CSS);
+    if (!schema.poleCSSListe && ids.length > 1) {
+      throw httpError(400, "Ce document n'accepte qu'un seul cadre supérieur par pôle");
+    }
+    fields[schema.poleCSS] = valeurReference(ids, schema.poleCSSListe);
+    faits.push(ids.length ? `${ids.length} cadre(s) supérieur(s)` : "cadre supérieur retiré");
+  }
+  if (!Object.keys(fields).length) throw httpError(400, "Aucune modification fournie");
+
+  await gristUpdate(env, T_POLE, poleId, fields);
+  if (info) {
+    const nom = schema.poleNom ? (cible.fields[schema.poleNom] || `pôle #${poleId}`) : `pôle #${poleId}`;
+    info.detail = `${nom} — ${faits.join(", ")}`;
+  }
+  return json({ ok: true });
+}
+
+/** Identifiants de lignes valides dans une liste envoyée par le front. */
+function idsValides(valeurs) {
+  if (!Array.isArray(valeurs)) return [];
+  return [...new Set(valeurs.map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+}
+
+/** Champs d'un service lus depuis une requête. `partiel` : ne garde que les
+ *  clés réellement fournies (modification), sinon impose les valeurs par
+ *  défaut (création). Le pôle n'est écrit que si le document a bien une
+ *  colonne pour ça (voir schemaOrganisation). */
+function champsService(body, partiel, schema) {
+  const fields = {};
+  if (body.PoleId !== undefined && schema && schema.servicePole) {
+    fields[schema.servicePole] = valeurReference(idsValides([body.PoleId]), schema.servicePoleListe);
+  }
+  if (body.Codes !== undefined) {
+    // Liste vide = tous les codes horaires (même convention que l'espace cadre).
+    const ids = idsValides(body.Codes);
+    fields.Codes_horaires = ids.length ? ["L", ...ids] : null;
+  }
+  if (!partiel || body.Nom !== undefined) {
+    const nom = cleanText(body.Nom, 80);
+    if (!nom) throw httpError(400, "Le nom du service est obligatoire");
+    fields.Nom = nom;
+  }
+  if (!partiel || body.Code_UF !== undefined) fields.Code_UF = cleanText(body.Code_UF, 30);
+  if (!partiel || body.SiteId !== undefined) {
+    const siteId = Number(body.SiteId);
+    fields.Site = Number.isInteger(siteId) && siteId > 0 ? siteId : 0;
+  }
+  if (!partiel || body.Cadre_ref !== undefined) {
+    const refId = Number(body.Cadre_ref);
+    fields.Cadre_ref = Number.isInteger(refId) && refId > 0 ? refId : 0;
+  }
+  if (!partiel || body.Recoit_des_etudiant !== undefined) {
+    fields.Recoit_des_etudiant = body.Recoit_des_etudiant === true;
+  }
+  return fields;
+}
+
+/** Refuse une liste de codes horaires qui ne correspond à rien : un id fantôme
+ *  écrit dans SERVICES.Codes_horaires viderait la palette du service. */
+async function verifierCodesHoraires(env, demandes) {
+  const ids = idsValides(demandes);
+  if (!ids.length) return;
+  const codes = await gristFilter(env, T_CODES, { id: ids });
+  if (codes.length !== ids.length) throw httpError(400, "Code horaire introuvable");
+}
+
+/** Refuse deux services de même nom sur un même site (ils seraient
+ *  indiscernables dans tous les écrans, à commencer par l'inscription). */
+function verifierServiceUnique(services, nom, siteId, sauf) {
+  const doublon = services.some((s) =>
+    s.id !== sauf
+    && (s.fields.Nom || "").trim().toLowerCase() === nom.trim().toLowerCase()
+    && (s.fields.Site || 0) === (siteId || 0));
+  if (doublon) {
+    throw httpError(409, `Un service « ${nom} » existe déjà sur ce site`);
+  }
+}
+
+/** L'administrateur crée un service. */
+async function creerServiceAdmin(request, env, info) {
+  const body = await request.json().catch(() => ({}));
+  const schema = await schemaOrganisation(env);
+  const fields = champsService(body, false, schema);
+  const services = await gristAll(env, T_SERVICES);
+  verifierServiceUnique(services, fields.Nom, fields.Site, null);
+  await verifierCodesHoraires(env, body.Codes);
+
+  const cree = await grist(env, "POST", `/tables/${T_SERVICES}/records`, { records: [{ fields }] });
+  const id = cree.records[0].id;
+  if (info) {
+    info.serviceId = id;
+    info.detail = `${fields.Nom}${fields.Code_UF ? ` (${fields.Code_UF})` : ""}`
+      + (fields.Recoit_des_etudiant ? " — accueille des étudiants" : " — sans accueil d'étudiants");
+  }
+  return json({ id }, 201);
+}
+
+/** L'administrateur modifie un service. */
+async function modifierServiceAdmin(request, env, serviceId, info) {
+  const body = await request.json().catch(() => ({}));
+  const schema = await schemaOrganisation(env);
+  const services = await gristAll(env, T_SERVICES);
+  const cible = services.find((s) => s.id === serviceId);
+  if (!cible) throw httpError(404, "Ce service est introuvable");
+
+  const fields = champsService(body, true, schema);
+  if (!Object.keys(fields).length) throw httpError(400, "Aucune modification fournie");
+  await verifierCodesHoraires(env, body.Codes);
+  verifierServiceUnique(
+    services,
+    fields.Nom !== undefined ? fields.Nom : (cible.fields.Nom || ""),
+    fields.Site !== undefined ? fields.Site : (cible.fields.Site || 0),
+    serviceId);
+
+  await gristUpdate(env, T_SERVICES, serviceId, fields);
+  if (info) {
+    info.serviceId = serviceId;
+    const faits = [];
+    if (fields.Nom !== undefined && fields.Nom !== cible.fields.Nom) faits.push(`renommé « ${fields.Nom} »`);
+    if (fields.Site !== undefined && fields.Site !== (cible.fields.Site || 0)) faits.push("site changé");
+    if (fields.Cadre_ref !== undefined && fields.Cadre_ref !== (cible.fields.Cadre_ref || 0)) faits.push("référent changé");
+    if (schema.servicePole && fields[schema.servicePole] !== undefined) faits.push("pôle changé");
+    if (fields.Codes_horaires !== undefined) {
+      const n = idsValides(body.Codes).length;
+      faits.push(n ? `${n} code(s) horaire(s) actifs` : "tous les codes horaires");
+    }
+    if (fields.Recoit_des_etudiant !== undefined
+      && fields.Recoit_des_etudiant !== !!cible.fields.Recoit_des_etudiant) {
+      faits.push(fields.Recoit_des_etudiant ? "ouvert aux étudiants" : "fermé aux étudiants");
+    }
+    info.detail = `${cible.fields.Nom || `service #${serviceId}`} — ${faits.join(", ") || "fiche mise à jour"}`;
+  }
+  return json({ ok: true });
+}
+
+/** L'administrateur crée un site (table SITES, colonne NOM). */
+async function creerSiteAdmin(request, env, info) {
+  const body = await request.json().catch(() => ({}));
+  const nom = cleanText(body.NOM, 80);
+  if (!nom) throw httpError(400, "Le nom du site est obligatoire");
+
+  const sites = await gristAll(env, T_SITES);
+  if (sites.some((s) => (s.fields.NOM || "").trim().toLowerCase() === nom.toLowerCase())) {
+    throw httpError(409, `Le site « ${nom} » existe déjà`);
+  }
+  const cree = await grist(env, "POST", `/tables/${T_SITES}/records`, { records: [{ fields: { NOM: nom } }] });
+  if (info) info.detail = nom;
+  return json({ id: cree.records[0].id, NOM: nom }, 201);
 }
 
 /** Le cadre change son code PIN. Le PIN actuel est exigé s'il en existe déjà un. */

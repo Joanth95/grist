@@ -10,7 +10,7 @@
    case UTILISATEURS.Administrateur est cochée passent la porte. Le contrôle
    qui compte est côté Worker : ici, on n'affiche que ce qui est autorisé. */
 
-const APP_VERSION = "v1"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-admin.html)
+const APP_VERSION = "v4"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-admin.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 
@@ -23,6 +23,17 @@ const state = {
   edition: null, // id du cadre ouvert dans la fiche (null = création)
   recherche: "",
   voirInactifs: false,
+  // Choix des services dans la fiche d'un cadre : ceux qu'on peut retirer, et
+  // ceux qui sont figés (référent, CSS de pôle) et seulement affichés.
+  ficheServices: new Set(),
+  ficheFiges: new Map(),
+  // Onglet « Services » : données propres, chargées à la première ouverture.
+  onglet: "cadres",
+  svc: null, // { schema, sites, poles, services, codes, cadres }
+  editionService: null,
+  editionPole: null,
+  rechercheSvc: "",
+  voirFermes: true,
 };
 
 /* ------------------------------------------------------------------ */
@@ -338,46 +349,143 @@ function ouvrirFiche(cadre) {
   $("f-nom").focus();
 }
 
-/** Cases à cocher des services, avec les rattachements figés en lecture seule. */
-function rendreServices(cadre) {
-  const wrap = $("f-services");
-  wrap.textContent = "";
-  const services = [...(state.data.services || [])].sort((a, b) =>
-    `${a.Site} ${a.Nom}`.localeCompare(`${b.Site} ${b.Nom}`, "fr"));
+/* --- Choix des services : site, puis service, puis récapitulatif ---------
+   Le même nom de service existe souvent sur plusieurs sites (« EHPAD HEB »…) :
+   passer par le site d'abord lève l'ambiguïté, et la liste reste courte même
+   avec cinquante services. Les rattachements figés (référent, CSS de pôle)
+   apparaissent dans le récapitulatif mais ne s'y retirent pas. */
 
-  if (!services.length) {
-    const p = document.createElement("p");
-    p.className = "empty";
-    p.textContent = "Aucun service dans le document.";
-    wrap.appendChild(p);
+/** Prépare l'état du choix des services pour le cadre ouvert dans la fiche. */
+function rendreServices(cadre) {
+  const roles = new Map(
+    cadre ? servicesDuCadre(cadre.id).map(({ s, role }) => [s.id, role]) : []);
+
+  state.ficheFiges = new Map(
+    [...roles].filter(([, role]) => role === "referent" || role === "css"));
+  state.ficheServices = new Set(
+    [...roles].filter(([, role]) => role === "secondaire").map(([id]) => id));
+
+  remplirSites();
+  remplirServices();
+  rendreRecap();
+}
+
+/** Sites proposés, dans l'ordre alphabétique. */
+function remplirSites() {
+  const sel = $("f-site");
+  const sites = [...new Set((state.data.services || []).map((s) => s.Site || "Sans site"))]
+    .sort((a, b) => (a === "Sans site" ? 1 : b === "Sans site" ? -1 : a.localeCompare(b, "fr")));
+
+  const choisi = sel.value;
+  sel.textContent = "";
+  sel.appendChild(option("", sites.length ? "— Choisir un site —" : "Aucun site"));
+  for (const site of sites) sel.appendChild(option(site, site));
+  if (sites.includes(choisi)) sel.value = choisi;
+}
+
+/** Services du site choisi, moins ceux déjà retenus. */
+function remplirServices() {
+  const sel = $("f-service");
+  const site = $("f-site").value;
+  sel.textContent = "";
+
+  if (!site) {
+    sel.appendChild(option("", "— Choisir un site d'abord —"));
+    sel.disabled = true;
     return;
   }
+  const dispo = (state.data.services || [])
+    .filter((s) => (s.Site || "Sans site") === site)
+    .filter((s) => !state.ficheServices.has(s.id) && !state.ficheFiges.has(s.id))
+    .sort((a, b) => (a.Nom || "").localeCompare(b.Nom || "", "fr"));
 
-  for (const s of services) {
-    const role = cadre
-      ? (servicesDuCadre(cadre.id).find((r) => r.s.id === s.id) || {}).role
-      : undefined;
-    const fige = role === "referent" || role === "css";
-
-    const label = document.createElement("label");
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.value = String(s.id);
-    input.checked = !!role;
-    input.disabled = fige;
-    input.dataset.fige = fige ? "1" : "";
-
-    const texte = document.createElement("span");
-    texte.textContent = nomService(s)
-      + (fige ? ` — ${ROLE_LABEL[role]}` : "")
-      + (s.Recoit_des_etudiant ? "" : " — n'accueille pas d'étudiants");
-    if (fige) texte.className = "fige";
-
-    label.appendChild(input);
-    label.appendChild(texte);
-    wrap.appendChild(label);
+  sel.disabled = !dispo.length;
+  sel.appendChild(option("", dispo.length
+    ? "— Choisir un service —"
+    : "Tous les services de ce site sont déjà rattachés"));
+  for (const s of dispo) {
+    sel.appendChild(option(String(s.id),
+      s.Nom + (s.Recoit_des_etudiant ? "" : " — n'accueille pas d'étudiants")));
   }
 }
+
+function option(valeur, texte) {
+  const o = document.createElement("option");
+  o.value = valeur;
+  o.textContent = texte;
+  return o;
+}
+
+/** Récapitulatif des services retenus, groupé par site. */
+function rendreRecap() {
+  const ul = $("f-recap");
+  ul.textContent = "";
+
+  const retenus = (state.data.services || [])
+    .filter((s) => state.ficheServices.has(s.id) || state.ficheFiges.has(s.id));
+  $("f-recap-vide").hidden = retenus.length > 0;
+  if (!retenus.length) return;
+
+  const parSite = new Map();
+  for (const s of retenus) {
+    const site = s.Site || "Sans site";
+    if (!parSite.has(site)) parSite.set(site, []);
+    parSite.get(site).push(s);
+  }
+  const sites = [...parSite.keys()].sort((a, b) =>
+    (a === "Sans site" ? 1 : b === "Sans site" ? -1 : a.localeCompare(b, "fr")));
+
+  for (const site of sites) {
+    const titre = document.createElement("li");
+    titre.className = "site";
+    titre.textContent = site;
+    ul.appendChild(titre);
+
+    for (const s of parSite.get(site).sort((a, b) => (a.Nom || "").localeCompare(b.Nom || "", "fr"))) {
+      const li = document.createElement("li");
+      li.className = "ligne";
+
+      const nom = document.createElement("span");
+      nom.className = "nom";
+      nom.textContent = s.Nom + (s.Recoit_des_etudiant ? "" : " — n'accueille pas d'étudiants");
+      li.appendChild(nom);
+
+      const role = state.ficheFiges.get(s.id);
+      if (role) {
+        // Référent ou CSS de pôle : rattachement porté par une autre colonne,
+        // qui se change dans l'onglet Services.
+        const r = document.createElement("span");
+        r.className = "role";
+        r.textContent = ROLE_LABEL[role];
+        li.appendChild(r);
+      } else {
+        const x = document.createElement("button");
+        x.type = "button";
+        x.className = "retirer";
+        x.textContent = "×";
+        x.title = `Retirer ${s.Nom}`;
+        x.setAttribute("aria-label", `Retirer ${s.Nom}`);
+        x.addEventListener("click", () => {
+          state.ficheServices.delete(s.id);
+          remplirServices();
+          rendreRecap();
+        });
+        li.appendChild(x);
+      }
+      ul.appendChild(li);
+    }
+  }
+}
+
+$("f-site").addEventListener("change", remplirServices);
+
+$("f-service").addEventListener("change", (e) => {
+  const id = Number(e.target.value);
+  if (!id) return;
+  state.ficheServices.add(id);
+  remplirServices(); // le service choisi sort de la liste
+  rendreRecap();
+});
 
 /** Bloc « Accès et sécurité » : visible seulement sur un compte existant. */
 function rendreAcces(cadre) {
@@ -417,9 +525,9 @@ $("cadre-form").addEventListener("submit", async (e) => {
   errEl.hidden = true;
   btn.disabled = true;
   try {
-    const services = [...$("f-services").querySelectorAll("input[type=checkbox]")]
-      .filter((i) => i.checked && !i.dataset.fige)
-      .map((i) => Number(i.value));
+    // Seuls les rattachements modifiables partent : les figés (référent, CSS)
+    // sont portés par d'autres colonnes, que le Worker laisse tranquilles.
+    const services = [...state.ficheServices];
 
     const corps = {
       Civilite: $("f-civilite").value,
@@ -515,6 +623,632 @@ $("f-inviter").addEventListener("click", () => {
   const cadre = cadreEdite();
   if (cadre) ouvrirInvitation(cadre);
 });
+
+/* ------------------------------------------------------------------ */
+/* Onglets                                                             */
+/* ------------------------------------------------------------------ */
+
+document.querySelectorAll(".admin-tab").forEach((btn) => {
+  btn.addEventListener("click", () => montrerOnglet(btn.dataset.onglet));
+});
+
+const ONGLETS = ["cadres", "services", "poles", "organigramme"];
+
+async function montrerOnglet(id) {
+  state.onglet = id;
+  document.querySelectorAll(".admin-tab").forEach((b) =>
+    b.classList.toggle("active", b.dataset.onglet === id));
+  for (const o of ONGLETS) $(`tab-${o}`).hidden = o !== id;
+
+  // Services, pôles et organigramme partagent les mêmes données : un seul
+  // chargement, à la première ouverture de l'un des trois.
+  if (id !== "cadres") {
+    try {
+      if (!state.svc) await chargerServices();
+      else if (id === "poles") rendrePoles();
+      else if (id === "organigramme") rendreOrganigramme();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Écran des services                                                  */
+/* ------------------------------------------------------------------ */
+
+async function chargerServices() {
+  state.svc = await api("GET", "/api/admin/organisation");
+  rendreServicesEcran();
+  rendrePoles();
+  rendreOrganigramme();
+}
+
+/** Nom d'un cadre depuis son identifiant (« compte désactivé » sinon : le
+ *  cadre existe toujours dans Grist, mais n'est plus proposé). */
+function nomCadreId(id) {
+  const c = (state.svc.cadres || []).find((x) => x.id === id);
+  return c ? c.nom : "compte désactivé";
+}
+
+function servicesAffiches() {
+  const q = state.rechercheSvc.trim().toLowerCase();
+  return (state.svc.services || [])
+    .filter((s) => (state.voirFermes ? true : s.Recoit_des_etudiant))
+    .filter((s) => !q || [s.Nom, s.Code_UF, s.Site].join(" ").toLowerCase().includes(q));
+}
+
+function rendreServicesEcran() {
+  const wrap = $("services-wrap");
+  wrap.textContent = "";
+
+  const liste = servicesAffiches();
+  if (!liste.length) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = state.rechercheSvc
+      ? "Aucun service ne correspond à cette recherche."
+      : "Aucun service pour l'instant : créez un site, puis un service.";
+    wrap.appendChild(p);
+    return;
+  }
+
+  const nomCadre = new Map((state.svc.cadres || []).map((c) => [c.id, c.nom]));
+
+  const parSite = new Map();
+  for (const s of liste) {
+    const site = s.Site || "Sans site";
+    if (!parSite.has(site)) parSite.set(site, []);
+    parSite.get(site).push(s);
+  }
+  const sites = [...parSite.keys()].sort((a, b) =>
+    (a === "Sans site" ? 1 : b === "Sans site" ? -1 : a.localeCompare(b, "fr")));
+
+  for (const site of sites) {
+    const titre = document.createElement("h3");
+    titre.className = "svc-groupe-titre";
+    titre.textContent = site;
+    wrap.appendChild(titre);
+
+    const table = document.createElement("table");
+    table.className = "admin";
+    const thead = document.createElement("thead");
+    const trh = document.createElement("tr");
+    for (const t of ["Service", "Code UF", "Pôle", "Cadre référent", "Cadres rattachés", "Codes horaires", "Étudiants", ""]) {
+      const th = document.createElement("th");
+      th.textContent = t;
+      trh.appendChild(th);
+    }
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    for (const s of parSite.get(site).sort((a, b) => (a.Nom || "").localeCompare(b.Nom || "", "fr"))) {
+      const tr = document.createElement("tr");
+      if (!s.Recoit_des_etudiant) tr.className = "inactif";
+
+      const nom = document.createElement("span");
+      nom.className = "cadre-nom";
+      nom.textContent = s.Nom || "(sans nom)";
+      tr.appendChild(cellule(nom));
+      tr.appendChild(cellule(s.Code_UF || "—"));
+      tr.appendChild(cellule(s.Pole || "—"));
+      tr.appendChild(cellule(s.Cadre_ref ? (nomCadre.get(s.Cadre_ref) || "compte désactivé") : "—"));
+
+      // Rattachements secondaires + CSS de pôle : ce qui ouvre l'accès au service.
+      const rattaches = s.Cadres_secondaires.length + s.Pole_CSS.length;
+      tr.appendChild(cellule(rattaches
+        ? `${rattaches} en plus du référent`
+        : (s.Cadre_ref ? "le référent seul" : "personne")));
+
+      // Liste vide = tous les codes du document.
+      tr.appendChild(cellule(s.Codes.length ? `${s.Codes.length} choisis` : "tous"));
+
+      tr.appendChild(cellule(s.Recoit_des_etudiant
+        ? badge("Accueille", "ok")
+        : badge("Fermé", "warn")));
+
+      const actions = cellule(bouton("Modifier", () => ouvrirFicheService(s), "btn btn-secondary btn-small"));
+      actions.className = "actions";
+      tr.appendChild(actions);
+
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+  }
+}
+
+$("search-svc").addEventListener("input", (e) => {
+  state.rechercheSvc = e.target.value;
+  rendreServicesEcran();
+});
+
+$("voir-fermes").addEventListener("change", (e) => {
+  state.voirFermes = e.target.checked;
+  rendreServicesEcran();
+});
+
+$("new-service-btn").addEventListener("click", () => ouvrirFicheService(null));
+$("new-site-btn").addEventListener("click", () => {
+  $("site-error").hidden = true;
+  $("site-nom").value = "";
+  $("site-dialog").showModal();
+  $("site-nom").focus();
+});
+
+/* --- Fiche d'un service --- */
+
+function ouvrirFicheService(svc) {
+  state.editionService = svc ? svc.id : null;
+  $("service-error").hidden = true;
+  $("service-dialog-title").textContent = svc ? "Modifier un service" : "Nouveau service";
+  $("service-save-btn").textContent = svc ? "Enregistrer" : "Créer le service";
+  $("s-nom").value = svc ? svc.Nom : "";
+  $("s-uf").value = svc ? svc.Code_UF : "";
+  $("s-ouvert").checked = svc ? svc.Recoit_des_etudiant : true;
+
+  const selSite = $("s-site");
+  selSite.textContent = "";
+  selSite.appendChild(option("", "— Aucun site —"));
+  for (const site of state.svc.sites || []) selSite.appendChild(option(String(site.id), site.NOM));
+  selSite.value = svc && svc.SiteId ? String(svc.SiteId) : "";
+
+  const selRef = $("s-ref");
+  selRef.textContent = "";
+  selRef.appendChild(option("", "— Aucun référent —"));
+  for (const c of state.svc.cadres || []) selRef.appendChild(option(String(c.id), c.nom));
+  selRef.value = svc && svc.Cadre_ref ? String(svc.Cadre_ref) : "";
+
+  // Pôle : proposé seulement si le document sait relier un service à un pôle.
+  const schema = state.svc.schema || {};
+  const polesUtilisables = schema.poleTable && schema.servicePole;
+  $("s-pole-wrap").hidden = !polesUtilisables;
+  $("s-pole-absent").hidden = polesUtilisables;
+  $("s-pole-absent").textContent = schema.poleTable
+    ? "Ce document n'a pas de colonne reliant un service à un pôle : le rattachement au pôle ne peut pas se régler ici."
+    : "Ce document n'a pas de table « Pole » : les pôles et les cadres supérieurs ne s'appliquent pas.";
+  if (polesUtilisables) {
+    const selPole = $("s-pole");
+    selPole.textContent = "";
+    selPole.appendChild(option("", "— Aucun pôle —"));
+    for (const p of state.svc.poles || []) selPole.appendChild(option(String(p.id), p.Nom));
+    selPole.value = svc && svc.PoleId ? String(svc.PoleId) : "";
+  }
+
+  rendreCodesService(svc);
+
+  $("service-dialog").showModal();
+  $("s-nom").focus();
+}
+
+/** Codes horaires actifs du service : aucun coché = tous les codes du
+ *  document (même convention que l'onglet « Codes horaires » de l'espace cadre). */
+function rendreCodesService(svc) {
+  const wrap = $("s-codes");
+  wrap.textContent = "";
+  const codes = state.svc.codes || [];
+  const actifs = new Set(svc ? svc.Codes : []);
+
+  if (!codes.length) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = "Aucun code horaire dans le document.";
+    wrap.appendChild(p);
+  }
+  for (const c of codes) {
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = String(c.id);
+    input.checked = actifs.has(c.id);
+    input.addEventListener("change", majNoteCodes);
+
+    const texte = document.createElement("span");
+    texte.textContent = c.Code + (c.Libelle ? ` — ${c.Libelle}` : "");
+    const horaire = document.createElement("span");
+    horaire.className = "horaire";
+    if (c.Heure_debut && c.Heure_fin) horaire.textContent = ` ${c.Heure_debut}–${c.Heure_fin}`;
+
+    label.appendChild(input);
+    label.appendChild(texte);
+    label.appendChild(horaire);
+    wrap.appendChild(label);
+  }
+  majNoteCodes();
+}
+
+function majNoteCodes() {
+  const n = [...$("s-codes").querySelectorAll("input:checked")].length;
+  $("s-codes-note").textContent = n
+    ? `${n} code(s) proposé(s) aux cadres de ce service dans le planning.`
+    : "Aucun coché = tous les codes horaires du document sont proposés.";
+}
+
+$("service-cancel-btn").addEventListener("click", () => $("service-dialog").close());
+
+$("service-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = $("service-save-btn");
+  const errEl = $("service-error");
+  errEl.hidden = true;
+  btn.disabled = true;
+  try {
+    const corps = {
+      Nom: $("s-nom").value.trim(),
+      Code_UF: $("s-uf").value.trim(),
+      SiteId: Number($("s-site").value) || 0,
+      Cadre_ref: Number($("s-ref").value) || 0,
+      Recoit_des_etudiant: $("s-ouvert").checked,
+      Codes: [...$("s-codes").querySelectorAll("input:checked")].map((i) => Number(i.value)),
+    };
+    if (!$("s-pole-wrap").hidden) corps.PoleId = Number($("s-pole").value) || 0;
+    if (state.editionService) {
+      await api("PATCH", `/api/admin/services/${state.editionService}`, corps);
+    } else {
+      await api("POST", "/api/admin/services", corps);
+    }
+    $("service-dialog").close();
+    await chargerServices();
+    // L'écran des cadres affiche les mêmes services : il doit suivre.
+    await charger();
+    toast(state.editionService ? "Service mis à jour." : "Service créé.");
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* --- Nouveau site --- */
+
+$("site-cancel-btn").addEventListener("click", () => $("site-dialog").close());
+
+$("site-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = $("site-save-btn");
+  const errEl = $("site-error");
+  errEl.hidden = true;
+  btn.disabled = true;
+  try {
+    const res = await api("POST", "/api/admin/sites", { NOM: $("site-nom").value.trim() });
+    $("site-dialog").close();
+    await chargerServices();
+    toast(`Site « ${res.NOM} » créé : il est proposé à la création d'un service.`);
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Écran des pôles                                                     */
+/* ------------------------------------------------------------------ */
+
+function rendrePoles() {
+  const wrap = $("poles-wrap");
+  wrap.textContent = "";
+  const schema = state.svc.schema || {};
+  $("new-pole-btn").disabled = !schema.poleTable || !schema.poleNom;
+
+  if (!schema.poleTable) {
+    wrap.appendChild(messageVide(
+      "Ce document n'a pas de table « Pole » : les pôles et les cadres supérieurs ne s'y appliquent pas."));
+    return;
+  }
+  if (!schema.poleCSS) {
+    wrap.appendChild(messageVide(
+      "La table « Pole » n'a pas de colonne pointant vers UTILISATEURS : le cadre supérieur ne peut pas être désigné ici."));
+  }
+
+  const poles = state.svc.poles || [];
+  if (!poles.length) {
+    wrap.appendChild(messageVide("Aucun pôle pour l'instant : créez le premier avec « + Nouveau pôle »."));
+    return;
+  }
+
+  const table = document.createElement("table");
+  table.className = "admin";
+  const thead = document.createElement("thead");
+  const trh = document.createElement("tr");
+  for (const t of ["Pôle", "Cadre(s) supérieur(s)", "Services rattachés", ""]) {
+    const th = document.createElement("th");
+    th.textContent = t;
+    trh.appendChild(th);
+  }
+  thead.appendChild(trh);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  for (const p of poles) {
+    const tr = document.createElement("tr");
+
+    const nom = document.createElement("span");
+    nom.className = "cadre-nom";
+    nom.textContent = p.Nom;
+    tr.appendChild(cellule(nom));
+
+    tr.appendChild(cellule(p.CSS.length ? p.CSS.map(nomCadreId).join(", ") : "—"));
+
+    const rattaches = (state.svc.services || []).filter((s) => s.PoleId === p.id);
+    const svc = document.createElement("div");
+    svc.className = "svc-list";
+    svc.textContent = rattaches.length
+      ? rattaches.map((s) => s.Nom).join(", ")
+      : "aucun service";
+    tr.appendChild(cellule(svc));
+
+    const actions = cellule(bouton("Modifier", () => ouvrirFichePole(p), "btn btn-secondary btn-small"));
+    actions.className = "actions";
+    tr.appendChild(actions);
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+}
+
+function messageVide(texte) {
+  const p = document.createElement("p");
+  p.className = "empty";
+  p.textContent = texte;
+  return p;
+}
+
+$("new-pole-btn").addEventListener("click", () => ouvrirFichePole(null));
+$("pole-cancel-btn").addEventListener("click", () => $("pole-dialog").close());
+
+function ouvrirFichePole(pole) {
+  const schema = state.svc.schema || {};
+  state.editionPole = pole ? pole.id : null;
+  $("pole-error").hidden = true;
+  $("pole-dialog-title").textContent = pole ? "Modifier un pôle" : "Nouveau pôle";
+  $("pole-save-btn").textContent = pole ? "Enregistrer" : "Créer le pôle";
+  $("p-nom").value = pole ? pole.Nom : "";
+
+  // Le document décide : un seul cadre supérieur (liste déroulante) ou
+  // plusieurs (cases à cocher).
+  const wrap = $("p-css-wrap");
+  wrap.textContent = "";
+  const choisis = new Set(pole ? pole.CSS : []);
+  $("p-css-label").textContent = schema.poleCSSListe
+    ? "Cadres supérieurs de santé" : "Cadre supérieur de santé";
+
+  if (!schema.poleCSS) {
+    wrap.appendChild(messageVide("Colonne absente dans la table « Pole » : non modifiable ici."));
+  } else if (schema.poleCSSListe) {
+    const liste = document.createElement("div");
+    liste.className = "css-picker";
+    for (const c of state.svc.cadres || []) {
+      const label = document.createElement("label");
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.value = String(c.id);
+      input.checked = choisis.has(c.id);
+      const texte = document.createElement("span");
+      texte.textContent = c.nom;
+      label.appendChild(input);
+      label.appendChild(texte);
+      liste.appendChild(label);
+    }
+    wrap.appendChild(liste);
+  } else {
+    const sel = document.createElement("select");
+    sel.id = "p-css-select";
+    sel.appendChild(option("", "— Aucun —"));
+    for (const c of state.svc.cadres || []) sel.appendChild(option(String(c.id), c.nom));
+    sel.value = choisis.size ? String([...choisis][0]) : "";
+    wrap.appendChild(sel);
+  }
+
+  $("pole-dialog").showModal();
+  $("p-nom").focus();
+}
+
+$("pole-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = $("pole-save-btn");
+  const errEl = $("pole-error");
+  errEl.hidden = true;
+  btn.disabled = true;
+  try {
+    const schema = state.svc.schema || {};
+    const corps = { Nom: $("p-nom").value.trim() };
+    if (schema.poleCSS) {
+      corps.CSS = schema.poleCSSListe
+        ? [...$("p-css-wrap").querySelectorAll("input:checked")].map((i) => Number(i.value))
+        : (Number(($("p-css-select") || {}).value) ? [Number($("p-css-select").value)] : []);
+    }
+    if (state.editionPole) {
+      await api("PATCH", `/api/admin/poles/${state.editionPole}`, corps);
+    } else {
+      await api("POST", "/api/admin/poles", corps);
+    }
+    $("pole-dialog").close();
+    await chargerServices();
+    // Le CSS d'un pôle ouvre l'accès à ses services : l'écran des cadres suit.
+    await charger();
+    toast(state.editionPole ? "Pôle mis à jour." : "Pôle créé.");
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Organigramme : qui fait quoi, et où                                 */
+/* ------------------------------------------------------------------ */
+
+function rendreOrganigramme() {
+  const services = state.svc.services || [];
+  const cadres = state.svc.cadres || [];
+
+  // Bandeau de chiffres
+  const chiffres = $("orga-chiffres");
+  chiffres.textContent = "";
+  const ouverts = services.filter((s) => s.Recoit_des_etudiant).length;
+  const compteurs = [
+    [(state.svc.sites || []).length, "site(s)"],
+    [(state.svc.poles || []).length, "pôle(s)"],
+    [services.length, `service(s) — ${ouverts} ouvert(s)`],
+    [cadres.length, "cadre(s) actif(s)"],
+  ];
+  for (const [n, libelle] of compteurs) {
+    const span = document.createElement("span");
+    const b = document.createElement("b");
+    b.textContent = String(n);
+    span.appendChild(b);
+    span.appendChild(document.createTextNode(" " + libelle));
+    chiffres.appendChild(span);
+  }
+
+  const wrap = $("orga-wrap");
+  wrap.textContent = "";
+  if (!services.length) {
+    wrap.appendChild(messageVide("Aucun service : commencez par l'onglet Services."));
+    return;
+  }
+
+  // --- Par lieu : site > pôle > service ---
+  const parSite = new Map();
+  for (const s of services) {
+    const site = s.Site || "Sans site";
+    if (!parSite.has(site)) parSite.set(site, []);
+    parSite.get(site).push(s);
+  }
+  const sites = [...parSite.keys()].sort((a, b) =>
+    (a === "Sans site" ? 1 : b === "Sans site" ? -1 : a.localeCompare(b, "fr")));
+
+  for (const site of sites) {
+    const h = document.createElement("h3");
+    h.className = "orga-site";
+    h.textContent = site;
+    wrap.appendChild(h);
+
+    const parPole = new Map();
+    for (const s of parSite.get(site)) {
+      const pole = s.Pole || "";
+      if (!parPole.has(pole)) parPole.set(pole, []);
+      parPole.get(pole).push(s);
+    }
+    const poles = [...parPole.keys()].sort((a, b) =>
+      (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b, "fr")));
+
+    for (const pole of poles) {
+      const titre = document.createElement("div");
+      titre.className = "orga-pole";
+      titre.textContent = pole || "Hors pôle";
+      const infoPole = (state.svc.poles || []).find((p) => p.Nom === pole);
+      if (infoPole && infoPole.CSS.length) {
+        const css = document.createElement("span");
+        css.className = "css";
+        css.textContent = ` — cadre sup. : ${infoPole.CSS.map(nomCadreId).join(", ")}`;
+        titre.appendChild(css);
+      }
+      wrap.appendChild(titre);
+
+      for (const s of parPole.get(pole).sort((a, b) => a.Nom.localeCompare(b.Nom, "fr"))) {
+        wrap.appendChild(carteService(s));
+      }
+    }
+  }
+
+  // --- Par personne ---
+  const h = document.createElement("h3");
+  h.className = "orga-site";
+  h.textContent = "Par cadre";
+  wrap.appendChild(h);
+
+  if (!cadres.length) {
+    wrap.appendChild(messageVide("Aucun cadre actif."));
+    return;
+  }
+  for (const c of cadres) {
+    const bloc = document.createElement("div");
+    bloc.className = "orga-personne";
+
+    const qui = document.createElement("div");
+    qui.className = "qui";
+    qui.textContent = c.nom;
+    if (c.email) {
+      const mail = document.createElement("span");
+      mail.className = "ou";
+      mail.textContent = ` · ${c.email}${c.telephone ? ` · ${c.telephone}` : ""}`;
+      qui.appendChild(mail);
+    }
+    bloc.appendChild(qui);
+
+    const roles = [];
+    const refs = services.filter((s) => s.Cadre_ref === c.id);
+    const secondaires = services.filter((s) => s.Cadres_secondaires.includes(c.id));
+    const polesCSS = (state.svc.poles || []).filter((p) => p.CSS.includes(c.id));
+    if (refs.length) roles.push(`référent de ${refs.map(nomServiceOrga).join(", ")}`);
+    if (secondaires.length) roles.push(`rattaché à ${secondaires.map(nomServiceOrga).join(", ")}`);
+    if (polesCSS.length) {
+      roles.push(`cadre supérieur du pôle ${polesCSS.map((p) => p.Nom).join(", ")}`
+        + ` (donc de ${services.filter((s) => polesCSS.some((p) => p.id === s.PoleId)).length} service(s))`);
+    }
+
+    const ou = document.createElement("div");
+    ou.className = roles.length ? "ou" : "ou orga-vide";
+    ou.textContent = roles.length ? roles.join(" · ") : "aucun service rattaché — ce compte ne peut pas ouvrir l'espace cadre";
+    bloc.appendChild(ou);
+    wrap.appendChild(bloc);
+  }
+}
+
+function nomServiceOrga(s) {
+  return s.Site ? `${s.Nom} (${s.Site})` : s.Nom;
+}
+
+/** Une carte de service dans l'organigramme : le service, et qui s'en occupe. */
+function carteService(s) {
+  const carte = document.createElement("div");
+  carte.className = "orga-service" + (s.Recoit_des_etudiant ? "" : " ferme");
+
+  const titre = document.createElement("div");
+  titre.className = "titre";
+  titre.appendChild(document.createTextNode(s.Nom));
+  if (s.Code_UF) {
+    const uf = document.createElement("span");
+    uf.className = "uf";
+    uf.textContent = s.Code_UF;
+    titre.appendChild(uf);
+  }
+  titre.appendChild(s.Recoit_des_etudiant ? badge("Accueille", "ok") : badge("Fermé", "warn"));
+  carte.appendChild(titre);
+
+  const gens = document.createElement("div");
+  gens.className = "gens";
+  const morceaux = [];
+  if (s.Cadre_ref) morceaux.push(["référent : ", nomCadreId(s.Cadre_ref)]);
+  if (s.Cadres_secondaires.length) {
+    morceaux.push(["aussi : ", s.Cadres_secondaires.map(nomCadreId).join(", ")]);
+  }
+  if (s.Pole_CSS.length) morceaux.push(["cadre sup. : ", s.Pole_CSS.map(nomCadreId).join(", ")]);
+
+  if (!morceaux.length) {
+    gens.className = "gens orga-vide";
+    gens.textContent = "personne n'est rattaché à ce service";
+  } else {
+    morceaux.forEach(([role, noms], i) => {
+      if (i) gens.appendChild(document.createTextNode(" · "));
+      const r = document.createElement("span");
+      r.className = "role";
+      r.textContent = role;
+      gens.appendChild(r);
+      gens.appendChild(document.createTextNode(noms));
+    });
+  }
+  carte.appendChild(gens);
+  return carte;
+}
+
+$("print-orga-btn").addEventListener("click", () => window.print());
 
 /* ------------------------------------------------------------------ */
 /* Invitation par e-mail                                               */
