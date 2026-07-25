@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Espace étudiant</title>
   <script src="theme.js?v=1"></script>
-  <link rel="stylesheet" href="styles.css?v=25">
-  <link rel="stylesheet" href="theme-modern.css?v=2">
+  <link rel="stylesheet" href="styles.css?v=26">
+  <link rel="stylesheet" href="theme-modern.css?v=3">
 
 </head>
 <body>
@@ -24,48 +24,152 @@
       <div class="fr-notice-inner"><strong>Version bêta</strong> — vos retours sont les bienvenus.</div>
     </div>
 
-    <div class="login-wrap">
-      <div class="login-inner">
-        <h1>Connexion à l'espace étudiant</h1>
-        <p class="lead">Consultez votre planning de stage et déclarez vos heures ou votre sortie de stage.</p>
+    <div class="login-wrap home">
+      <div class="home-inner">
 
-        <div class="login-card">
-          <h2>Se connecter avec son code anonymat</h2>
-          <form id="login-form">
-            <label for="login-email">Adresse e-mail
-              <span class="fr-hint-text">Celle enregistrée dans votre dossier (laissez vide si vous n'en avez pas communiqué)</span>
-            </label>
-            <input type="email" id="login-email" autocomplete="email"
-                   placeholder="prenom.nom@exemple.fr">
-            <label for="login-code">Code anonymat
-              <span class="fr-hint-text">Format attendu : 1ère lettre du prénom + date de naissance JJMMAA + 1ère lettre du nom</span>
-            </label>
-            <input type="text" id="login-code" autocomplete="off" autocapitalize="characters"
-                   placeholder="Ex. : J150398D" required
-                   title="1ère lettre du prénom + date de naissance JJMMAA + 1ère lettre du nom">
-            <button type="submit" class="btn btn-primary" id="login-btn">Se connecter</button>
-            <p id="login-error" class="error" hidden></p>
-          </form>
-          <div class="fr-callout">
-            <p class="fr-callout-title">Comment retrouver mon code ?</p>
-            <p>Votre code anonymat = 1ère lettre du prénom + date de naissance (JJMMAA)
-              + 1ère lettre du nom, en majuscules.<br>
-              <em>Exemple : Jean DUPONT né le 15/03/1998 → J150398D</em></p>
+        <!-- Bandeau d'accueil : où suis-je, et connexion -->
+        <div class="home-hero">
+          <div class="home-intro">
+            <p class="home-eyebrow">
+              <span class="badge info">Espace étudiant</span>
+              <span class="home-etab js-etab" hidden><span class="js-etab-nom"></span></span>
+            </p>
+            <h1>Votre planning et vos heures de stage, au même endroit</h1>
+            <p class="home-lead">Vous êtes sur l'espace en ligne des étudiants accueillis en
+              stage dans l'établissement. Le service qui vous reçoit y publie votre planning ;
+              vous y suivez vos heures et vous y déclarez vos rattrapages, retards ou sorties
+              de stage.</p>
+            <ul class="home-checks">
+              <li>Pour les étudiants et élèves en stage dans un service de l'établissement.</li>
+              <li>Ce n'est pas le site de votre institut de formation : vous n'y trouverez
+                ni notes, ni cours, ni convention de stage.</li>
+              <li>Aucun mot de passe à créer : vous vous connectez avec votre
+                <strong>code anonymat</strong>.</li>
+            </ul>
+            <div class="home-cta">
+              <a class="btn btn-primary home-cta-jump" href="#connexion">J'ai mon code — me connecter</a>
+              <a class="btn btn-secondary" href="entree-stage.html">Je n'ai pas de code — j'arrive en stage</a>
+            </div>
+          </div>
+
+          <div class="home-login" id="connexion">
+            <div class="login-card">
+              <h2>Se connecter avec son code anonymat</h2>
+              <form id="login-form">
+                <label for="login-email">Adresse e-mail
+                  <span class="fr-hint-text">Celle enregistrée dans votre dossier (laissez vide si vous n'en avez pas communiqué)</span>
+                </label>
+                <input type="email" id="login-email" autocomplete="email"
+                       placeholder="prenom.nom@exemple.fr">
+                <label for="login-code">Code anonymat
+                  <span class="fr-hint-text">Format attendu : 1ère lettre du prénom + date de naissance JJMMAA + 1ère lettre du nom</span>
+                </label>
+                <input type="text" id="login-code" autocomplete="off" autocapitalize="characters"
+                       placeholder="Ex. : J150398D" required
+                       title="1ère lettre du prénom + date de naissance JJMMAA + 1ère lettre du nom">
+                <button type="submit" class="btn btn-primary" id="login-btn">Se connecter</button>
+                <p id="login-error" class="error" hidden></p>
+              </form>
+              <div class="fr-callout">
+                <p class="fr-callout-title">Comment retrouver mon code ?</p>
+                <p>Votre code anonymat = 1ère lettre du prénom + date de naissance (JJMMAA)
+                  + 1ère lettre du nom, en majuscules.<br>
+                  <em>Exemple : Jean DUPONT né le 15/03/1998 → J150398D</em></p>
+              </div>
+            </div>
+            <p class="home-login-note">Première visite ?
+              <a href="entree-stage.html">Enregistrez votre entrée en stage</a> pour obtenir votre code.</p>
           </div>
         </div>
 
-        <div class="login-sep">ou</div>
+        <!-- À quoi sert ce site -->
+        <section class="home-section">
+          <h2>Ce que vous pouvez faire ici</h2>
+          <div class="home-grid">
+            <div class="home-card">
+              <span class="home-card-icon" aria-hidden="true">📅</span>
+              <h3>Consulter mon planning</h3>
+              <p>Semaine par semaine, avec les codes horaires posés par le service
+                (M, S, N, J, R…) et les heures comptées pour chaque jour.</p>
+            </div>
+            <div class="home-card">
+              <span class="home-card-icon" aria-hidden="true">⏱️</span>
+              <h3>Suivre mes heures</h3>
+              <p>Heures effectuées, heures à réaliser (base 35 h par semaine) et solde :
+                les compteurs se mettent à jour tout seuls.</p>
+            </div>
+            <div class="home-card">
+              <span class="home-card-icon" aria-hidden="true">✍️</span>
+              <h3>Déclarer un écart</h3>
+              <p>Rattrapage, retard ou sortie de stage (cours, regroupement…).
+                Le cadre du service valide, puis les heures sont comptées.</p>
+            </div>
+            <div class="home-card">
+              <span class="home-card-icon" aria-hidden="true">🔁</span>
+              <h3>Enchaîner mes stages</h3>
+              <p>Chaque nouvelle période s'ajoute dans un onglet, avec son propre
+                planning et ses propres compteurs.</p>
+            </div>
+          </div>
+        </section>
 
-        <div class="fr-tiles">
-          <div class="fr-tile">
-            <h3><a href="entree-stage.html">Enregistrer mon entrée en stage</a></h3>
-            <p>Vous arrivez en stage ? Créez votre dossier et obtenez votre code anonymat.</p>
+        <!-- Le parcours, du premier jour à la connexion courante -->
+        <section class="home-section">
+          <h2>Comment ça se passe</h2>
+          <ol class="home-steps">
+            <li>
+              <h3>J'arrive en stage</h3>
+              <p>Une seule fois, j'enregistre mon entrée : mon dossier est créé dans le
+                service et mon code anonymat s'affiche — à noter précieusement.</p>
+              <p><a href="entree-stage.html">Enregistrer mon entrée en stage</a></p>
+            </li>
+            <li>
+              <h3>Je préviens le cadre</h3>
+              <p>L'inscription en ligne ne remplace pas la prise de contact : j'appelle ou
+                j'écris au cadre du service, dont les coordonnées s'affichent après
+                l'enregistrement.</p>
+            </li>
+            <li>
+              <h3>Je me connecte quand j'en ai besoin</h3>
+              <p>Avec mon code anonymat et l'adresse e-mail de mon dossier, pour consulter
+                mon planning ou déclarer des heures.</p>
+            </li>
+          </ol>
+        </section>
+
+        <!-- Les deux règles qui surprennent le plus les étudiants -->
+        <section class="home-section">
+          <h2>Bon à savoir</h2>
+          <div class="home-grid home-grid-2">
+            <div class="fr-callout">
+              <p class="fr-callout-title">Un jour férié ne vous pénalise jamais</p>
+              <p>Non travaillé, il vous est accordé et déduit de vos heures à réaliser :
+                aucune dette à rattraper. Travaillé, il ouvre droit à un jour de récupération.</p>
+            </div>
+            <div class="fr-callout">
+              <p class="fr-callout-title">Une déclaration attend la validation du cadre</p>
+              <p>Tant qu'elle est « en attente », elle n'entre pas dans votre total :
+                c'est normal que le compteur ne bouge pas tout de suite.</p>
+            </div>
           </div>
-          <div class="fr-tile">
-            <h3><a href="espace-cadre.html">Accéder à l'espace cadre</a></h3>
-            <p>Cadres de service : plannings, validations et inscriptions.</p>
+          <p class="home-more"><a href="guide-etudiant.html">Lire le mode d'emploi étudiant</a>
+            — connexion, lecture du planning, déclarations et questions fréquentes.</p>
+        </section>
+
+        <!-- Accès secondaires -->
+        <section class="home-section">
+          <h2>Vous n'êtes pas étudiant ?</h2>
+          <div class="fr-tiles">
+            <div class="fr-tile">
+              <h3><a href="espace-cadre.html">Accéder à l'espace cadre</a></h3>
+              <p>Cadres de service : plannings, validations et inscriptions.</p>
+            </div>
+            <div class="fr-tile">
+              <h3><a href="guide-etudiant.html">Voir le mode d'emploi</a></h3>
+              <p>Le guide complet de l'espace étudiant, en huit sections.</p>
+            </div>
           </div>
-        </div>
+        </section>
 
         <p class="login-privacy">🔒 Pour des raisons de sécurité, les connexions et les
           actions réalisées dans l'application sont tracées (journal d'activité).</p>
@@ -246,6 +350,6 @@
   <script src="config.js?v=21"></script>
   <script src="layout.js?v=26"></script>
   <script src="etablissement.js?v=28"></script>
-  <script src="app.js?v=26"></script>
+  <script src="app.js?v=27"></script>
 </body>
 </html>

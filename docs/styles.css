@@ -187,6 +187,135 @@ a { color: var(--bleu); }
 .fr-tile h3 a::after { content: " →"; color: var(--bleu); }
 .fr-tile p { font-size: 0.85rem; color: var(--texte-doux); margin: 0; }
 
+/* ---------- Page d'accueil (écran de connexion d'index.html) ----------
+   Objectif : qu'un étudiant qui arrive sans contexte comprenne d'emblée
+   sur quel site il est et ce qu'il peut y faire, sans perdre l'accès
+   direct au formulaire de connexion (colonne de droite sur grand écran).
+   Les nouveaux blocs n'utilisent que les jetons existants (dont
+   var(--radius) : 0 en thème public, 14px en thème moderne), donc ils
+   suivent les deux habillages et le mode sombre sans réglage dédié. */
+
+.home-inner { max-width: 68rem; margin: 0 auto; }
+
+.home-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(21rem, 0.95fr);
+  gap: 2.5rem;
+  align-items: start;
+}
+
+.home-eyebrow {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 0.5rem; margin: 0 0 0.75rem;
+}
+.home-etab {
+  font-size: 0.8rem; font-weight: 600; color: var(--texte-doux);
+  text-transform: uppercase; letter-spacing: 0.02em;
+}
+
+.home-hero h1 { font-size: clamp(1.6rem, 1.1rem + 1.8vw, 2.25rem); line-height: 1.2; }
+
+.home-lead { font-size: 1.05rem; color: var(--texte-doux); margin: 0.75rem 0 0; }
+
+.home-checks { list-style: none; margin: 1.25rem 0 0; padding: 0; }
+.home-checks li {
+  position: relative;
+  padding-left: 1.6rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+.home-checks li::before {
+  content: "✓";
+  position: absolute; left: 0; top: 0;
+  font-weight: 700;
+  color: var(--bleu);
+}
+
+.home-cta { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.5rem; }
+.home-cta .btn { text-decoration: none; }
+/* Sur grand écran, le formulaire est déjà à côté : l'ancre ne sert qu'en
+   version empilée (mobile), où la connexion passe sous le texte. */
+.home-cta-jump { display: none; }
+
+.home-login-note {
+  font-size: 0.85rem; color: var(--texte-doux);
+  margin: 0.75rem 0 0; text-align: center;
+}
+
+.home-section { margin-top: 3rem; }
+.home-section > h2 { font-size: 1.3rem; margin: 0 0 1rem; }
+.home-section h3 { font-size: 1rem; margin: 0 0 0.3rem; }
+
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
+  gap: 1rem;
+}
+.home-grid-2 { grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr)); }
+/* Posé sur le fond gris de la page, un fr-callout doit rester détaché :
+   fond blanc + filet, là où il s'appuie d'ordinaire sur une carte blanche. */
+.home-grid-2 .fr-callout {
+  margin: 0;
+  background: var(--blanc);
+  border: 1px solid var(--gris-bordure);
+  border-left: 4px solid var(--bleu);
+  border-radius: var(--radius);
+}
+
+.home-card {
+  background: var(--blanc);
+  border: 1px solid var(--gris-bordure);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+}
+.home-card p { font-size: 0.875rem; color: var(--texte-doux); margin: 0; }
+.home-card-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 2.25rem; height: 2.25rem;
+  margin-bottom: 0.7rem;
+  background: var(--info-bg);
+  border-radius: 0.25rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.home-steps {
+  list-style: none; counter-reset: home-step;
+  margin: 0; padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
+  gap: 1rem;
+}
+.home-steps li {
+  counter-increment: home-step;
+  background: var(--blanc);
+  border: 1px solid var(--gris-bordure);
+  border-left: 4px solid var(--bleu);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+}
+.home-steps li::before {
+  content: counter(home-step);
+  display: flex; align-items: center; justify-content: center;
+  width: 1.75rem; height: 1.75rem;
+  margin-bottom: 0.6rem;
+  background: var(--bleu); color: var(--blanc);
+  border-radius: 50%;
+  font-size: 0.85rem; font-weight: 700;
+}
+.home-steps p { font-size: 0.875rem; color: var(--texte-doux); margin: 0 0 0.4rem; }
+.home-steps p:last-child { margin-bottom: 0; }
+.home-steps a { color: var(--bleu); }
+
+.home-more { font-size: 0.875rem; color: var(--texte-doux); margin: 1rem 0 0; }
+
+.home .login-privacy { margin-top: 3rem; }
+
+@media (max-width: 900px) {
+  .home-hero { grid-template-columns: 1fr; gap: 2rem; }
+  .home-cta-jump { display: inline-block; }
+}
+
 /* Mise en avant (façon fr-callout) */
 .fr-callout {
   background: var(--gris-fond);
@@ -244,6 +373,11 @@ input[type="checkbox"], input[type="radio"] {
 
 .btn-ghost { background: transparent; color: var(--bleu); }
 .btn-ghost:hover { background: rgba(0, 0, 145, 0.06); }
+
+/* Action secondaire cerclée (façon fr-btn--secondary) : le liseré est posé
+   en box-shadow pour ne pas changer la hauteur d'un .btn sans bordure. */
+.btn-secondary { background: transparent; color: var(--bleu); box-shadow: inset 0 0 0 1px currentColor; }
+.btn-secondary:hover { background: rgba(0, 0, 145, 0.06); }
 
 .btn-danger { background: transparent; color: #c9191e; border: 1px solid #c9191e; }
 .btn-danger:hover { background: rgba(201, 25, 30, 0.08); }
@@ -374,6 +508,7 @@ input[type="checkbox"], input[type="radio"] {
   color: var(--texte);
 }
 
+.badge.info { background: var(--info-bg); color: var(--info); }
 .badge.ok { background: var(--succes-bg); color: var(--succes); }
 .badge.warn { background: #ffe9e9; color: var(--rouge); }
 .badge.pending { background: var(--alerte-bg); color: var(--alerte); }
