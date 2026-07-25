@@ -399,9 +399,10 @@
             <input type="email" id="login-email" autocomplete="username" required
                    data-mail-etab placeholder="prenom.nom@etablissement.fr">
             <label for="login-code">Code d'accès
-              <span class="fr-hint-text">Transmis par l'administrateur de l'application</span>
+              <span class="fr-hint-text">4 à 6 chiffres, transmis par l'administrateur de l'application</span>
             </label>
-            <input type="password" id="login-code" autocomplete="current-password" required>
+            <input type="password" id="login-code" inputmode="numeric" autocomplete="current-password"
+                   pattern="\d{4,6}" minlength="4" maxlength="6" required placeholder="••••••">
             <label for="login-pin">Code PIN
               <span class="fr-hint-text">1ʳᵉ connexion : choisissez un PIN de 4 à 6 chiffres. Il vous sera redemandé ensuite.</span>
             </label>

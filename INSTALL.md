@@ -60,9 +60,10 @@ document d'origine (nouvel établissement, nouvelle organisation Grist).
   - `Email` est une **formule** qui construit l'adresse à partir de
     `Prenom.Nom@chr-metz-thionville.fr` — **à modifier** avec le domaine mail
     de votre établissement (colonne formule, panneau latéral « Colonne »).
-  - `Code_acces` (Texte) : à remplir vous-même pour chaque cadre — un code
-    personnel assez long/aléatoire (10-12 caractères), transmis en dehors de
-    l'outil. C'est le 1ᵉʳ facteur, avec l'email.
+  - `Code_acces` (Texte) : à remplir vous-même pour chaque cadre — **4 à 6
+    chiffres**, tirés au hasard et transmis en dehors de l'outil. C'est le
+    1ᵉʳ facteur, avec l'email ; l'espace administrateur en génère ensuite
+    à 6 chiffres.
   - `PIN_hash`, `Reinit_PIN`, `PIN_essais`, `PIN_bloque_jusqu_a` : **ne pas
     créer ni remplir à la main**, le worker les ajoute et les tient tout seul.
     2ᵉ facteur : le cadre choisit un PIN de 4 à 6 chiffres à sa première

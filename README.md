@@ -112,10 +112,14 @@ npx wrangler deploy
   de naissance d'un étudiant (format documenté sur l'écran de connexion). Il est
   donc complété par un **2ᵉ facteur** : l'adresse e-mail du dossier, exigée dès
   qu'une adresse y figure (un dossier sans e-mail reste accessible au seul code).
-- Côté cadre, le `Code_acces` (1ᵉʳ facteur, transmis par l'administrateur) est
-  complété par un **code PIN** de 4 à 6 chiffres que le cadre choisit à sa
-  première connexion, stocké haché (PBKDF2-HMAC-SHA256, sel aléatoire). Un lien
-  de connexion directe ne suffit donc pas à ouvrir un espace cadre.
+- Côté cadre, le `Code_acces` (1ᵉʳ facteur, transmis par l'administrateur) fait
+  4 à 6 chiffres — 6 quand l'application le génère. Court par choix : il se
+  dicte et se recopie sans faute, et il est complété par un **code PIN** de
+  4 à 6 chiffres que le cadre choisit à sa première connexion, stocké haché
+  (PBKDF2-HMAC-SHA256, sel aléatoire) et verrouillé 15 minutes après 5 essais
+  manqués. C'est le PIN qui porte la sécurité de la connexion : un lien de
+  connexion directe, ou un code d'accès deviné, ne suffit pas à ouvrir un
+  espace cadre.
 - Le secret facultatif `ADMIN_KEY` permet à l'administrateur d'ouvrir l'espace
   d'un cadre **sans son PIN** (dépannage) ; la connexion est marquée comme telle
   dans `JOURNAL_ACTIVITE`. Non défini = accès inexistant.

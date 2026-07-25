@@ -133,9 +133,10 @@
             <input type="email" id="login-email" autocomplete="username" required
                    data-mail-etab placeholder="prenom.nom@etablissement.fr">
             <label for="login-code">Code d'accès
-              <span class="fr-hint-text">Le même que pour l'espace cadre</span>
+              <span class="fr-hint-text">4 à 6 chiffres, le même que pour l'espace cadre</span>
             </label>
-            <input type="password" id="login-code" autocomplete="current-password" required>
+            <input type="password" id="login-code" inputmode="numeric" autocomplete="current-password"
+                   pattern="\d{4,6}" minlength="4" maxlength="6" required placeholder="••••••">
             <label for="login-pin">Code PIN</label>
             <input type="password" id="login-pin" inputmode="numeric" autocomplete="off"
                    pattern="\d{4,6}" minlength="4" maxlength="6" required placeholder="••••">
@@ -295,7 +296,7 @@
         <h3>Accès et sécurité</h3>
         <div class="acces-ligne">
           <span class="label">Code d'accès</span>
-          <code class="secret" id="f-code">••••••••••••••</code>
+          <code class="secret" id="f-code">••••••</code>
           <button type="button" class="btn btn-ghost btn-small" id="f-code-voir">Afficher</button>
           <button type="button" class="btn btn-ghost btn-small" id="f-code-copier">Copier</button>
           <button type="button" class="btn btn-ghost btn-small" id="f-code-regen">Régénérer</button>
@@ -421,6 +422,6 @@
   <script src="config.js?v=21"></script>
   <script src="layout.js?v=26"></script>
   <script src="etablissement.js?v=29"></script>
-  <script src="espace-admin.js?v=6"></script>
+  <script src="espace-admin.js?v=7"></script>
 </body>
 </html>

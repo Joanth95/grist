@@ -187,14 +187,18 @@ function httpError(status, publicMessage, retryAfter) {
 /* ------------------------------------------------------------------ */
 
 /*
- * Deux protections complémentaires contre les essais en série (le code
- * anonymat est court et prévisible, le PIN cadre ne fait que 4 à 6 chiffres) :
+ * Deux protections complémentaires contre les essais en série — aucun des trois
+ * secrets n'est long : le code anonymat est court et prévisible, le code d'accès
+ * cadre et le PIN ne font que 4 à 6 chiffres.
  *
  *  1. ce compteur en mémoire, immédiat et sans dépendance, mais propre à
  *     chaque isolat Cloudflare : il arrête un déluge sans rien garantir face
  *     à un attaquant qui répartit ses essais ;
  *  2. le verrouillage du PIN cadre, écrit dans Grist (voir verrouPin) : lui
  *     est global et persistant, et c'est la vraie barrière sur le PIN.
+ *
+ * Le code d'accès cadre n'a que la première : deviné, il ne donne toujours rien
+ * sans le PIN, qui est le facteur verrouillé.
  */
 const seaux = new Map();
 
@@ -860,7 +864,7 @@ function refIds(value) {
  */
 async function authenticateCadre(env, rawEmail, rawCode) {
   const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : "";
-  const code = typeof rawCode === "string" ? rawCode.trim() : "";
+  const code = normaliserCodeAcces(rawCode);
   if (!email || !code) throw httpError(401, "Email ou code d'accès invalide");
 
   const users = await gristAll(env, T_UTILISATEURS);
@@ -1857,18 +1861,35 @@ const COLONNES_COMPTE_CADRE = [
   { id: "PIN_bloque_jusqu_a", label: "PIN — bloqué jusqu'à", type: "Int" },
 ];
 
-/* Alphabet du code d'accès : 32 caractères sans I ni O ni 0 ni 1, qui se
-   confondent quand on recopie un code à la main. 32 = 256/8, donc tirer un
-   octet modulo l'alphabet ne favorise aucun caractère. */
-const ALPHABET_CODE_ACCES = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const LONGUEUR_CODE_ACCES = 14; // 14 × 5 bits = 70 bits d'entropie
+/* Code d'accès : uniquement des chiffres, 4 au minimum et 6 au maximum — comme
+   le PIN. Un code qui se dicte au téléphone et se recopie sans faute, au prix
+   d'un espace de tirage réduit (10⁶ au plus) : c'est le PIN, haché et verrouillé
+   après PIN_ESSAIS_MAX essais, qui reste la barrière dure de la connexion.
+   La génération prend toujours la borne haute ; la borne basse n'existe que
+   pour accepter un code plus court saisi à la main dans le document Grist. */
+const LONGUEUR_CODE_ACCES = 6;
 
-/** Code d'accès aléatoire (1ᵉʳ facteur d'un cadre). */
+/** Code d'accès aléatoire (1ᵉʳ facteur d'un cadre) : LONGUEUR_CODE_ACCES chiffres.
+ *  Les octets ≥ 250 sont écartés — 250 est le plus grand multiple de 10 sous 256,
+ *  sinon les chiffres 0 à 5 sortiraient plus souvent que les autres. */
 function genererCodeAcces() {
-  const octets = crypto.getRandomValues(new Uint8Array(LONGUEUR_CODE_ACCES));
   let code = "";
-  for (const o of octets) code += ALPHABET_CODE_ACCES[o % ALPHABET_CODE_ACCES.length];
+  while (code.length < LONGUEUR_CODE_ACCES) {
+    for (const o of crypto.getRandomValues(new Uint8Array(LONGUEUR_CODE_ACCES))) {
+      if (o >= 250) continue;
+      code += o % 10;
+      if (code.length === LONGUEUR_CODE_ACCES) break;
+    }
+  }
   return code;
+}
+
+/** Code d'accès saisi, ramené à sa forme canonique. Les espaces d'un
+ *  copier-coller sont tolérés ; tout ce qui n'est pas 4 à 6 chiffres est
+ *  refusé sans lire le document (chaîne vide). */
+function normaliserCodeAcces(brut) {
+  const code = typeof brut === "string" ? brut.replace(/\s+/g, "") : "";
+  return /^\d{4,6}$/.test(code) ? code : "";
 }
 
 /**

@@ -142,7 +142,7 @@
       <p>L'écran « Comptes des cadres » permet de :</p>
       <ul>
         <li><strong>créer un compte</strong> — le <span class="code">Code_acces</span> est
-          <strong>tiré au sort</strong> (14 caractères sans lettres ambiguës) et affiché une seule
+          <strong>tiré au sort</strong> (6 chiffres) et affiché une seule
           fois : copiez-le à ce moment-là, ou régénérez-en un plus tard ;</li>
         <li><strong>rattacher le cadre à ses services</strong> — cases à cocher, qui écrivent dans
           <span class="code">SERVICES.Cadres_secondaires</span>. Les services dont il est le
@@ -279,7 +279,7 @@
       <ul>
         <li>Le <strong>code anonymat</strong> étudiant (1<sup>re</sup> lettre prénom + date de naissance + 1<sup>re</sup> lettre nom) est volontairement simple, parce qu'un étudiant doit pouvoir le recomposer de mémoire. Il est donc complété par un <strong>2<sup>e</sup> facteur</strong> : l'<strong>adresse e-mail du dossier</strong>, exigée dès qu'une adresse y figure. Un dossier sans e-mail reste accessible au seul code — renseigner l'adresse des étudiants est ce qui protège leur espace.</li>
         <li>L'étudiant peut modifier lui-même son téléphone et son e-mail depuis son espace : changer l'e-mail change <strong>son propre</strong> 2<sup>e</sup> facteur, et rien d'autre.</li>
-        <li>Le <strong>code d'accès cadre</strong> donne, lui, accès à toutes les données d'un service entier : il doit être long, aléatoire, transmis de façon confidentielle, et révoqué (décochez <span class="code">Utilisateur_de_l_outil</span>) dès qu'un cadre quitte ses fonctions. Il est doublé d'un <strong>code PIN</strong> choisi par le cadre et stocké haché (voir section 5) : ni vous ni le document Grist ne permettent de le lire.</li>
+        <li>Le <strong>code d'accès cadre</strong> donne, lui, accès à toutes les données d'un service entier : transmettez-le de façon confidentielle, et révoquez-le (décochez <span class="code">Utilisateur_de_l_outil</span>) dès qu'un cadre quitte ses fonctions. Il ne fait que <strong>6 chiffres</strong> — assez court pour se dicter au téléphone, trop court pour tenir tout seul : ce qui protège réellement la connexion, c'est le <strong>code PIN</strong> qui le double (choisi par le cadre, stocké haché, illisible pour vous comme pour le document Grist, et le compte se bloque 15 minutes après 5 essais manqués — voir section 5). Un code d'accès seul, deviné, n'ouvre rien.</li>
         <li>Une <strong>clé d'accès administrateur</strong>, gardée comme secret côté Worker (jamais dans le code ni dans les mails d'invitation), permet d'ouvrir l'espace d'un cadre <strong>sans son PIN</strong> — pour du dépannage. Toute connexion de ce type est signalée comme telle dans le journal d'activité. Traitez cette clé comme le secret le plus sensible de l'installation.</li>
         <li>La <strong>clé API Grist</strong> qui permet au site web de lire/écrire dans le document n'est jamais stockée dans le code : elle vit uniquement en secret côté Cloudflare Worker (proxy).</li>
         <li>Ni les étudiants ni les cadres ne peuvent accéder aux tables sensibles du document (autres services, autres pôles) : le proxy limite strictement chaque requête à leur périmètre.</li>

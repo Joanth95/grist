@@ -504,13 +504,19 @@ $("f-service").addEventListener("change", (e) => {
   rendreRecap();
 });
 
+/** Code d'accès masqué. Jamais moins de 6 puces (la longueur d'un code
+ *  fraîchement généré) : un compte sans code ne se repère pas à son masque. */
+function masquerCode(code) {
+  return "•".repeat(Math.max(6, (code || "").length));
+}
+
 /** Bloc « Accès et sécurité » : visible seulement sur un compte existant. */
 function rendreAcces(cadre) {
   $("f-acces").hidden = !cadre;
   if (!cadre) return;
 
   const codeEl = $("f-code");
-  codeEl.textContent = "•".repeat(Math.max(8, (cadre.Code_acces || "").length));
+  codeEl.textContent = masquerCode(cadre.Code_acces);
   codeEl.dataset.visible = "";
   $("f-code-voir").textContent = "Afficher";
 
@@ -605,7 +611,7 @@ $("f-code-voir").addEventListener("click", () => {
   const el = $("f-code");
   const visible = el.dataset.visible === "1";
   el.dataset.visible = visible ? "" : "1";
-  el.textContent = visible ? "•".repeat(Math.max(8, cadre.Code_acces.length)) : cadre.Code_acces;
+  el.textContent = visible ? masquerCode(cadre.Code_acces) : cadre.Code_acces;
   $("f-code-voir").textContent = visible ? "Afficher" : "Masquer";
 });
 
@@ -1336,7 +1342,7 @@ function ouvrirInvitation(cadre) {
     "Le code PIN n'est pas dans ce mail : vous l'inventez à la 1re connexion.",
     "",
     "1. Ouvrez le lien ci-dessus : email et code d'accès sont déjà remplis.",
-    "2. Champ « Code PIN » : tapez 4 à 6 chiffres de votre choix (pas 1234, pas une date de naissance).",
+    "2. Champ « Code PIN » : tapez 4 à 6 chiffres de votre choix, différents du code d'accès ci-dessus (pas 1234, pas une date de naissance).",
     "3. Cliquez sur « Se connecter » : ce code devient votre PIN.",
     "4. Notez-le et gardez-le pour vous : il sera redemandé à chaque connexion, avec l'email et le code d'accès.",
     "",
