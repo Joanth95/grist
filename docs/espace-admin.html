@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Espace administrateur</title>
+  <script src="theme.js?v=1"></script>
+  <link rel="stylesheet" href="styles.css?v=26">
+  <link rel="stylesheet" href="theme-modern.css?v=3">
+  <style>
+    /* Écran d'administration : un tableau dense et ses actions. Les couleurs
+       viennent des variables de styles.css, donc l'habillage moderne suit. */
+    .admin-bar{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin:0 0 1rem}
+    .admin-bar input[type="search"]{flex:1;min-width:14rem;margin:0}
+    .admin-bar .spacer{flex:1}
+
+    .admin-table-wrap{overflow-x:auto}
+    table.admin{width:100%;border-collapse:collapse;font-size:.92rem}
+    table.admin th,table.admin td{border-bottom:1px solid var(--gris-bordure);padding:.55rem .6rem;text-align:left;vertical-align:top}
+    table.admin th{background:var(--gris-fond);font-size:.85rem;white-space:nowrap}
+    table.admin tr.inactif td{opacity:.55}
+    table.admin td.actions{white-space:nowrap;text-align:right}
+    .cadre-nom{font-weight:600}
+    .cadre-sous{color:var(--texte-doux);font-size:.85em}
+    .badges{display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.2rem}
+    .svc-list{color:var(--texte-doux);font-size:.85em;max-width:20rem}
+
+    /* Liste des services dans la fiche : cases à cocher sur deux colonnes. */
+    .svc-picker{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:.3rem .9rem;
+      max-height:14rem;overflow-y:auto;border:1px solid var(--gris-bordure);border-radius:4px;padding:.6rem}
+    .svc-picker label{display:flex;gap:.45rem;align-items:flex-start;font-weight:400;margin:0;font-size:.9rem}
+    .svc-picker input{margin-top:.2rem}
+    .svc-picker .fige{color:var(--texte-doux)}
+
+    .fiche-section{border-top:1px solid var(--gris-bordure);margin-top:.4rem;padding-top:.8rem}
+    .fiche-section h3{margin:0 0 .5rem;font-size:1rem}
+    .acces-ligne{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:.5rem}
+    .acces-ligne .label{min-width:7.5rem;color:var(--texte-doux);font-size:.9rem}
+    code.secret{font-family:ui-monospace,monospace;font-weight:700;letter-spacing:.06em;
+      background:var(--gris-fond);border:1px solid var(--gris-bordure);border-radius:4px;padding:.15rem .5rem}
+
+    #code-dialog code.secret{display:block;font-size:1.15rem;text-align:center;padding:.7rem;margin:.6rem 0}
+
+    /* Bandeau de confirmation après une action (création, PIN, code…). */
+    .toast{position:fixed;left:50%;bottom:1.5rem;transform:translateX(-50%);z-index:50;
+      background:var(--succes-bg);color:var(--succes);border-radius:4px;padding:.7rem 1.2rem;
+      box-shadow:0 2px 12px rgba(0,0,0,.18);font-weight:600;max-width:90vw}
+    .toast.ko{background:var(--alerte-bg);color:var(--alerte)}
+  </style>
+</head>
+<body>
+
+  <!-- Écran de connexion -->
+  <section id="login-screen" class="screen">
+    <header class="fr-header" data-title="Espace administrateur"
+            data-tagline="Administration de l'application" data-tagline-dynamic>
+      <div class="fr-header-tools">
+        <a class="btn btn-ghost" href="guide-admin.html">Guide administrateur</a>
+        <a class="btn btn-ghost" href="espace-cadre.html">Espace cadre</a>
+      </div>
+    </header>
+
+    <div class="login-wrap">
+      <div class="login-inner">
+        <h1>Connexion à l'espace administrateur</h1>
+        <p class="lead">Comptes des cadres, et bientôt référentiels et paramètres de l'application.</p>
+
+        <div class="login-card">
+          <h2>Se connecter avec son code d'accès</h2>
+          <form id="login-form">
+            <label for="login-email">Adresse email</label>
+            <input type="email" id="login-email" autocomplete="username" required
+                   data-mail-etab placeholder="prenom.nom@etablissement.fr">
+            <label for="login-code">Code d'accès
+              <span class="fr-hint-text">Le même que pour l'espace cadre</span>
+            </label>
+            <input type="password" id="login-code" autocomplete="current-password" required>
+            <label for="login-pin">Code PIN</label>
+            <input type="password" id="login-pin" inputmode="numeric" autocomplete="off"
+                   pattern="\d{4,6}" minlength="4" maxlength="6" required placeholder="••••">
+            <button type="submit" class="btn btn-primary" id="login-btn">Se connecter</button>
+            <p id="login-error" class="error" hidden></p>
+          </form>
+          <p class="hint">
+            Réservé aux comptes dont la case <strong>Administrateur</strong> est cochée.
+            Les autres cadres accèdent à <a href="espace-cadre.html">l'espace cadre</a>.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <footer class="fr-footer" data-no-admin></footer>
+  </section>
+
+  <!-- Application -->
+  <section id="app-screen" class="screen" hidden>
+    <header class="fr-header" data-title="Espace administrateur"
+            data-tagline="Administration de l'application" data-tagline-dynamic>
+      <div class="fr-header-tools header-actions">
+        <span id="admin-qui" class="cadre-label"></span>
+        <a class="btn btn-ghost" href="espace-cadre.html">Espace cadre</a>
+        <button id="refresh-btn" class="btn btn-ghost" title="Rafraîchir">🔄 Rafraîchir</button>
+        <button id="logout-btn" class="btn btn-ghost">Se déconnecter</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <section>
+        <h2>Comptes des cadres</h2>
+        <p class="section-note">Créer un compte, le rattacher à ses services, réinitialiser un
+          code PIN oublié, débloquer un compte après plusieurs essais manqués, ou régénérer un
+          code d'accès. Ces actions se faisaient jusqu'ici directement dans le document Grist.</p>
+
+        <div class="admin-bar">
+          <input type="search" id="search" placeholder="Rechercher un cadre (nom, e-mail, service)…"
+                 autocomplete="off" spellcheck="false">
+          <label class="checkbox-label"><input type="checkbox" id="voir-inactifs"> Voir les comptes désactivés</label>
+          <button type="button" class="btn btn-primary" id="new-cadre-btn">+ Nouveau cadre</button>
+        </div>
+
+        <div id="cadres-wrap" class="admin-table-wrap"></div>
+      </section>
+    </main>
+
+    <footer class="fr-footer"></footer>
+  </section>
+
+  <!-- Fiche d'un cadre (création et modification) -->
+  <dialog id="cadre-dialog">
+    <form id="cadre-form" method="dialog">
+      <h2 id="cadre-dialog-title">Nouveau cadre</h2>
+
+      <label for="f-civilite">Civilité</label>
+      <select id="f-civilite"></select>
+
+      <label for="f-nom">Nom</label>
+      <input type="text" id="f-nom" maxlength="80" required autocomplete="off">
+
+      <label for="f-prenom">Prénom</label>
+      <input type="text" id="f-prenom" maxlength="80" required autocomplete="off">
+
+      <div id="f-email-wrap">
+        <label for="f-email">Adresse email</label>
+        <input type="email" id="f-email" maxlength="120" autocomplete="off"
+               data-mail-etab placeholder="prenom.nom@etablissement.fr">
+      </div>
+      <p id="f-email-auto" class="save-hint" hidden>
+        L'adresse e-mail est <strong>calculée automatiquement</strong> par le document Grist
+        à partir du nom et du prénom : elle ne se saisit pas ici.
+      </p>
+
+      <label for="f-telephone">Téléphone <span class="optional">(facultatif)</span></label>
+      <input type="tel" id="f-telephone" maxlength="30" autocomplete="off">
+
+      <label class="checkbox-label"><input type="checkbox" id="f-actif" checked> Compte actif</label>
+      <label class="checkbox-label"><input type="checkbox" id="f-admin"> Administrateur de l'application</label>
+      <p id="f-soi-note" class="save-hint" hidden>C'est votre propre compte : vous ne pouvez ni le
+        désactiver, ni vous retirer vos droits d'administration. Un autre administrateur le peut.</p>
+
+      <label>Services rattachés</label>
+      <div class="svc-picker" id="f-services"></div>
+      <p class="save-hint">Un cadre doit être rattaché à au moins un service ouvert aux
+        étudiants pour ouvrir l'espace cadre. Les services dont il est le <strong>référent</strong>
+        (ou dont il est CSS de pôle) sont affichés mais se modifient dans Grist.</p>
+
+      <div class="fiche-section" id="f-acces" hidden>
+        <h3>Accès et sécurité</h3>
+        <div class="acces-ligne">
+          <span class="label">Code d'accès</span>
+          <code class="secret" id="f-code">••••••••••••••</code>
+          <button type="button" class="btn btn-ghost btn-small" id="f-code-voir">Afficher</button>
+          <button type="button" class="btn btn-ghost btn-small" id="f-code-copier">Copier</button>
+          <button type="button" class="btn btn-ghost btn-small" id="f-code-regen">Régénérer</button>
+        </div>
+        <div class="acces-ligne">
+          <span class="label">Code PIN</span>
+          <span id="f-pin-etat"></span>
+          <button type="button" class="btn btn-ghost btn-small" id="f-pin-reinit">Réinitialiser</button>
+          <button type="button" class="btn btn-ghost btn-small" id="f-pin-debloquer" hidden>Débloquer</button>
+        </div>
+        <div class="acces-ligne">
+          <span class="label">Invitation</span>
+          <button type="button" class="btn btn-ghost btn-small" id="f-inviter">✉ Préparer l'e-mail d'invitation</button>
+        </div>
+      </div>
+
+      <p id="cadre-error" class="error" hidden></p>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="cadre-cancel-btn">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="cadre-save-btn">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Code d'accès fraîchement généré : seul moment où il s'affiche en entier -->
+  <dialog id="code-dialog">
+    <form method="dialog">
+      <h2>Code d'accès</h2>
+      <p class="save-hint" id="code-dialog-hint"></p>
+      <code class="secret" id="code-dialog-value"></code>
+      <p class="save-hint">Transmettez-le au cadre par un canal sûr (en main propre, ou un
+        message distinct du lien de connexion). Le code PIN, lui, n'est pas transmis :
+        le cadre le choisit à sa première connexion.</p>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="code-copier-btn">Copier</button>
+        <button type="submit" class="btn btn-primary">Fermer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="config.js?v=21"></script>
+  <script src="layout.js?v=26"></script>
+  <script src="etablissement.js?v=29"></script>
+  <script src="espace-admin.js?v=1"></script>
+</body>
+</html>

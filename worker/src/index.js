@@ -57,6 +57,18 @@
  *                                                                (colonne formule PERIODES_DE_STAGE.Planning_HTML)
  *   POST   /api/cadre/rdv  { periodeId, Date_rdv, ... }        -> ajoute un rendez-vous formateur/tuteur
  *   DELETE /api/cadre/rdv/:id                                  -> supprime un rendez-vous formateur
+ *
+ * Espace administrateur : réservé aux cadres dont la case UTILISATEURS.
+ * Administrateur est cochée. Même connexion que l'espace cadre (email + code
+ * d'accès + PIN) et même jeton de session : le drapeau admin est scellé dans
+ * l'empreinte du jeton, donc retirer la case coupe les sessions ouvertes.
+ * Ces routes remplacent progressivement ce qui se faisait à la main dans Grist.
+ *   GET    /api/admin/cadres                                   -> cadres, services et état des PIN
+ *   POST   /api/admin/cadres  { Nom, Prenom, ... }             -> crée un cadre (code d'accès généré)
+ *   PATCH  /api/admin/cadres/:id  { ... }                      -> identité, activation, droits admin,
+ *                                                                 services rattachés, et les actions
+ *                                                                 réservées à l'admin : reinitPin,
+ *                                                                 debloquerPin, regenererCode
  */
 
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
@@ -252,6 +264,7 @@ async function route(request, env, ctx) {
         { id: "Reinit_PIN", label: "Réinitialiser le PIN", type: "Bool" },
         { id: "PIN_essais", label: "PIN — essais manqués", type: "Int" },
         { id: "PIN_bloque_jusqu_a", label: "PIN — bloqué jusqu'à", type: "Int" },
+        { id: "Administrateur", label: "Administrateur", type: "Bool" },
       ]);
       verifierVerrouPin(cadre);
       const pin = typeof body.pin === "string" ? body.pin.trim() : "";
@@ -389,6 +402,32 @@ async function route(request, env, ctx) {
     if (request.method === "POST" && path === "/api/cadre/codes") {
       return withLog(env, ctx, who, "Création d'un code horaire", "",
         (info) => creerCodeHoraire(request, env, cadre, info));
+    }
+    throw httpError(404, "Route inconnue");
+  }
+
+  // --- Endpoints administrateur (UTILISATEURS.Administrateur coché) ---
+  if (path.startsWith("/api/admin/")) {
+    const admin = await authenticateCadreSession(env, request.headers.get("X-Cadre-Session"));
+    if (!admin.estAdmin) {
+      throw httpError(403, "Réservé aux administrateurs de l'application");
+    }
+    const whoA = {
+      role: "Administrateur",
+      qui: (admin.fields.Email || "").trim(),
+      nom: cadreNomComplet(admin),
+    };
+    if (request.method === "GET" && path === "/api/admin/cadres") {
+      return json(await listerCadresAdmin(env, admin));
+    }
+    if (request.method === "POST" && path === "/api/admin/cadres") {
+      return withLog(env, ctx, whoA, "Création d'un compte cadre", "",
+        (info) => creerCadreAdmin(request, env, info));
+    }
+    const acm = path.match(/^\/api\/admin\/cadres\/(\d+)$/);
+    if (request.method === "PATCH" && acm) {
+      return withLog(env, ctx, whoA, "Modification d'un compte cadre", "",
+        (info) => modifierCadreAdmin(request, env, admin, Number(acm[1]), info));
     }
     throw httpError(404, "Route inconnue");
   }
@@ -625,13 +664,15 @@ async function signer(env, donnees) {
 }
 
 /**
- * Empreinte des secrets du compte (code d'accès + PIN). Elle est enfermée dans
- * le jeton : changer le code d'accès, changer le PIN ou cocher « Réinitialiser
- * le PIN » dans Grist coupe immédiatement les sessions ouvertes.
+ * Empreinte des secrets et des droits du compte (code d'accès, PIN, drapeau
+ * administrateur). Elle est enfermée dans le jeton : changer le code d'accès,
+ * changer le PIN, cocher « Réinitialiser le PIN » ou retirer les droits
+ * d'administration coupe immédiatement les sessions ouvertes.
  */
 async function empreinteCadre(fields) {
   const base = [(fields.Code_acces || "").trim(), (fields.PIN_hash || "").trim(),
-    fields.Reinit_PIN === true ? "1" : "0"].join("|");
+    fields.Reinit_PIN === true ? "1" : "0",
+    fields.Administrateur === true ? "1" : "0"].join("|");
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(base));
   return b64urlDepuisBytes(new Uint8Array(digest)).slice(0, 22);
 }
@@ -743,6 +784,11 @@ async function chargerCadre(env, match) {
     throw httpError(403, "Ce compte a été désactivé : contactez l'administrateur");
   }
 
+  // Droits d'administration (UTILISATEURS.Administrateur) : ouvrent l'espace
+  // admin, et rien de plus — un administrateur ne voit les données d'un service
+  // que s'il y est rattaché comme n'importe quel cadre.
+  const estAdmin = match.fields.Administrateur === true;
+
   const services = await gristAll(env, T_SERVICES);
   const myServices = services.filter((s) => {
     if (!s.fields.Recoit_des_etudiant) return false;
@@ -750,7 +796,9 @@ async function chargerCadre(env, match) {
     if (refIds(s.fields.Cadres_secondaires).includes(match.id)) return true;
     return refIds(s.fields.Pole_CSS).includes(match.id);
   });
-  if (!myServices.length) {
+  // Un administrateur n'a pas forcément de service à lui : il doit pouvoir se
+  // connecter quand même, sans quoi personne ne pourrait rattacher les cadres.
+  if (!myServices.length && !estAdmin) {
     throw httpError(403, "Aucun service ouvert aux étudiants ne vous est rattaché : contactez l'administrateur");
   }
 
@@ -759,6 +807,7 @@ async function chargerCadre(env, match) {
     fields: match.fields,
     services: myServices,
     serviceIds: new Set(myServices.map((s) => s.id)),
+    estAdmin,
   };
 }
 
@@ -1110,6 +1159,9 @@ async function buildCadrePayload(env, cadre) {
       nom: cadreNomComplet(cadre),
       prenom: cadre.fields.Prenom || "",
       telephone: cadre.fields.Telephone || "",
+      // Droits d'administration : le front n'affiche l'accès à l'espace admin
+      // que dans ce cas (le contrôle réel se fait à chaque appel, côté serveur).
+      admin: cadre.estAdmin === true,
     },
     feries: feriesIso,
     periodes: [...periodes, ...periodesAutres].map((p) => {
@@ -1643,6 +1695,283 @@ async function creerCodeHoraire(request, env, cadre, info) {
       + (body.Compte_stage === false ? ", ne compte pas dans le stage" : "");
   }
   return json({ id: newId }, 201);
+}
+
+/* ------------------------------------------------------------------ */
+/* Espace administrateur : les comptes cadres                          */
+/* ------------------------------------------------------------------ */
+
+/* Colonnes de UTILISATEURS que l'espace admin pilote. Créées à la demande,
+   comme celles du PIN : une installation existante n'a rien à préparer.
+   PIN_hash n'y figure pas — un PIN ne se lit ni ne se saisit, il se
+   réinitialise (Reinit_PIN), et il est de toute façon créé à la connexion. */
+const COLONNES_COMPTE_CADRE = [
+  { id: "Code_acces", label: "Code d'accès", type: "Text" },
+  { id: "Utilisateur_de_l_outil", label: "Utilisateur de l'outil", type: "Bool" },
+  { id: "Administrateur", label: "Administrateur", type: "Bool" },
+  { id: "Reinit_PIN", label: "Réinitialiser le PIN", type: "Bool" },
+  { id: "PIN_essais", label: "PIN — essais manqués", type: "Int" },
+  { id: "PIN_bloque_jusqu_a", label: "PIN — bloqué jusqu'à", type: "Int" },
+];
+
+/* Alphabet du code d'accès : 32 caractères sans I ni O ni 0 ni 1, qui se
+   confondent quand on recopie un code à la main. 32 = 256/8, donc tirer un
+   octet modulo l'alphabet ne favorise aucun caractère. */
+const ALPHABET_CODE_ACCES = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const LONGUEUR_CODE_ACCES = 14; // 14 × 5 bits = 70 bits d'entropie
+
+/** Code d'accès aléatoire (1ᵉʳ facteur d'un cadre). */
+function genererCodeAcces() {
+  const octets = crypto.getRandomValues(new Uint8Array(LONGUEUR_CODE_ACCES));
+  let code = "";
+  for (const o of octets) code += ALPHABET_CODE_ACCES[o % ALPHABET_CODE_ACCES.length];
+  return code;
+}
+
+/**
+ * Vrai si UTILISATEURS.Email est une colonne FORMULE. C'est le cas courant :
+ * l'adresse se calcule à partir du nom et du prénom (prenom.nom@domaine). Elle
+ * ne peut alors pas être saisie, et l'écran d'administration masque le champ.
+ */
+async function emailCadreCalcule(env) {
+  const data = await grist(env, "GET", `/tables/${T_UTILISATEURS}/columns`);
+  return (data.columns || []).some((c) =>
+    c.id === "Email" && c.fields && c.fields.isFormula === true && !!c.fields.formula);
+}
+
+/** Tout ce qu'affiche l'écran « Cadres » : comptes, services et état des PIN. */
+async function listerCadresAdmin(env, admin) {
+  await ensureColumns(env, T_UTILISATEURS, COLONNES_COMPTE_CADRE);
+  const [users, services, sites, emailAuto] = await Promise.all([
+    gristAll(env, T_UTILISATEURS),
+    gristAll(env, T_SERVICES),
+    gristAll(env, T_SITES),
+    emailCadreCalcule(env),
+  ]);
+  const sitesById = new Map(sites.map((s) => [s.id, s]));
+  const maintenant = Math.floor(Date.now() / 1000);
+
+  return {
+    emailAuto,
+    civilites: CIVILITES,
+    // Qui est connecté : le front signe l'invitation avec ce nom, et sait quelles
+    // cases griser (on ne se désactive pas, on ne se retire pas ses droits).
+    moi: { id: admin.rowId, nom: cadreNomComplet(admin) },
+    services: services.map((s) => ({
+      id: s.id,
+      Nom: s.fields.Nom || "",
+      Site: siteName(s, sitesById),
+      Recoit_des_etudiant: !!s.fields.Recoit_des_etudiant,
+      // Rattachements : le référent et le CSS de pôle s'affichent, mais seuls
+      // les rattachements secondaires se modifient depuis cet écran.
+      Cadre_ref: s.fields.Cadre_ref || null,
+      Cadres_secondaires: refIds(s.fields.Cadres_secondaires),
+      Pole_CSS: refIds(s.fields.Pole_CSS),
+    })),
+    cadres: users.map((u) => {
+      const bloqueJusqua = Number(u.fields.PIN_bloque_jusqu_a) || 0;
+      return {
+        id: u.id,
+        Civilite: u.fields.Civilite || "",
+        Nom: u.fields.Nom || "",
+        Prenom: u.fields.Prenom || "",
+        Email: (u.fields.Email || "").trim(),
+        Telephone: u.fields.Telephone || "",
+        // 1ᵉʳ facteur : l'administrateur doit pouvoir le relire pour le
+        // retransmettre à un cadre qui l'a perdu.
+        Code_acces: (u.fields.Code_acces || "").trim(),
+        Actif: u.fields.Utilisateur_de_l_outil === true,
+        Administrateur: u.fields.Administrateur === true,
+        // État du 2ᵉ facteur — jamais le PIN lui-même, qui n'est stocké que haché.
+        PIN_defini: !!(u.fields.PIN_hash || "").trim(),
+        PIN_reinit_demande: u.fields.Reinit_PIN === true,
+        PIN_essais: Number(u.fields.PIN_essais) || 0,
+        PIN_bloque_secondes: bloqueJusqua > maintenant ? bloqueJusqua - maintenant : 0,
+      };
+    }),
+  };
+}
+
+/**
+ * Rattache (ou détache) un cadre aux services demandés, via
+ * SERVICES.Cadres_secondaires. Le cadre RÉFÉRENT d'un service (Cadre_ref) et le
+ * CSS de pôle (Pole_CSS, une formule) portent leur rattachement ailleurs : ils
+ * s'affichent dans l'écran mais ne se décochent pas ici, sinon on laisserait un
+ * service sans responsable. Renvoie le nombre de services modifiés, ou null si
+ * la requête ne demandait aucun changement de rattachement.
+ */
+async function rattacherServicesCadre(env, cadreId, demandes) {
+  if (!Array.isArray(demandes)) return null;
+  const voulus = new Set(demandes.map(Number).filter((n) => Number.isInteger(n) && n > 0));
+  const services = await gristAll(env, T_SERVICES);
+  const modifs = [];
+  for (const s of services) {
+    if (s.fields.Cadre_ref === cadreId) continue;
+    if (refIds(s.fields.Pole_CSS).includes(cadreId)) continue;
+    const secondaires = refIds(s.fields.Cadres_secondaires);
+    const estRattache = secondaires.includes(cadreId);
+    if (estRattache === voulus.has(s.id)) continue;
+    const liste = estRattache
+      ? secondaires.filter((id) => id !== cadreId)
+      : [...secondaires, cadreId];
+    modifs.push({ id: s.id, fields: { Cadres_secondaires: ["L", ...liste] } });
+  }
+  if (!modifs.length) return 0;
+  await grist(env, "PATCH", `/tables/${T_SERVICES}/records`, { records: modifs });
+  return modifs.length;
+}
+
+/** L'administrateur crée un compte cadre. Le code d'accès est tiré au sort ici :
+ *  il n'est jamais choisi à la main, et il s'affiche une fois à la création. */
+async function creerCadreAdmin(request, env, info) {
+  const body = await request.json().catch(() => ({}));
+  await ensureColumns(env, T_UTILISATEURS, COLONNES_COMPTE_CADRE);
+
+  const nom = cleanText(body.Nom, 80);
+  const prenom = cleanText(body.Prenom, 80);
+  if (!nom || !prenom) throw httpError(400, "Le nom et le prénom sont obligatoires");
+
+  const users = await gristAll(env, T_UTILISATEURS);
+  const dejaLa = users.some((u) =>
+    (u.fields.Nom || "").trim().toLowerCase() === nom.toLowerCase()
+    && (u.fields.Prenom || "").trim().toLowerCase() === prenom.toLowerCase());
+  if (dejaLa) {
+    throw httpError(409, `${prenom} ${nom} a déjà un compte : modifiez-le plutôt que d'en créer un second`);
+  }
+
+  const codeAcces = genererCodeAcces();
+  const fields = {
+    Civilite: CIVILITES.includes(body.Civilite) ? body.Civilite : "",
+    Nom: nom,
+    Prenom: prenom,
+    Telephone: cleanText(body.Telephone, 30),
+    Code_acces: codeAcces,
+    Utilisateur_de_l_outil: body.Actif !== false,
+    Administrateur: body.Administrateur === true,
+  };
+
+  // Adresse e-mail : saisie seulement si le document ne la calcule pas.
+  const email = cleanText(body.Email, 120).toLowerCase();
+  if (email && !(await emailCadreCalcule(env))) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw httpError(400, "Adresse mail invalide");
+    if (users.some((u) => (u.fields.Email || "").trim().toLowerCase() === email)) {
+      throw httpError(409, "Un compte utilise déjà cette adresse e-mail");
+    }
+    fields.Email = email;
+  }
+
+  const cree = await grist(env, "POST", `/tables/${T_UTILISATEURS}/records`, { records: [{ fields }] });
+  const id = cree.records[0].id;
+  const nbServices = await rattacherServicesCadre(env, id, body.services);
+
+  if (info) {
+    info.detail = `${prenom} ${nom}`
+      + (fields.Administrateur ? " (administrateur)" : "")
+      + (nbServices ? ` — ${nbServices} service(s) rattaché(s)` : "");
+  }
+  // Le code d'accès repart une fois vers l'écran qui vient de le créer : c'est
+  // le seul moment où l'administrateur peut le copier sans le régénérer.
+  return json({ id, Code_acces: codeAcces }, 201);
+}
+
+/**
+ * L'administrateur modifie un compte cadre : identité, activation, droits
+ * d'administration, services rattachés, et les trois actions qui n'existaient
+ * jusqu'ici que dans Grist — réinitialiser le PIN, débloquer après des essais
+ * manqués, régénérer le code d'accès.
+ */
+async function modifierCadreAdmin(request, env, admin, cadreId, info) {
+  const body = await request.json().catch(() => ({}));
+  await ensureColumns(env, T_UTILISATEURS, COLONNES_COMPTE_CADRE);
+
+  const rows = await gristFilter(env, T_UTILISATEURS, { id: [cadreId] });
+  if (!rows.length) throw httpError(404, "Ce compte cadre est introuvable");
+  const cible = rows[0];
+  // Garde-fou : un administrateur ne peut ni se désactiver ni se retirer ses
+  // propres droits. Sans elle, une fausse manœuvre fermerait l'espace admin
+  // à tout le monde, sans plus aucun moyen de le rouvrir depuis le site.
+  const soiMeme = cadreId === admin.rowId;
+
+  const fields = {};
+  const faits = [];
+
+  if (body.Civilite !== undefined) {
+    fields.Civilite = CIVILITES.includes(body.Civilite) ? body.Civilite : "";
+  }
+  if (body.Nom !== undefined) {
+    const nom = cleanText(body.Nom, 80);
+    if (!nom) throw httpError(400, "Le nom est obligatoire");
+    fields.Nom = nom;
+  }
+  if (body.Prenom !== undefined) {
+    const prenom = cleanText(body.Prenom, 80);
+    if (!prenom) throw httpError(400, "Le prénom est obligatoire");
+    fields.Prenom = prenom;
+  }
+  if (body.Telephone !== undefined) fields.Telephone = cleanText(body.Telephone, 30);
+  if (body.Email !== undefined && !(await emailCadreCalcule(env))) {
+    const email = cleanText(body.Email, 120).toLowerCase();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw httpError(400, "Adresse mail invalide");
+    if (email) {
+      const users = await gristAll(env, T_UTILISATEURS);
+      if (users.some((u) => u.id !== cadreId && (u.fields.Email || "").trim().toLowerCase() === email)) {
+        throw httpError(409, "Un compte utilise déjà cette adresse e-mail");
+      }
+    }
+    fields.Email = email;
+  }
+
+  if (body.Actif !== undefined) {
+    const actif = body.Actif === true;
+    if (!actif && soiMeme) throw httpError(400, "Vous ne pouvez pas désactiver votre propre compte");
+    fields.Utilisateur_de_l_outil = actif;
+    faits.push(actif ? "compte réactivé" : "compte désactivé");
+  }
+  if (body.Administrateur !== undefined) {
+    const estAdmin = body.Administrateur === true;
+    if (!estAdmin && soiMeme) {
+      throw httpError(400, "Vous ne pouvez pas retirer vos propres droits d'administration");
+    }
+    fields.Administrateur = estAdmin;
+    faits.push(estAdmin ? "droits d'administration accordés" : "droits d'administration retirés");
+  }
+
+  if (body.reinitPin === true) {
+    // Le cadre choisira un nouveau PIN à sa prochaine connexion. Le compteur
+    // d'essais est remis à zéro : sinon un compte bloqué le resterait.
+    fields.Reinit_PIN = true;
+    fields.PIN_essais = 0;
+    fields.PIN_bloque_jusqu_a = 0;
+    faits.push("PIN réinitialisé");
+  } else if (body.debloquerPin === true) {
+    fields.PIN_essais = 0;
+    fields.PIN_bloque_jusqu_a = 0;
+    faits.push("compte débloqué");
+  }
+
+  let nouveauCode = null;
+  if (body.regenererCode === true) {
+    nouveauCode = genererCodeAcces();
+    fields.Code_acces = nouveauCode;
+    faits.push("code d'accès régénéré");
+  }
+
+  if (Object.keys(fields).length) {
+    await gristUpdate(env, T_UTILISATEURS, cadreId, fields);
+  }
+  const nbServices = await rattacherServicesCadre(env, cadreId, body.services);
+  if (nbServices) faits.push(`${nbServices} service(s) rattaché(s) ou détaché(s)`);
+
+  if (!Object.keys(fields).length && nbServices === null) {
+    throw httpError(400, "Aucune modification fournie");
+  }
+
+  if (info) {
+    info.detail = `${cadreNomComplet(cible)} — ${faits.join(", ") || "identité mise à jour"}`;
+  }
+  // Toute écriture ci-dessus (code d'accès, PIN, droits) change l'empreinte du
+  // compte : les sessions ouvertes de CE cadre tombent d'elles-mêmes.
+  return json({ ok: true, ...(nouveauCode ? { Code_acces: nouveauCode } : {}) });
 }
 
 /** Le cadre change son code PIN. Le PIN actuel est exigé s'il en existe déjà un. */

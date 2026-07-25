@@ -1,7 +1,7 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 /* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
-const APP_VERSION = "v39"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v40"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -329,6 +329,9 @@ async function refresh() {
 /* ------------------------------------------------------------------ */
 
 function render() {
+  // Accès à l'espace d'administration : proposé aux seuls comptes dont la case
+  // UTILISATEURS.Administrateur est cochée (le Worker revérifie à chaque appel).
+  $("admin-link").hidden = !(state.data && state.data.moi && state.data.moi.admin);
   renderCadreInfo();
   renderServiceSelect();
   renderMainTabs();

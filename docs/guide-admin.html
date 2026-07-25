@@ -86,7 +86,7 @@
         <tr><td><span class="code">Texte_pied_de_page</span></td><td>Texte facultatif remplaçant la description affichée dans le pied de page. Laisser vide pour garder le texte par défaut.</td></tr>
         <tr><td><span class="code">Url_document_grist</span></td><td>Lien « Administration (Grist) » du pied de page. Vide : le site garde son lien par défaut.</td></tr>
         <tr><td><span class="code">Afficher_bandeau_beta</span></td><td>Bascule (case à cocher) facultative : décochée, le bandeau « Version bêta » en haut des pages et sa mention dans le pied de page disparaissent. Colonne absente ou cochée : bandeau affiché.</td></tr>
-        <tr><td><span class="code">DOMAINE_MAIL</span></td><td>Domaine mail de l'établissement (ex. <span class="code">chu-exemple.fr</span>). Renseigné, il adapte tous les champs e-mail du site : l'exemple affiché devient <span class="code">prenom.nom@<em>votre-domaine</em></span> et une saisie sans « @ » est complétée automatiquement à la sortie du champ. Vide : comportement générique.</td></tr>
+        <tr><td><span class="code">DOMAINE_MAIL</span></td><td>Domaine mail de l'établissement (ex. <span class="code">chu-exemple.fr</span>). Renseigné, il adapte les champs e-mail <strong>professionnels</strong> — aujourd'hui celui de la connexion à l'espace cadre : l'exemple affiché devient <span class="code">prenom.nom@<em>votre-domaine</em></span> et une saisie sans « @ » est complétée automatiquement à la sortie du champ. Les adresses <strong>personnelles</strong> des étudiants ne sont pas concernées : leurs champs restent génériques. Vide : comportement générique partout.</td></tr>
         <tr><td><span class="code">Mode_etablissement_public</span></td><td>Bascule facultative choisissant l'<strong>habillage visuel</strong> du site. Colonne absente ou cochée : rendu <strong>DSFR</strong>, conforme aux conventions des services publics (comportement par défaut). Décochée : habillage <strong>« moderne »</strong> alternatif (coins arrondis, palette plus douce), pour un établissement qui n'est pas soumis à ces conventions. Les fonctionnalités sont identiques dans les deux cas.</td></tr>
       </table>
       <div class="callout">Si la table est absente ou vide, le site garde son affichage générique.</div>
@@ -121,6 +121,7 @@
         <tr><td><span class="code">Reinit_PIN</span></td><td>Case à cocher : votre bouton « réinitialiser le PIN ». Cochez-la à la demande d'un cadre qui a oublié son PIN — il en choisira un nouveau à sa prochaine connexion, et la case se <strong>décoche d'elle-même</strong> une fois la demande consommée. La cocher <strong>ferme aussi immédiatement</strong> les sessions ouvertes de ce cadre.</td></tr>
         <tr><td><span class="code">PIN_essais</span><br><span class="code">PIN_bloque_jusqu_a</span></td><td>Colonnes techniques <strong>créées et tenues automatiquement</strong> : elles comptent les PIN erronés et bloquent le compte 15 minutes au bout de 5 essais manqués, pour qu'un code à 4 chiffres ne puisse pas être trouvé en les essayant tous. Ne les remplissez pas à la main ; pour débloquer un cadre avant la fin du délai, remettez <span class="code">PIN_bloque_jusqu_a</span> à 0.</td></tr>
         <tr><td><span class="code">Utilisateur_de_l_outil</span></td><td>Case à cocher qui active/désactive le compte. Décochez-la pour bloquer immédiatement la connexion d'un cadre (mutation de service, départ…) sans supprimer ses données historiques.</td></tr>
+        <tr><td><span class="code">Administrateur</span></td><td>Case à cocher qui ouvre <strong>l'espace administrateur</strong> du site (voir ci-dessous). Elle ne donne aucun accès supplémentaire aux données des étudiants : un administrateur ne voit que les services auxquels il est rattaché, comme n'importe quel cadre. La décocher <strong>ferme immédiatement</strong> les sessions ouvertes du compte concerné.</td></tr>
       </table>
       <div class="callout warn">Un compte désactivé (<span class="code">Utilisateur_de_l_outil</span> décoché) reçoit un message d'erreur explicite à la connexion : « Ce compte a été désactivé : contactez l'administrateur ».</div>
       <h3>Le code PIN, en pratique</h3>
@@ -131,6 +132,35 @@
         <li>Vous ne pouvez pas retrouver un PIN oublié, seulement le <strong>réinitialiser</strong> : cochez <span class="code">Reinit_PIN</span> sur la ligne du cadre et prévenez-le. Le bouton « Code PIN oublié ? » de l'écran de connexion prépare justement cette demande sous forme d'e-mail.</li>
       </ul>
       <div class="callout">Un cadre qui a changé de poste et dont vous décochez <span class="code">Utilisateur_de_l_outil</span> est bloqué quel que soit son PIN : la désactivation du compte reste la mesure à prendre en priorité.</div>
+
+      <h3>L'espace administrateur, sans passer par Grist</h3>
+      <p>Tout ce qui précède se fait désormais aussi <strong>depuis le site</strong>, dans
+        <a href="espace-admin.html">l'espace administrateur</a> : même connexion que l'espace cadre
+        (email + code d'accès + PIN), réservée aux comptes dont la case
+        <span class="code">Administrateur</span> est cochée. Un bouton
+        <strong>« ⚙ Administration »</strong> apparaît alors dans l'en-tête de l'espace cadre.</p>
+      <p>L'écran « Comptes des cadres » permet de :</p>
+      <ul>
+        <li><strong>créer un compte</strong> — le <span class="code">Code_acces</span> est
+          <strong>tiré au sort</strong> (14 caractères sans lettres ambiguës) et affiché une seule
+          fois : copiez-le à ce moment-là, ou régénérez-en un plus tard ;</li>
+        <li><strong>rattacher le cadre à ses services</strong> — cases à cocher, qui écrivent dans
+          <span class="code">SERVICES.Cadres_secondaires</span>. Les services dont il est le
+          <strong>référent</strong> (<span class="code">Cadre_ref</span>) ou dont il est CSS de pôle
+          s'affichent mais restent à modifier dans Grist, pour ne pas laisser un service sans responsable ;</li>
+        <li><strong>réinitialiser un PIN</strong>, <strong>débloquer</strong> un compte après
+          5 essais manqués, <strong>régénérer un code d'accès</strong>, <strong>activer ou
+          désactiver</strong> un compte, accorder ou retirer les droits d'administration ;</li>
+        <li><strong>préparer l'e-mail d'invitation</strong>, avec le lien de connexion déjà écrit
+          en <span class="code">#</span>.</li>
+      </ul>
+      <div class="callout warn">Deux actions vous sont interdites <strong>sur votre propre compte</strong> :
+        vous désactiver et vous retirer vos droits d'administration. Sans ce garde-fou, une fausse
+        manœuvre fermerait l'espace administrateur à tout le monde, sans moyen de le rouvrir depuis
+        le site. Un <em>autre</em> administrateur, lui, peut le faire — d'où l'intérêt d'être deux.</div>
+      <div class="callout">Chaque action est écrite dans <span class="code">JOURNAL_ACTIVITE</span>
+        sous le rôle <strong>Administrateur</strong>, avec le compte concerné et ce qui a changé.
+        Grist reste évidemment utilisable en parallèle : les deux écrivent dans les mêmes tables.</div>
     </section>
 
     <section class="guide-section" id="pole">
