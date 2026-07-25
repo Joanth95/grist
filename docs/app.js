@@ -5,14 +5,19 @@ const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
-// Lien direct (?code=...) : permet d'ouvrir l'espace déjà connecté, sans
-// ressaisir le code anonymat (ex. lien fourni depuis Grist).
-const urlCode = new URLSearchParams(location.search).get("code");
+// Lien direct (?code=...&email=...) : permet d'ouvrir l'espace sans ressaisir
+// ses identifiants (ex. lien fourni depuis Grist). L'e-mail est le 2ᵉ facteur
+// exigé par le Worker dès que le dossier en porte un : un lien qui ne
+// transporte que le code laisse l'étudiant le saisir lui-même.
+const urlParams = new URLSearchParams(location.search);
+const urlCode = urlParams.get("code");
+const urlEmail = urlParams.get("email");
 if (urlCode) {
   history.replaceState(null, "", location.pathname);
-  // On pré-remplit le code ; l'étudiant confirme avec l'e-mail de son dossier.
   const el = document.getElementById("login-code");
   if (el) el.value = urlCode.trim().toUpperCase();
+  const emailEl = document.getElementById("login-email");
+  if (emailEl && urlEmail) emailEl.value = urlEmail.trim();
   // Le formulaire n'est plus le premier bloc de la page d'accueil : quand il
   // est hors écran (affichage empilé), on amène directement dessus. Rejoué au
   // "load" car les polices et le logo de l'établissement, chargés après coup,
@@ -25,8 +30,10 @@ if (urlCode) {
   };
   amenerAuFormulaire();
   window.addEventListener("load", amenerAuFormulaire);
-  const mail = document.getElementById("login-email");
-  if (mail) mail.focus({ preventScroll: true });
+  // Le lien porte l'e-mail : il ne reste qu'à valider, on vise le bouton.
+  // Sinon c'est le champ e-mail qui manque : on y met le curseur.
+  const cible = urlEmail ? document.getElementById("login-btn") : emailEl;
+  if (cible) cible.focus({ preventScroll: true });
 }
 
 const state = {
