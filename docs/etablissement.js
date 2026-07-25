@@ -87,11 +87,16 @@
       });
     }
     // Domaine mail de l'établissement (colonne facultative DOMAINE_MAIL) :
-    // ajuste les placeholders des champs email et complète automatiquement
-    // « prenom.nom » en « prenom.nom@domaine » à la sortie du champ.
+    // ajuste le placeholder et complète « prenom.nom » en
+    // « prenom.nom@domaine » à la sortie du champ.
+    // Uniquement sur les champs explicitement marqués data-mail-etab : ce sont
+    // les seuls à attendre une adresse PROFESSIONNELLE (connexion cadre). Les
+    // étudiants n'ont pas d'adresse de l'établissement, ils utilisent leur
+    // adresse personnelle — leur proposer le domaine interne les induirait en
+    // erreur, et la complétion automatique fabriquerait une adresse fausse.
     if (cfg.domaineMail) {
       const dom = cfg.domaineMail;
-      document.querySelectorAll('input[type="email"]').forEach((inp) => {
+      document.querySelectorAll('input[type="email"][data-mail-etab]').forEach((inp) => {
         inp.placeholder = "prenom.nom@" + dom;
         if (inp.dataset.domaineMailBranche) return;
         inp.dataset.domaineMailBranche = "1";
