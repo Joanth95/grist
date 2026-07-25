@@ -10,7 +10,7 @@
    case UTILISATEURS.Administrateur est cochée passent la porte. Le contrôle
    qui compte est côté Worker : ici, on n'affiche que ce qui est autorisé. */
 
-const APP_VERSION = "v5"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-admin.html)
+const APP_VERSION = "v6"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-admin.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 
@@ -58,6 +58,23 @@ async function api(method, path, body) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
   return data;
+}
+
+/* Journal d'activité : l'OUVERTURE d'un écran est signalée au worker par
+   ?vue=1, une seule fois par session, avec l'onglet réellement affiché (le
+   worker ne peut pas le deviner : services, pôles et organigramme partagent le
+   même appel). Les rechargements qui suivent (bouton « Rafraîchir », retour
+   d'une création ou d'une modification) ne sont pas signalés : l'action, elle,
+   est déjà tracée, et le journal doit rester lisible. */
+const vuesSignalees = new Set();
+const LIBELLES_ONGLETS = {
+  cadres: "Cadres", services: "Services", poles: "Pôles", organigramme: "Organigramme",
+};
+function marqueurVue(ecran, onglet) {
+  if (vuesSignalees.has(ecran)) return "";
+  vuesSignalees.add(ecran);
+  const nom = LIBELLES_ONGLETS[onglet] || "";
+  return "?vue=1" + (nom ? `&onglet=${encodeURIComponent(nom)}` : "");
 }
 
 /* ------------------------------------------------------------------ */
@@ -121,7 +138,7 @@ async function entrerApp() {
 }
 
 async function charger() {
-  state.data = await api("GET", "/api/admin/cadres");
+  state.data = await api("GET", "/api/admin/cadres" + marqueurVue("cadres", "cadres"));
   // Qui est connecté vient de la réponse : ainsi une session déjà ouverte dans
   // l'onglet retrouve son identité sans repasser par le formulaire.
   state.moi = state.data.moi || state.moi;
@@ -644,7 +661,7 @@ async function montrerOnglet(id) {
   // chargement, à la première ouverture de l'un des trois.
   if (id !== "cadres") {
     try {
-      if (!state.svc) await chargerServices();
+      if (!state.svc) await chargerServices(id);
       else if (id === "poles") rendrePoles();
       else if (id === "organigramme") rendreOrganigramme();
     } catch (err) {
@@ -657,8 +674,8 @@ async function montrerOnglet(id) {
 /* Écran des services                                                  */
 /* ------------------------------------------------------------------ */
 
-async function chargerServices() {
-  state.svc = await api("GET", "/api/admin/organisation");
+async function chargerServices(onglet) {
+  state.svc = await api("GET", "/api/admin/organisation" + marqueurVue("organisation", onglet));
   rendreServicesEcran();
   rendrePoles();
   rendreOrganigramme();

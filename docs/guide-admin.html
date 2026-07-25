@@ -224,16 +224,43 @@
 
     <section class="guide-section" id="journal">
       <h2>8. Journal d'activité</h2>
-      <p>Table <span class="code">JOURNAL_ACTIVITE</span> : le Worker y consigne automatiquement les connexions et actions des étudiants et des cadres (colonnes <span class="code">Horodatage</span>, <span class="code">Role</span>, <span class="code">Qui</span>, <span class="code">Nom</span>, <span class="code">Action</span>, <span class="code">Detail</span>). Utile pour comprendre « qui a fait quoi » en cas de question.</p>
+      <p>Table <span class="code">JOURNAL_ACTIVITE</span> : le Worker y consigne automatiquement les connexions et les actions des étudiants, des cadres et des administrateurs (colonnes <span class="code">Horodatage</span>, <span class="code">Role</span>, <span class="code">Qui</span>, <span class="code">Nom</span>, <span class="code">Action</span>, <span class="code">Detail</span>). Utile pour comprendre « qui a fait quoi » en cas de question.</p>
       <p>Trois colonnes complètent la ligne et rendent le journal <strong>filtrable</strong> dans Grist : <span class="code">Site</span>, <span class="code">Service</span> et <span class="code">Etudiant</span> (l'étudiant concerné par l'action). Elles sont <strong>créées automatiquement</strong> à la première écriture — si elles n'apparaissent pas dans une vue existante, ajoutez-les avec le sélecteur de colonnes du widget.</p>
+
+      <h3>Ce qui s'enregistre</h3>
+      <p>La colonne <span class="code">Role</span> dit toujours de quel espace vient la ligne — <strong>Étudiant</strong>, <strong>Cadre</strong> ou <strong>Administrateur</strong> — et <span class="code">Qui</span> identifie l'auteur (code anonymat pour un étudiant, adresse e-mail pour un cadre).</p>
+      <table>
+        <tr><th>Rôle</th><th>Ce qui est journalisé</th></tr>
+        <tr>
+          <td><strong>Étudiant</strong></td>
+          <td>Connexion et <em>consultation de son espace</em> (avec son stage en cours) ; déclaration créée ou supprimée ; nouvelle période de stage ; modification de ses coordonnées ; <em>inscription (entrée en stage)</em> depuis la page publique.</td>
+        </tr>
+        <tr>
+          <td><strong>Cadre</strong></td>
+          <td>Connexion ; <em>consultation de l'espace cadre</em> (service et onglet réellement affichés) et <em>consultation d'un dossier étudiant</em> ; validation ou modification d'une déclaration, déclaration créée pour un étudiant ; inscription / ajout de stage ; recherche d'un étudiant ; modification du planning, d'une fiche période, suppression d'une période ; ajout et suppression d'un RDV formateur ; impression de la fiche de stage ; modification de son profil et de son code PIN ; codes horaires du service, création d'un code horaire, mail de bienvenue.</td>
+        </tr>
+        <tr>
+          <td><strong>Administrateur</strong></td>
+          <td><em>Consultation de l'espace administrateur</em> (avec l'onglet ouvert) ; création et modification d'un compte cadre (activation, droits d'administration, services rattachés, PIN réinitialisé, compte débloqué, code d'accès régénéré) ; création et modification d'un service, d'un site, d'un pôle (dont le changement de cadre supérieur).</td>
+        </tr>
+      </table>
       <ul>
-        <li>Le <span class="code">Detail</span> dit ce qui a réellement changé : <em>« Mardi 14/07/2026 : MAT → AS »</em>, <em>« tuteur : (vide) → Mme MARTIN · fin : 14/08/2026 → 21/08/2026 »</em>, <em>« Rattrapage du 15/07/2026, 08:00–12:00 — validée »</em>.</li>
-        <li>Les lignes <em>Consultation de l'espace cadre</em> indiquent le <strong>service réellement affiché</strong> (et l'onglet), pas la liste des services auxquels le cadre a accès. Chaque couple service/onglet n'est journalisé qu'une fois par session, et un simple rafraîchissement d'écran après une action ne crée plus de ligne en double.</li>
+        <li>Le <span class="code">Detail</span> dit ce qui a réellement changé : <em>« Mardi 14/07/2026 : MAT → AS »</em>, <em>« tuteur : (vide) → Mme MARTIN · fin : 14/08/2026 → 21/08/2026 »</em>, <em>« Rattrapage du 15/07/2026, 08:00–12:00 — validée »</em>, <em>« Dr MARTIN — droits d'administration accordés, 2 service(s) rattaché(s) ou détaché(s) »</em>.</li>
+        <li>Les lignes <em>Consultation de l'espace cadre</em> indiquent le <strong>service réellement affiché</strong> (et l'onglet), pas la liste des services auxquels le cadre a accès. Chaque couple service/onglet n'est journalisé qu'une fois par session, et un simple rafraîchissement d'écran après une action ne crée plus de ligne en double. Même règle pour l'espace administrateur : une ligne par onglet et par session.</li>
         <li>L'ouverture du <strong>planning personnel d'un étudiant</strong> par un cadre est tracée nommément (<em>Consultation d'un dossier étudiant</em>), tout comme les <strong>auto-inscriptions</strong> depuis la page « entrée en stage ».</li>
         <li>L'écriture est en <em>best-effort</em> : un échec du journal ne bloque jamais l'utilisateur ;</li>
         <li>Les lignes de plus de <strong>30 jours</strong> sont purgées automatiquement (à chaque connexion, par lots) — pas d'entretien manuel à prévoir.</li>
         <li>Les actions sensibles y sont tracées, notamment la <strong>suppression d'une période</strong> par un cadre (bouton « Supprimer cette période » dans un dossier étudiant) : elle retire en cascade la période, son planning hebdomadaire et ses rendez-vous. Les semaines de planning devenues <strong>orphelines</strong> (période disparue) et vieilles de plus de 30 jours sont elles aussi purgées automatiquement.</li>
       </ul>
+
+      <h3>Connexions refusées</h3>
+      <p>Les tentatives qui <strong>n'aboutissent pas</strong> sont journalisées elles aussi, sous l'action <em>Connexion refusée</em> : c'est ce qui permet de repérer un essai en série sur un compte. Le <span class="code">Detail</span> donne le motif — <em>code anonymat ou adresse e-mail incorrect</em>, <em>e-mail ou code d'accès incorrect</em>, <em>code PIN incorrect</em>, <em>compte désactivé</em>, <em>compte bloqué après plusieurs codes PIN erronés</em>.</p>
+      <ul>
+        <li>Seul l'<strong>identifiant visé</strong> est enregistré (code anonymat ou adresse e-mail). Le secret essayé — code d'accès, code PIN — n'est <strong>jamais</strong> écrit dans le journal.</li>
+        <li>Ces lignes sont les seules qu'un visiteur non connecté puisse provoquer : un garde-fou les borne (une ligne par compte visé et par motif toutes les 10 minutes, et au plus 5 lignes par appareil). Une attaque par essais en série laisse donc une trace <strong>sans</strong> chasser du journal les 30 jours d'activité réelle.</li>
+        <li>Le motif reste volontairement flou côté étudiant (<em>« code anonymat ou adresse e-mail incorrect »</em>) : c'est le même message que celui affiché à l'écran, pour ne pas révéler quels codes existent.</li>
+      </ul>
+      <div class="callout warn">Plusieurs <em>Connexion refusée</em> sur le même compte cadre, ou un compte bloqué qui revient régulièrement, méritent un appel au cadre concerné : soit il a oublié son PIN (réinitialisez-le depuis l'espace admin), soit quelqu'un essaie d'entrer à sa place — auquel cas régénérez son code d'accès.</div>
     </section>
 
     <section class="guide-section" id="verrou">

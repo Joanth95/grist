@@ -256,6 +256,11 @@ d'origine (et écrivent dedans). Pour chacune : ouvrez la vue, panneau latéral
 - [ ] Édition d'une case de planning, validation d'une déclaration : les
       changements apparaissent bien dans le document Grist, et une ligne
       s'ajoute dans `JOURNAL_ACTIVITE`.
+- [ ] Une connexion volontairement ratée (PIN erroné) ajoute une ligne
+      `Connexion refusée` dans `JOURNAL_ACTIVITE`, avec le motif et l'e-mail
+      visé — et **sans** le PIN essayé.
+- [ ] L'ouverture de `espace-admin.html` ajoute une ligne `Consultation de
+      l'espace administrateur` sous le rôle `Administrateur`.
 - [ ] Cocher `Reinit_PIN` ou décocher `Utilisateur_de_l_outil` coupe l'accès du
       cadre immédiatement, sans attendre l'expiration de sa session (12 h).
 - [ ] Les widgets du document affichent bien les données de **votre** copie

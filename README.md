@@ -124,8 +124,13 @@ npx wrangler deploy
   cadre. Les suppressions se limitent à des cas précis et journalisés (l'étudiant
   retire une déclaration **non validée** ; le cadre retire une période ou un RDV
   de son service, un stage terminé étant verrouillé au bout de 5 jours).
-- Les connexions et actions sont consignées dans `JOURNAL_ACTIVITE` (purge
-  automatique au-delà de 30 jours).
+- Les connexions et actions des trois rôles (étudiant, cadre, administrateur)
+  sont consignées dans `JOURNAL_ACTIVITE`, y compris les **consultations**
+  (espace étudiant, espace cadre, dossier d'un étudiant, espace administrateur)
+  et les **connexions refusées** — code ou PIN erroné, compte désactivé ou
+  bloqué. Seul l'identifiant visé est journalisé, jamais le secret essayé, et un
+  anti-flood borne les lignes qu'un visiteur non authentifié peut provoquer.
+  Purge automatique au-delà de 30 jours.
 
 ## Développement local
 

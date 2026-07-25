@@ -64,14 +64,17 @@
  * d'accès + PIN) et même jeton de session : le drapeau admin est scellé dans
  * l'empreinte du jeton, donc retirer la case coupe les sessions ouvertes.
  * Ces routes remplacent progressivement ce qui se faisait à la main dans Grist.
- *   GET    /api/admin/cadres                                   -> cadres, services et état des PIN
+ *   GET    /api/admin/cadres[?vue=1&onglet=…]                  -> cadres, services et état des PIN
+ *                                                                 (?vue=1 = ouverture de l'écran,
+ *                                                                 journalisée avec l'onglet affiché ;
+ *                                                                 sinon simple rafraîchissement)
  *   POST   /api/admin/cadres  { Nom, Prenom, ... }             -> crée un cadre (code d'accès généré)
  *   PATCH  /api/admin/cadres/:id  { ... }                      -> identité, activation, droits admin,
  *                                                                 services rattachés, et les actions
  *                                                                 réservées à l'admin : reinitPin,
  *                                                                 debloquerPin, regenererCode
- *   GET    /api/admin/organisation                             -> sites, pôles, services, codes
- *                                                                 horaires et cadres
+ *   GET    /api/admin/organisation[?vue=1&onglet=…]            -> sites, pôles, services, codes
+ *                                                                 horaires et cadres (?vue=1 : idem)
  *   POST   /api/admin/services  { Nom, Code_UF, SiteId, ... }  -> crée un service
  *   PATCH  /api/admin/services/:id  { ... }                    -> nom, code UF, site, pôle,
  *                                                                 référent, accueil des étudiants,
@@ -219,6 +222,22 @@ function ipAppelant(request) {
   return request.headers.get("CF-Connecting-IP") || "inconnue";
 }
 
+/**
+ * `?vue=1` : le front signale l'OUVERTURE d'un écran, à journaliser comme une
+ * consultation. Sans ce marqueur, l'appel est un simple rafraîchissement qui
+ * suit une action déjà tracée — le journaliser ferait une ligne en double.
+ */
+function estOuverture(request) {
+  return new URL(request.url).searchParams.get("vue") === "1";
+}
+
+/** Onglet réellement affiché, signalé par le front avec ?onglet=… (le worker
+ *  ne peut pas le deviner : plusieurs onglets partagent le même appel). */
+function ongletVu(request) {
+  const nom = cleanText(new URL(request.url).searchParams.get("onglet"), 60);
+  return nom ? `onglet « ${nom} »` : "";
+}
+
 async function route(request, env, ctx) {
   const path = new URL(request.url).pathname.replace(/\/+$/, "");
 
@@ -246,7 +265,19 @@ async function route(request, env, ctx) {
     // Second seau par code visé : empêche de balayer les codes possibles depuis
     // plusieurs appareils, et de s'acharner sur un dossier précis.
     limiterDebit(`login:code:${normalizeCode(body.code) || ip}`, 8, 60);
-    const student = await authenticateCode(env, body.code, body.email);
+    const student = await authenticateCode(env, body.code, body.email).catch((err) => {
+      // Le refus est journalisé au même titre que la connexion : sinon un essai
+      // en série sur un dossier ne laisserait aucune trace. Le message
+      // d'authentification est volontairement unique (voir authenticateCode) :
+      // le journal ne dit donc pas non plus si le code existe.
+      if (err && err.status === 401) {
+        logRefusConnexion(env, ctx, {
+          role: "Étudiant", qui: normalizeCode(body.code) || body.code, ip,
+          motif: "code anonymat ou adresse e-mail incorrect",
+        });
+      }
+      throw err;
+    });
     const payload = await buildPayload(env, student);
     logActivite(env, ctx, {
       role: "Étudiant",
@@ -264,7 +295,20 @@ async function route(request, env, ctx) {
     const ipCadre = ipAppelant(request);
     limiterDebit(`cadre:${ipCadre}`, 15, 60);
     limiterDebit(`cadre:compte:${String(body.email || "").trim().toLowerCase() || ipCadre}`, 10, 60);
-    const cadre = await authenticateCadre(env, body.email, body.code);
+    const emailEssaye = String(body.email || "").trim().toLowerCase();
+    const cadre = await authenticateCadre(env, body.email, body.code).catch((err) => {
+      // 401 : e-mail inconnu ou code d'accès faux ; 403 : compte désactivé.
+      // Les deux valent d'être tracés — le second signale un ancien cadre qui
+      // tente encore d'entrer avec un code qu'il a gardé.
+      const st = err && err.status;
+      if (st === 401 || st === 403) {
+        logRefusConnexion(env, ctx, {
+          role: "Cadre", qui: emailEssaye, ip: ipCadre,
+          motif: st === 403 ? "compte désactivé" : "e-mail ou code d'accès incorrect",
+        });
+      }
+      throw err;
+    });
 
     // Accès administrateur : une clé secrète forte (env.ADMIN_KEY) permet de se
     // connecter à l'espace d'un cadre SANS son PIN (support / impersonation).
@@ -283,7 +327,15 @@ async function route(request, env, ctx) {
         { id: "PIN_bloque_jusqu_a", label: "PIN — bloqué jusqu'à", type: "Int" },
         { id: "Administrateur", label: "Administrateur", type: "Bool" },
       ]);
-      verifierVerrouPin(cadre);
+      try {
+        verifierVerrouPin(cadre);
+      } catch (err) {
+        logRefusConnexion(env, ctx, {
+          role: "Cadre", qui: emailEssaye, nom: cadreNomComplet(cadre), ip: ipCadre,
+          motif: "compte bloqué après plusieurs codes PIN erronés",
+        });
+        throw err;
+      }
       const pin = typeof body.pin === "string" ? body.pin.trim() : "";
       const storedPin = (cadre.fields.PIN_hash || "").trim();
       const resetDemande = cadre.fields.Reinit_PIN === true;
@@ -303,6 +355,13 @@ async function route(request, env, ctx) {
       } else {
         if (!pin) throw httpError(401, "Code PIN requis");
         if (!(await verifyPin(pin, storedPin))) {
+          // Journalisé AVANT noterEchecPin, qui lève lui-même 429 dès que le
+          // seuil de blocage est atteint : sinon le dernier essai — celui qui
+          // verrouille le compte — passerait à la trappe.
+          logRefusConnexion(env, ctx, {
+            role: "Cadre", qui: emailEssaye, nom: cadreNomComplet(cadre), ip: ipCadre,
+            motif: "code PIN incorrect",
+          });
           await noterEchecPin(env, cadre);
           throw httpError(401, "Code PIN incorrect");
         }
@@ -435,6 +494,13 @@ async function route(request, env, ctx) {
       nom: cadreNomComplet(admin),
     };
     if (request.method === "GET" && path === "/api/admin/cadres") {
+      // L'espace admin est l'écran le plus sensible du site (tous les comptes,
+      // leurs droits, l'état de leurs PIN) : son ouverture est journalisée,
+      // comme l'est celle de l'espace cadre.
+      if (estOuverture(request)) {
+        logActivite(env, ctx, { ...whoA, action: "Consultation de l'espace administrateur",
+          detail: ongletVu(request) || "onglet « Cadres »" });
+      }
       return json(await listerCadresAdmin(env, admin));
     }
     if (request.method === "POST" && path === "/api/admin/cadres") {
@@ -447,6 +513,10 @@ async function route(request, env, ctx) {
         (info) => modifierCadreAdmin(request, env, admin, Number(acm[1]), info));
     }
     if (request.method === "GET" && path === "/api/admin/organisation") {
+      if (estOuverture(request)) {
+        logActivite(env, ctx, { ...whoA, action: "Consultation de l'espace administrateur",
+          detail: ongletVu(request) || "onglet « Services »" });
+      }
       return json(await listerOrganisationAdmin(env));
     }
     if (request.method === "POST" && path === "/api/admin/services") {
@@ -484,9 +554,7 @@ async function route(request, env, ctx) {
   const whoE = { role: "Étudiant", qui: student.code, nom: nomCompletEtudiant(student) };
   if (request.method === "GET" && path === "/api/data") {
     const data = await buildPayload(env, student);
-    // ?vue=1 : ouverture de l'espace par l'étudiant. Sans ce marqueur, c'est un
-    // rafraîchissement qui suit une action déjà tracée -> pas de ligne en double.
-    if (new URL(request.url).searchParams.get("vue") === "1") {
+    if (estOuverture(request)) {
       logActivite(env, ctx, { ...whoE, action: "Consultation de son espace", ...contexteStageEtudiant(data) });
     }
     return json(data);
@@ -3240,6 +3308,58 @@ function logActivite(env, ctx, entry) {
     });
   })().catch((e) => console.error("JOURNAL_ACTIVITE:", (e && e.message) || e));
   if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(p);
+}
+
+/* --- Connexions refusées -------------------------------------------
+ * Ne journaliser que les connexions réussies laisserait invisible ce qui
+ * intéresse le plus en cas de doute : les essais qui n'ont PAS abouti (code
+ * d'accès faux, PIN erroné, compte désactivé ou bloqué).
+ *
+ * Ces lignes-là sont les seules qu'un visiteur non authentifié puisse
+ * provoquer, d'où deux précautions :
+ *   - le secret essayé (code d'accès, PIN) n'est JAMAIS écrit, seulement
+ *     l'identifiant visé (code anonymat ou e-mail) ;
+ *   - un anti-flood borne le nombre de lignes qu'un même identifiant ou une
+ *     même IP peut produire : sans lui, un essai en série chasserait du
+ *     journal les 30 jours d'activité réelle.
+ */
+const REFUS_FENETRE_MS = 10 * 60 * 1000;
+const REFUS_MAX_PAR_IP = 5; // lignes par IP et par fenêtre
+const refusJournalises = new Map();
+
+/** Vrai si la clé n'a pas encore atteint `max` lignes dans la fenêtre en cours. */
+function refusAJournaliser(cle, max) {
+  const maintenant = Date.now();
+  if (refusJournalises.size > 5000) {
+    for (const [k, v] of refusJournalises) if (v.expire <= maintenant) refusJournalises.delete(k);
+  }
+  const vu = refusJournalises.get(cle);
+  if (!vu || vu.expire <= maintenant) {
+    refusJournalises.set(cle, { expire: maintenant + REFUS_FENETRE_MS, n: 1 });
+    return true;
+  }
+  vu.n++;
+  return vu.n <= max;
+}
+
+/**
+ * Journalise une tentative de connexion refusée. `motif` dit ce qui a bloqué
+ * (il fait partie de la clé anti-flood : chaque motif a droit à sa ligne).
+ */
+function logRefusConnexion(env, ctx, { role, qui, nom, ip, motif }) {
+  const identifiant = cleanText(qui, 60);
+  // Une ligne par identifiant visé, par motif et par fenêtre : l'information
+  // utile est « on a essayé d'entrer sur ce compte », pas le nombre exact
+  // d'essais — la limitation de débit s'en charge déjà.
+  if (!refusAJournaliser(`refus:${role}:${identifiant.toLowerCase()}:${motif}`, 1)) return;
+  if (!refusAJournaliser(`refus:ip:${ip}`, REFUS_MAX_PAR_IP)) return;
+  logActivite(env, ctx, {
+    role,
+    qui: identifiant || "(vide)",
+    nom: nom || "",
+    action: "Connexion refusée",
+    detail: motif,
+  });
 }
 
 /**
