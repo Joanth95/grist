@@ -53,8 +53,9 @@
  *                                                                (SERVICES.Codes_horaires ; vide = tous)
  *   POST   /api/cadre/codes  { Code, Libelle, ... }           -> crée un code horaire (pas de doublon,
  *                                                                pas de suppression possible)
- *   GET    /api/cadre/periodes/:id/planning-imprimable        -> HTML du planning de stage imprimable
- *                                                                (colonne formule PERIODES_DE_STAGE.Planning_HTML)
+ *   GET    /api/cadre/periodes/:id/planning-imprimable        -> HTML de la fiche de stage imprimable
+ *                                                                (colonne formule PERIODES_DE_STAGE.Planning_HTML,
+ *                                                                logo réaligné sur ETABLISSEMENT.Logo)
  *   POST   /api/cadre/rdv  { periodeId, Date_rdv, ... }        -> ajoute un rendez-vous formateur/tuteur
  *   DELETE /api/cadre/rdv/:id                                  -> supprime un rendez-vous formateur
  *
@@ -385,8 +386,8 @@ async function route(request, env, ctx) {
     }
     const im = path.match(/^\/api\/cadre\/periodes\/(\d+)\/planning-imprimable$/);
     if (request.method === "GET" && im) {
-      return withLog(env, ctx, who, "Impression du planning de stage", `période #${im[1]}`,
-        (info) => planningImprimable(env, cadre, Number(im[1]), info));
+      return withLog(env, ctx, who, "Impression de la fiche de stage", `période #${im[1]}`,
+        (info) => planningImprimable(request, env, cadre, Number(im[1]), info));
     }
     if (request.method === "POST" && path === "/api/cadre/rdv") {
       return withLog(env, ctx, who, "Ajout d'un RDV formateur", "",
@@ -1577,18 +1578,51 @@ async function supprimerPeriode(env, ctx, cadre, periodeId, info) {
   return json({ ok: true, semainesSupprimees: semaines.length, rdvsSupprimes: rdvs.length });
 }
 
-/** Renvoie le HTML du planning de stage imprimable (colonne formule
+/** Renvoie le HTML de la fiche de stage imprimable (colonne formule
  * PERIODES_DE_STAGE.Planning_HTML) pour une période d'un service du cadre. */
-async function planningImprimable(env, cadre, periodeId, info) {
+async function planningImprimable(request, env, cadre, periodeId, info) {
   const periode = await ensurePeriodeInScope(env, cadre, periodeId);
   const html = periode.fields.Planning_HTML;
-  if (!html) throw httpError(404, "Le planning imprimable n'est pas disponible pour ce stage");
+  if (!html) throw httpError(404, "La fiche de stage imprimable n'est pas disponible pour ce stage");
   if (info) {
     info.etudiantId = periode.fields.Etudiant;
     info.serviceId = periode.fields.Service;
     info.detail = `stage du ${jDateEpoch(periode.fields.Du)} au ${jDateEpoch(periode.fields.Au)}`;
   }
-  return json({ html });
+  return json({ html: await ficheAvecLogoEtablissement(request, env, html) });
+}
+
+/**
+ * Aligne le logo de la fiche de stage imprimée sur celui de l'en-tête du site.
+ * La formule Grist Planning_HTML embarque une image figée : elle reste celle de
+ * l'établissement d'origine tant que la formule n'est pas rééditée à la main.
+ * On réécrit donc la première image de la fiche (le logo de son en-tête) vers
+ * la pièce jointe ETABLISSEMENT.Logo, servie par /api/config/logo — un logo
+ * changé dans Grist s'imprime aussitôt, sans toucher à la formule. Sans logo
+ * dans Grist, l'image est retirée plutôt que d'imprimer une identité périmée.
+ */
+async function ficheAvecLogoEtablissement(request, env, html) {
+  const balise = /<img\b[^>]*>/i;
+  if (!balise.test(html)) return html;
+
+  let logoId = null;
+  try {
+    const records = await gristAll(env, T_ETABLISSEMENT);
+    logoId = premierePieceJointe(records[0] && records[0].fields && records[0].fields.Logo);
+  } catch {
+    // Table ETABLISSEMENT illisible : rien de mieux à proposer que l'image de
+    // la formule, on la laisse en place plutôt que d'imprimer une fiche nue.
+    return html;
+  }
+  if (!logoId) return html.replace(balise, () => "");
+
+  // ?v=<logoId> : même invalidation de cache que l'en-tête du site (le logo est
+  // servi avec un cache long), donc un nouveau logo change d'URL.
+  const src = ` src="${new URL(request.url).origin}/api/config/logo?v=${encodeURIComponent(logoId)}"`;
+  const attributSrc = /\ssrc\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i;
+  return html.replace(balise, (img) => (attributSrc.test(img)
+    ? img.replace(attributSrc, () => src)
+    : img.replace(/<img\b/i, () => `<img${src}`)));
 }
 
 /** Le cadre ajoute un rendez-vous formateur/tuteur pour un étudiant de son service. */

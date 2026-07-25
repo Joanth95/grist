@@ -1437,9 +1437,9 @@ function renderPlanningPersonnel(st) {
     actions.appendChild(declareBtn);
   }
 
-  const printBtn = el("button", "btn btn-ghost", "🖨 Imprimer le planning");
+  const printBtn = el("button", "btn btn-ghost", "🖨 Imprimer la fiche de stage");
   printBtn.type = "button";
-  printBtn.addEventListener("click", () => imprimerPlanning(p, printBtn));
+  printBtn.addEventListener("click", () => imprimerFicheStage(p, printBtn));
   actions.appendChild(printBtn);
 
   wrap.appendChild(actions);
@@ -1449,23 +1449,24 @@ function renderPlanningPersonnel(st) {
   return wrap;
 }
 
-/** Ouvre le planning de stage imprimable (HTML généré par Grist) dans une
- *  nouvelle fenêtre et lance l'impression. */
-async function imprimerPlanning(p, btn) {
+/** Ouvre la fiche de stage imprimable (HTML généré par Grist) dans une
+ *  nouvelle fenêtre et lance l'impression. Le titre du document sert de nom
+ *  de fichier par défaut à l'impression « Enregistrer au format PDF ». */
+async function imprimerFicheStage(p, btn) {
   const win = window.open("", "_blank");
   if (!win) {
-    alert("Autorisez les fenêtres pop-up pour imprimer le planning.");
+    alert("Autorisez les fenêtres pop-up pour imprimer la fiche de stage.");
     return;
   }
   win.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">'
-    + "<title>Planning de stage</title></head><body>Préparation du planning…</body></html>");
+    + "<title>Fiche de stage</title></head><body>Préparation de la fiche de stage…</body></html>");
   win.document.close();
   if (btn) btn.disabled = true;
   try {
     const { html } = await api("GET", `/api/cadre/periodes/${p.id}/planning-imprimable`);
     win.document.open();
     win.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">'
-      + "<title>Planning de stage</title></head><body>" + html
+      + "<title>Fiche de stage</title></head><body>" + html
       + "<script>window.onload=function(){setTimeout(function(){window.print();},250);};<\/script>"
       + "</body></html>");
     win.document.close();
