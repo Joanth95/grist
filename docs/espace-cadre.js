@@ -1,7 +1,7 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 /* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
-const APP_VERSION = "v35"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v36"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -511,7 +511,27 @@ function renderMainTabs() {
   }
 }
 
+/* Journal d'activité : signale au worker le service et l'onglet réellement
+   affichés (le worker ne peut pas le deviner, /api/cadre/data lui renvoie tous
+   les services du cadre). Envoi discret, en arrière-plan : une erreur ne doit
+   rien changer à l'écran. Chaque combinaison service/onglet/étudiant n'est
+   signalée qu'une fois par session : le journal dit ce qui a été consulté,
+   sans se remplir à chaque aller-retour entre deux onglets ni à chaque
+   redessin qui suit une action. */
+const vuesSignalees = new Set();
+function signalerVue(extra) {
+  if (!state.data || !state.selectedServiceId) return;
+  const onglet = (extra && extra.onglet) || tabLabel(state.activeTab);
+  const etudiantId = (extra && extra.etudiantId) || null;
+  const cle = `${state.selectedServiceId}|${onglet}|${etudiantId || ""}`;
+  if (vuesSignalees.has(cle)) return;
+  vuesSignalees.add(cle);
+  api("POST", "/api/cadre/vue", { serviceId: state.selectedServiceId, onglet, etudiantId })
+    .catch(() => {});
+}
+
 function renderActiveTab() {
+  signalerVue();
   $("tab-dashboard").hidden = state.activeTab !== "dashboard";
   $("tab-declarations").hidden = state.activeTab !== "declarations";
   $("tab-dossier").hidden = state.activeTab !== "dossier";
@@ -1189,6 +1209,9 @@ function renderDossierTab() {
       btn.type = "button";
       btn.addEventListener("click", () => {
         state.dossierSubTab[st.id] = t.id;
+        // Ouvrir le planning personnel d'un étudiant est un accès à son
+        // dossier : le journal le trace nommément.
+        if (t.id === "planning") signalerVue({ onglet: "Planning personnel", etudiantId: st.id });
         renderDossierTab();
       });
       subTabs.appendChild(btn);

@@ -20,7 +20,8 @@
  *   GET    /api/services                       -> services accueillant des étudiants (public)
  *   POST   /api/inscription    { ... }         -> auto-inscription (public)
  *   POST   /api/login          { code }        -> payload complet
- *   GET    /api/data                           -> payload complet (rafraîchissement)
+ *   GET    /api/data[?vue=1]                   -> payload complet (rafraîchissement ;
+ *                                                 ?vue=1 = ouverture de l'espace, journalisée)
  *   POST   /api/sorties        { ... }         -> nouvelle déclaration
  *   DELETE /api/sorties/:id                    -> suppression d'une de SES déclarations
  *   POST   /api/periodes       { Service, Niveau, Du, Au } -> nouvelle période de stage (même étudiant)
@@ -33,6 +34,8 @@
  * (Pole.CSS, exposé par la formule SERVICES.Pole_CSS), tous les services du pôle.
  *   POST   /api/cadre/login    { email, code }         -> payload des services du cadre
  *   GET    /api/cadre/data                             -> payload complet (rafraîchissement)
+ *   POST   /api/cadre/vue  { serviceId, onglet, etudiantId? } -> journalise ce qui est réellement
+ *                                                                affiché (service, onglet, dossier)
  *   PATCH  /api/cadre/sorties/:id   { Valide }         -> valider/invalider une déclaration
  *   POST   /api/cadre/sorties  { periodeId, ... }      -> déclarer des heures pour un étudiant (en attente)
  *   PATCH  /api/cadre/planning/:semaineId { jour, codeId } -> édite une case du planning
@@ -151,7 +154,7 @@ async function route(request, env, ctx) {
     return listServices(env);
   }
   if (request.method === "POST" && path === "/api/inscription") {
-    return inscription(request, env);
+    return inscription(request, env, ctx);
   }
   if (request.method === "POST" && path === "/api/login") {
     const body = await request.json().catch(() => ({}));
@@ -162,6 +165,7 @@ async function route(request, env, ctx) {
       qui: student.code,
       nom: nomCompletEtudiant(student),
       action: "Connexion",
+      ...contexteStageEtudiant(payload),
     });
     purgeJournal(env, ctx);
     purgePlanningsOrphelins(env, ctx);
@@ -210,7 +214,8 @@ async function route(request, env, ctx) {
       qui: (cadre.fields.Email || "").trim(),
       nom: cadreNomComplet(cadre),
       action: "Connexion",
-      detail: accesAdmin ? "accès administrateur (sans PIN)" : "",
+      detail: `${cadre.services.length} service(s) accessible(s)`
+        + (accesAdmin ? " — accès administrateur (sans PIN)" : ""),
     });
     purgeJournal(env, ctx);
     purgePlanningsOrphelins(env, ctx);
@@ -229,11 +234,24 @@ async function route(request, env, ctx) {
       nom: cadreNomComplet(cadre),
     };
     if (request.method === "GET" && path === "/api/cadre/data") {
-      const data = await buildCadrePayload(env, cadre);
-      const servicesNoms = cadre.services.map((s) => s.fields.Nom || "").filter(Boolean).join(", ");
-      logActivite(env, ctx, { ...who, action: "Consultation de l'espace cadre",
-        detail: servicesNoms.slice(0, 100) });
-      return json(data);
+      // Pas de journalisation ici : ce point d'entrée sert aussi de simple
+      // rafraîchissement après chaque action (l'action, elle, est déjà tracée).
+      // La consultation est signalée par le front via /api/cadre/vue, qui sait
+      // quel service et quel onglet sont réellement affichés.
+      return json(await buildCadrePayload(env, cadre));
+    }
+    if (request.method === "POST" && path === "/api/cadre/vue") {
+      const body = await request.json().catch(() => ({}));
+      const serviceId = Number(body.serviceId);
+      const etudiantId = await etudiantDuCadre(env, cadre, body.etudiantId);
+      logActivite(env, ctx, {
+        ...who,
+        action: etudiantId ? "Consultation d'un dossier étudiant" : "Consultation de l'espace cadre",
+        serviceId: cadre.serviceIds.has(serviceId) ? serviceId : undefined,
+        etudiantId,
+        detail: body.onglet ? `onglet « ${cleanText(body.onglet, 60)} »` : "",
+      });
+      return json({ ok: true });
     }
     const sm = path.match(/^\/api\/cadre\/sorties\/(\d+)$/);
     if (request.method === "PATCH" && sm) {
@@ -249,9 +267,8 @@ async function route(request, env, ctx) {
         (info) => inscriptionParCadre(request, env, cadre, info));
     }
     if (request.method === "GET" && path === "/api/cadre/etudiants/recherche") {
-      logActivite(env, ctx, { ...who, action: "Recherche d'un étudiant",
-        detail: new URL(request.url).searchParams.get("q") || "" });
-      return rechercherEtudiants(request, env, cadre);
+      return withLog(env, ctx, who, "Recherche d'un étudiant", "",
+        (info) => rechercherEtudiants(request, env, cadre, info));
     }
     const wm = path.match(/^\/api\/cadre\/planning\/(\d+)$/);
     if (request.method === "PATCH" && wm) {
@@ -316,7 +333,11 @@ async function route(request, env, ctx) {
   const whoE = { role: "Étudiant", qui: student.code, nom: nomCompletEtudiant(student) };
   if (request.method === "GET" && path === "/api/data") {
     const data = await buildPayload(env, student);
-    logActivite(env, ctx, { ...whoE, action: "Consultation de son espace" });
+    // ?vue=1 : ouverture de l'espace par l'étudiant. Sans ce marqueur, c'est un
+    // rafraîchissement qui suit une action déjà tracée -> pas de ligne en double.
+    if (new URL(request.url).searchParams.get("vue") === "1") {
+      logActivite(env, ctx, { ...whoE, action: "Consultation de son espace", ...contexteStageEtudiant(data) });
+    }
     return json(data);
   }
   if (request.method === "POST" && path === "/api/sorties") {
@@ -927,6 +948,19 @@ async function buildCadrePayload(env, cadre) {
   };
 }
 
+/**
+ * Id d'étudiant à journaliser pour un cadre : renvoie l'id seulement si cet
+ * étudiant a bien un stage dans un des services du cadre, undefined sinon.
+ * Le journal ne doit pas pouvoir se remplir de noms d'étudiants arbitraires
+ * envoyés par le navigateur.
+ */
+async function etudiantDuCadre(env, cadre, rawId) {
+  const id = Number(rawId);
+  if (!Number.isInteger(id) || id <= 0) return undefined;
+  const periodes = await gristFilter(env, T_PERIODES, { Etudiant: [id] }).catch(() => []);
+  return periodes.some((p) => cadre.serviceIds.has(p.fields.Service)) ? id : undefined;
+}
+
 /** Vérifie que la période appartient à un service du cadre ; la renvoie sinon lève 403/404. */
 async function ensurePeriodeInScope(env, cadre, periodeId) {
   if (!periodeId) throw httpError(403, "Aucune période rattachée");
@@ -980,7 +1014,9 @@ async function creerSortiePourEtudiant(request, env, cadre, info) {
   const data = await grist(env, "POST", `/tables/${T_SORTIES}/records`, { records: [{ fields }] });
   if (info) {
     info.etudiantId = periode.fields.Etudiant;
-    info.detail = `${motif}, ${date} ${debut}–${fin}`;
+    info.serviceId = periode.fields.Service;
+    info.detail = `${motif} du ${jDate(date)}, ${debut}–${fin}`
+      + (compteStage ? "" : " (ne compte pas dans le stage)");
   }
   return json({ id: data.records[0].id }, 201);
 }
@@ -1031,11 +1067,24 @@ async function validerSortie(request, env, cadre, rowId, info) {
   await gristUpdate(env, T_SORTIES, rowId, fields);
   if (info) {
     info.etudiantId = periode.fields.Etudiant;
+    info.serviceId = periode.fields.Service;
+    const avant = rows[0].fields;
+    // La déclaration est désignée par ce qu'elle est (motif, date, heures)
+    // plutôt que par son numéro de ligne, illisible dans le journal.
+    const quoi = `${avant.Motif || "déclaration"} du ${jDateEpoch(avant.Date)}`
+      + `, ${avant.Heure_debut || "?"}–${avant.Heure_fin || "?"}`;
     const parts = [];
     if (body.Valide === true) parts.push("validée");
     else if (body.Valide === false) parts.push("dévalidée");
-    if (modifieContenu) parts.push("contenu modifié");
-    info.detail = `déclaration #${rowId}${parts.length ? " — " + parts.join(", ") : ""}`;
+    parts.push(...changementsTexte({
+      Motif: "motif",
+      Date: ["date", true],
+      Heure_debut: "début",
+      Heure_fin: "fin",
+      Compte_stage: "compte dans le stage",
+      Motif_ou_Commentaire: "commentaire",
+    }, avant, fields));
+    info.detail = `${quoi}${parts.length ? " — " + parts.join(" · ") : ""}`;
   }
   return json({ ok: true });
 }
@@ -1068,11 +1117,19 @@ async function updatePlanningJour(request, env, cadre, semaineId, info) {
   const periode = await ensurePeriodeInScope(env, cadre, rows[0].fields.Periode);
   verifierPeriodeNonVerrouillee(periode, "son planning est verrouillé");
 
-  let codeLabel = "";
+  // Ancien et nouveau code lus ensemble (une seule requête) : le journal dit
+  // ainsi ce qui a été remplacé, pas seulement ce qui a été posé.
+  const ancienId = rows[0].fields[jour] || null;
+  const ids = [...new Set([codeId, ancienId].filter(Boolean))];
+  const codes = ids.length ? await gristFilter(env, T_CODES, { id: ids }) : [];
+  const libelleCode = (id) => {
+    if (!id) return "(vide)";
+    const c = codes.find((x) => x.id === id);
+    return (c && c.fields.Code) || `code #${id}`;
+  };
+
   if (codeId !== null) {
-    const codes = await gristFilter(env, T_CODES, { id: [codeId] });
-    if (!codes.length) throw httpError(400, "Code horaire introuvable");
-    codeLabel = codes[0].fields.Code || "";
+    if (!codes.some((c) => c.id === codeId)) throw httpError(400, "Code horaire introuvable");
     // Codes limités au service (SERVICES.Codes_horaires ; liste vide = tous)
     const service = cadre.services.find((s) => s.id === periode.fields.Service);
     const actifs = service ? refIds(service.fields.Codes_horaires) : [];
@@ -1084,7 +1141,11 @@ async function updatePlanningJour(request, env, cadre, semaineId, info) {
   await gristUpdate(env, T_HEBDO, semaineId, { [jour]: codeId });
   if (info) {
     info.etudiantId = periode.fields.Etudiant;
-    info.detail = `${jour} : ${codeId === null ? "vidé" : (codeLabel || "code #" + codeId)}`;
+    info.serviceId = periode.fields.Service;
+    const debutSemaine = rows[0].fields.Semaine_debut;
+    const dateJour = typeof debutSemaine === "number"
+      ? debutSemaine + DAY_COLUMNS.indexOf(jour) * 86400 : null;
+    info.detail = `${jour} ${jDateEpoch(dateJour)} : ${libelleCode(ancienId)} → ${libelleCode(codeId)}`;
   }
   return json({ ok: true });
 }
@@ -1131,10 +1192,16 @@ async function updatePeriode(request, env, cadre, periodeId, info) {
   await gristUpdate(env, T_PERIODES, periodeId, fields);
   if (info) {
     info.etudiantId = rows[0].fields.Etudiant;
-    const labels = { Tuteur: "tuteur", Niveau: "niveau", Du: "date de début",
-      Au: "date de fin", Evaluation_envoyee: "évaluation envoyée" };
-    const changes = Object.keys(fields).map((k) => labels[k] || k);
-    info.detail = changes.length ? `modifié : ${changes.join(", ")}` : "";
+    info.serviceId = rows[0].fields.Service;
+    const changes = changementsTexte({
+      Tuteur: "tuteur",
+      Niveau: "niveau",
+      Du: ["début", true],
+      Au: ["fin", true],
+      Evaluation_envoyee: "évaluation envoyée",
+    }, rows[0].fields, fields);
+    info.detail = `stage du ${jDateEpoch(rows[0].fields.Du)}`
+      + (changes.length ? ` — ${changes.join(" · ")}` : "");
   }
   return json({ ok: true });
 }
@@ -1166,7 +1233,9 @@ async function supprimerPeriode(env, ctx, cadre, periodeId, info) {
 
   if (info) {
     info.etudiantId = periode.fields.Etudiant;
-    info.detail = `${semaines.length} semaine(s), ${rdvs.length} RDV supprimés`;
+    info.serviceId = periode.fields.Service;
+    info.detail = `stage du ${jDateEpoch(periode.fields.Du)} au ${jDateEpoch(periode.fields.Au)}`
+      + ` — ${semaines.length} semaine(s) et ${rdvs.length} RDV supprimés`;
   }
   return json({ ok: true, semainesSupprimees: semaines.length, rdvsSupprimes: rdvs.length });
 }
@@ -1177,7 +1246,11 @@ async function planningImprimable(env, cadre, periodeId, info) {
   const periode = await ensurePeriodeInScope(env, cadre, periodeId);
   const html = periode.fields.Planning_HTML;
   if (!html) throw httpError(404, "Le planning imprimable n'est pas disponible pour ce stage");
-  if (info) info.etudiantId = periode.fields.Etudiant;
+  if (info) {
+    info.etudiantId = periode.fields.Etudiant;
+    info.serviceId = periode.fields.Service;
+    info.detail = `stage du ${jDateEpoch(periode.fields.Du)} au ${jDateEpoch(periode.fields.Au)}`;
+  }
   return json({ html });
 }
 
@@ -1206,7 +1279,8 @@ async function creerRdv(request, env, cadre, info) {
   const data = await grist(env, "POST", `/tables/${T_RDV}/records`, { records: [{ fields }] });
   if (info) {
     info.etudiantId = periode.fields.Etudiant;
-    info.detail = `${type}, ${date}`;
+    info.serviceId = periode.fields.Service;
+    info.detail = `${type} le ${jDate(date)}${fields.Formateur ? ` avec ${fields.Formateur}` : ""}`;
   }
   return json({ id: data.records[0].id }, 201);
 }
@@ -1220,7 +1294,10 @@ async function supprimerRdv(env, cadre, rowId, info) {
   await grist(env, "POST", `/tables/${T_RDV}/data/delete`, [rowId]);
   if (info) {
     info.etudiantId = periode.fields.Etudiant;
-    info.detail = rows[0].fields.Type_de_rendez_vous || "";
+    info.serviceId = periode.fields.Service;
+    info.detail = `${rows[0].fields.Type_de_rendez_vous || "rendez-vous"}`
+      + ` du ${jDateEpoch(rows[0].fields.Date_rdv)}`
+      + (rows[0].fields.Formateur ? ` avec ${rows[0].fields.Formateur}` : "");
   }
   return json({ ok: true });
 }
@@ -1237,16 +1314,35 @@ async function updateCodesService(request, env, cadre, serviceId, info) {
   if (ids.some((id) => !Number.isInteger(id) || id <= 0)) {
     throw httpError(400, "Liste de codes invalide");
   }
-  if (ids.length) {
-    const codes = await gristFilter(env, T_CODES, { id: ids });
-    if (codes.length !== ids.length) throw httpError(400, "Code horaire introuvable");
+  // Ancienne liste lue en même temps que la nouvelle : le journal peut dire
+  // quels codes ont été ajoutés ou retirés (liste vide = tous les codes).
+  const svc = cadre.services.find((s) => s.id === serviceId);
+  const anciens = refIds(svc && svc.fields.Codes_horaires);
+  const tousIds = [...new Set([...ids, ...anciens])];
+  const codes = tousIds.length ? await gristFilter(env, T_CODES, { id: tousIds }) : [];
+  if (ids.some((id) => !codes.some((c) => c.id === id))) {
+    throw httpError(400, "Code horaire introuvable");
   }
   await gristUpdate(env, T_SERVICES, serviceId, {
     Codes_horaires: ids.length ? ["L", ...ids] : null,
   });
   if (info) {
-    const svc = cadre.services.find((s) => s.id === serviceId);
-    info.detail = `${(svc && svc.fields.Nom) || "service #" + serviceId} : ${ids.length} code(s) actif(s)`;
+    const libelleCode = (id) => {
+      const c = codes.find((x) => x.id === id);
+      return (c && c.fields.Code) || `code #${id}`;
+    };
+    info.serviceId = serviceId;
+    const parts = [];
+    if (anciens.length) {
+      const ajouts = ids.filter((id) => !anciens.includes(id)).map(libelleCode);
+      const retraits = anciens.filter((id) => !ids.includes(id)).map(libelleCode);
+      if (ajouts.length) parts.push(`ajout : ${ajouts.join(", ")}`);
+      if (retraits.length) parts.push(`retrait : ${retraits.join(", ")}`);
+    } else if (ids.length) {
+      parts.push(ids.map(libelleCode).join(", "));
+    }
+    info.detail = (ids.length ? `${ids.length} code(s) actif(s)` : "tous les codes")
+      + (parts.length ? ` — ${parts.join(" · ")}` : "");
   }
   return json({ ok: true, codes: ids });
 }
@@ -1297,7 +1393,11 @@ async function creerCodeHoraire(request, env, cadre, info) {
     }
   }
 
-  if (info) info.detail = `${code} — ${libelle}`;
+  if (info) {
+    if (cadre.serviceIds.has(serviceId)) info.serviceId = serviceId;
+    info.detail = `${code} — ${libelle}${debut ? ` (${debut}–${fin})` : " (sans horaire)"}`
+      + (body.Compte_stage === false ? ", ne compte pas dans le stage" : "");
+  }
   return json({ id: newId }, 201);
 }
 
@@ -1531,7 +1631,8 @@ async function createSortie(request, env, student, info) {
   const compteStage = motif.toUpperCase() === "RETARD" ? false : body.Compte_stage !== false;
 
   const dateEpoch = Date.parse(date + "T00:00:00Z") / 1000;
-  const periodeId = await choisirPeriode(env, student, dateEpoch);
+  const periode = await choisirPeriode(env, student, dateEpoch);
+  const periodeId = periode ? periode.id : null;
 
   const fields = {
     Anonymat: student.rowId,
@@ -1548,11 +1649,15 @@ async function createSortie(request, env, student, info) {
   if (periodeId) fields.Rapprochement_manuel = periodeId;
 
   const data = await grist(env, "POST", `/tables/${T_SORTIES}/records`, { records: [{ fields }] });
-  if (info) info.detail = `${motif}, ${date} ${debut}–${fin}`;
+  if (info) {
+    if (periode) info.serviceId = periode.fields.Service;
+    info.detail = `${motif} du ${jDate(date)}, ${debut}–${fin}`
+      + (compteStage ? "" : " (ne compte pas dans le stage)");
+  }
   return json({ id: data.records[0].id }, 201);
 }
 
-/** Période à laquelle rattacher une déclaration datée de dateEpoch. */
+/** Période à laquelle rattacher une déclaration datée de dateEpoch (l'enregistrement, ou null). */
 async function choisirPeriode(env, student, dateEpoch) {
   const periodes = await gristFilter(env, T_PERIODES, { Code_anonymat: [student.code] });
   if (!periodes.length) return null;
@@ -1563,12 +1668,12 @@ async function choisirPeriode(env, student, dateEpoch) {
     return typeof du === "number" && typeof au === "number" &&
       dateEpoch >= du && dateEpoch <= au + DAY - 1;
   });
-  if (contient) return contient.id;
+  if (contient) return contient;
   // 2. période en cours
   const enCours = periodes.find((p) => p.fields.En_cours);
-  if (enCours) return enCours.id;
+  if (enCours) return enCours;
   // 3. la plus récente
-  return periodes.slice().sort((a, b) => (b.fields.Du || 0) - (a.fields.Du || 0))[0].id;
+  return periodes.slice().sort((a, b) => (b.fields.Du || 0) - (a.fields.Du || 0))[0];
 }
 
 async function deleteSortie(env, student, rowId, info) {
@@ -1582,8 +1687,9 @@ async function deleteSortie(env, student, rowId, info) {
   }
   await grist(env, "POST", `/tables/${T_SORTIES}/data/delete`, [rowId]);
   if (info) {
-    const d = rows[0].fields.Date;
-    info.detail = `${rows[0].fields.Motif || "déclaration"}${typeof d === "number" ? " du " + epochToIso(d) : ""}`;
+    const f = rows[0].fields;
+    info.detail = `${f.Motif || "déclaration"} du ${jDateEpoch(f.Date)}`
+      + `, ${f.Heure_debut || "?"}–${f.Heure_fin || "?"}`;
   }
   return json({ ok: true });
 }
@@ -1617,7 +1723,11 @@ async function creerPeriodeEtudiant(request, env, student, info) {
   const { periodeId, semainesGenerees } = await creerPeriodeAvecSemaines(env, {
     studentRowId: student.rowId, code: student.code, serviceId, du, au, niveau, referent: "",
   });
-  if (info) info.detail = `${service.fields.Nom || "service"}, ${du} → ${au}`;
+  if (info) {
+    info.serviceId = serviceId;
+    info.detail = `stage du ${jDate(du)} au ${jDate(au)}${niveau ? ", " + niveau : ""}`
+      + `, ${semainesGenerees} semaine(s) générée(s)`;
+  }
   return json({ id: periodeId, semainesGenerees }, 201);
 }
 
@@ -1625,7 +1735,7 @@ async function creerPeriodeEtudiant(request, env, student, info) {
 /* Inscription (« entrée en stage »)                                   */
 /* ------------------------------------------------------------------ */
 
-async function inscription(request, env) {
+async function inscription(request, env, ctx) {
   const body = await request.json().catch(() => ({}));
 
   // Champ-piège anti-robots : rempli uniquement par les robots
@@ -1701,6 +1811,20 @@ async function inscription(request, env) {
     studentRowId, code, serviceId, du, au, niveau, referent,
   });
 
+  // L'auto-inscription crée un dossier et un stage sans qu'aucun cadre
+  // n'intervienne : elle a toute sa place dans le journal.
+  logActivite(env, ctx, {
+    role: "Étudiant",
+    qui: code,
+    nom: `${prenom} ${nom}`.trim(),
+    action: "Inscription (entrée en stage)",
+    serviceId,
+    detail: `${dejaInscrit ? "dossier existant" : "nouveau dossier"}`
+      + ` — stage du ${jDate(du)} au ${jDate(au)}${niveau ? ", " + niveau : ""}`
+      + `, ${semainesGenerees} semaine(s) générée(s)`
+      + (referent ? `, référent ${referent}` : ""),
+  });
+
   return json({ code, dejaInscrit, semainesGenerees }, 201);
 }
 
@@ -1763,6 +1887,7 @@ async function inscriptionParCadre(request, env, cadre, info) {
 
   let studentRowId;
   let code;
+  let dossierCree = false; // vrai si la fiche étudiant a été créée à l'occasion
 
   const etuIdFourni = body.etudiantId !== undefined && body.etudiantId !== null && body.etudiantId !== "";
   if (etuIdFourni) {
@@ -1811,6 +1936,7 @@ async function inscriptionParCadre(request, env, cadre, info) {
         } }],
       });
       studentRowId = created.records[0].id;
+      dossierCree = true;
     }
   }
 
@@ -1826,7 +1952,11 @@ async function inscriptionParCadre(request, env, cadre, info) {
   });
   if (info) {
     info.etudiantId = studentRowId;
-    info.detail = `${service.fields.Nom || "service"}, ${du} → ${au}`;
+    info.serviceId = serviceId;
+    info.detail = `${dossierCree ? "nouveau dossier" : "dossier existant"}`
+      + ` — stage du ${jDate(du)} au ${jDate(au)}${niveau ? ", " + niveau : ""}`
+      + `, ${semainesGenerees} semaine(s) générée(s)`
+      + (referent ? `, référent ${referent}` : "");
   }
   return json({ code, periodeId, semainesGenerees }, 201);
 }
@@ -1837,8 +1967,9 @@ async function inscriptionParCadre(request, env, cadre, info) {
  * des champs volontairement minimaux (PAS de DDN ni de téléphone). Indique si
  * l'étudiant a déjà un stage dans un des services du cadre.
  */
-async function rechercherEtudiants(request, env, cadre) {
+async function rechercherEtudiants(request, env, cadre, info) {
   const q = (new URL(request.url).searchParams.get("q") || "").trim().toLowerCase();
+  if (info) info.detail = `« ${q} »`;
   if (q.length < 2) return json({ resultats: [] });
 
   const [students, periodesAll] = await Promise.all([
@@ -1868,6 +1999,7 @@ async function rechercherEtudiants(request, env, cadre) {
       centre: e.fields.Centre_de_formation || "",
       dansMesServices: dansMes.has(e.id),
     }));
+  if (info) info.detail = `« ${q} » — ${resultats.length} résultat(s)`;
   return json({ resultats });
 }
 
@@ -1883,8 +2015,8 @@ async function updateMailBienvenue(request, env, cadre, serviceId, info) {
     Mail_bienvenue_corps: corps,
   });
   if (info) {
-    const svc = cadre.services.find((s) => s.id === serviceId);
-    info.detail = (svc && svc.fields.Nom) || `service #${serviceId}`;
+    info.serviceId = serviceId;
+    info.detail = `objet : « ${objet || "(vide)"} », corps : ${corps.length} caractère(s)`;
   }
   return json({ ok: true, objet, corps });
 }
@@ -1979,21 +2111,71 @@ async function nomEtudiantParId(env, id) {
   return nomCompletEtudiant(rows[0]);
 }
 
+// Colonnes ajoutées automatiquement au journal, en plus des colonnes
+// historiques (Horodatage, Role, Qui, Nom, Action, Detail). Elles rendent le
+// journal filtrable dans Grist : « tout ce qui s'est passé dans tel service »,
+// « tout ce qui concerne tel étudiant ».
+const JOURNAL_COLONNES = [
+  { id: "Site", label: "Site", type: "Text" },
+  { id: "Service", label: "Service", type: "Text" },
+  { id: "Etudiant", label: "Étudiant concerné", type: "Text" },
+];
+let journalColonnesOk = false; // colonnes vérifiées une fois par isolat
+
+// Cache mémoire (par isolat) des noms de service et de site. Utilisé seulement
+// par le journal, dans le waitUntil : aucune latence pour l'utilisateur, et un
+// nom vieux de quelques minutes est sans conséquence sur une ligne de journal.
+const SERVICES_CACHE_MS = 5 * 60 * 1000;
+let servicesCache = { at: 0, byId: new Map(), byNom: new Map() };
+
+/** { service, site } d'un service désigné par son id ou par son nom.
+ *  Best-effort : renvoie des chaînes vides si Grist est indisponible. */
+async function resoudreService(env, serviceId, serviceNom) {
+  const vide = { service: serviceNom || "", site: "" };
+  if (!serviceId && !serviceNom) return { service: "", site: "" };
+  try {
+    if (Date.now() - servicesCache.at > SERVICES_CACHE_MS) {
+      const [services, sites] = await Promise.all([gristAll(env, T_SERVICES), gristAll(env, T_SITES)]);
+      const sitesById = new Map(sites.map((s) => [s.id, s]));
+      const byId = new Map();
+      const byNom = new Map();
+      for (const s of services) {
+        const info = { service: s.fields.Nom || "", site: siteName(s, sitesById) };
+        byId.set(s.id, info);
+        if (info.service) byNom.set(info.service, info);
+      }
+      servicesCache = { at: Date.now(), byId, byNom };
+    }
+  } catch {
+    return vide;
+  }
+  return (serviceId ? servicesCache.byId.get(serviceId) : servicesCache.byNom.get(serviceNom)) || vide;
+}
+
 /**
  * Écrit une ligne dans JOURNAL_ACTIVITE. Best-effort : une erreur d'écriture
  * du journal ne doit JAMAIS faire échouer la requête de l'utilisateur.
  * Via ctx.waitUntil, l'écriture se fait après l'envoi de la réponse (aucune latence).
  *
- * Si `entry.etudiantId` est fourni, le nom complet de l'étudiant concerné est
- * résolu ici (dans le waitUntil, donc sans latence) et préfixé au Detail.
+ * Champs de `entry` : role, qui, nom, action, detail, plus le contexte
+ * (résolu ici, donc sans latence) :
+ *   - `etudiantId` (ou `etudiant`) -> colonne Étudiant concerné ;
+ *   - `serviceId` (ou `service`)   -> colonnes Service et Site.
  */
 function logActivite(env, ctx, entry) {
   const p = (async () => {
-    let detail = entry.detail || "";
-    if (entry.etudiantId != null) {
-      const nom = await nomEtudiantParId(env, entry.etudiantId).catch(() => "");
-      if (nom) detail = detail ? `${nom} — ${detail}` : nom;
+    if (!journalColonnesOk) {
+      journalColonnesOk = await ensureColumns(env, T_JOURNAL, JOURNAL_COLONNES)
+        .then(() => true).catch(() => false);
     }
+    let etudiant = entry.etudiant || "";
+    if (!etudiant && entry.etudiantId != null) {
+      etudiant = await nomEtudiantParId(env, entry.etudiantId).catch(() => "");
+    }
+    // Une ligne d'étudiant concerne l'étudiant connecté : la colonne est
+    // remplie aussi pour lui, afin de filtrer un dossier d'un seul coup.
+    if (!etudiant && entry.role === "Étudiant") etudiant = entry.nom || "";
+    const { service, site } = await resoudreService(env, entry.serviceId, entry.service);
     return grist(env, "POST", `/tables/${T_JOURNAL}/records`, {
       records: [{
         fields: {
@@ -2002,7 +2184,10 @@ function logActivite(env, ctx, entry) {
           Qui: entry.qui || "",
           Nom: entry.nom || "",
           Action: entry.action || "",
-          Detail: detail,
+          Detail: cleanText(entry.detail, 300),
+          Site: site,
+          Service: service,
+          Etudiant: etudiant,
         },
       }],
     });
@@ -2014,14 +2199,69 @@ function logActivite(env, ctx, entry) {
  * Exécute une action, puis journalise si elle a réussi (sinon l'erreur remonte, pas de log).
  * `fn` reçoit un objet `info` qu'elle peut enrichir pour préciser le journal :
  *   - `info.detail` : texte libre (dates, motif, valeurs modifiées…)
- *   - `info.etudiantId` : id de l'étudiant concerné (son nom sera préfixé au Detail)
+ *   - `info.etudiantId` : id de l'étudiant concerné (colonne Étudiant concerné)
+ *   - `info.serviceId` : id du service concerné (colonnes Service et Site)
  * `detail` sert de valeur par défaut si `fn` n'enrichit rien.
  */
 async function withLog(env, ctx, who, action, detail, fn) {
-  const info = { detail: detail || "", etudiantId: undefined };
+  const info = { detail: detail || "", etudiantId: undefined, serviceId: undefined };
   const res = await fn(info);
-  logActivite(env, ctx, { ...who, action, detail: info.detail, etudiantId: info.etudiantId });
+  logActivite(env, ctx, {
+    ...who, action,
+    detail: info.detail,
+    etudiantId: info.etudiantId,
+    serviceId: info.serviceId,
+  });
   return res;
+}
+
+/** Date ISO -> JJ/MM/AAAA pour le journal ("?" si la date manque). */
+function jDate(iso) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(iso || "") ? frDateShort(iso) : "?";
+}
+
+/** Epoch Grist -> JJ/MM/AAAA pour le journal. */
+function jDateEpoch(epoch) {
+  return jDate(epochToIso(epoch));
+}
+
+/** Valeur lisible dans le journal (booléens, vides, dates epoch). */
+function jValeur(v, epoch) {
+  if (v === true) return "oui";
+  if (v === false) return "non";
+  if (v === null || v === undefined || v === "") return "(vide)";
+  return epoch ? jDateEpoch(v) : String(v);
+}
+
+/**
+ * Liste « libellé : ancien → nouveau » des champs réellement modifiés, pour
+ * que le journal dise ce qui a changé et pas seulement qu'il y a eu un
+ * changement. `labels` = { colonneGrist: "libellé" } ou { col: ["libellé", true] }
+ * pour une colonne date (epoch).
+ */
+function changementsTexte(labels, avant, apres) {
+  const out = [];
+  for (const [col, spec] of Object.entries(labels)) {
+    if (apres[col] === undefined) continue;
+    const [libelle, epoch] = Array.isArray(spec) ? spec : [spec, false];
+    const a = jValeur(avant[col], epoch);
+    const b = jValeur(apres[col], epoch);
+    if (a === b) continue;
+    out.push(`${libelle} : ${a} → ${b}`);
+  }
+  return out;
+}
+
+/** Résumé du stage d'un étudiant (payload /api/data) pour le journal. */
+function contexteStageEtudiant(payload) {
+  const periodes = (payload && payload.periodes) || [];
+  const p = periodes.find((x) => x.En_cours) || periodes[periodes.length - 1];
+  if (!p) return { detail: "aucun stage enregistré" };
+  const etat = p.En_cours ? "stage en cours" : "dernier stage";
+  return {
+    service: p.Service || "",
+    detail: `${etat} : ${jDate(p.Du)} → ${jDate(p.Au)}${p.Niveau ? ", " + p.Niveau : ""}`,
+  };
 }
 
 // Durée de conservation du journal (jours). Au-delà, les lignes sont purgées.

@@ -13,6 +13,20 @@ if (urlCode) {
   // On pré-remplit le code ; l'étudiant confirme avec l'e-mail de son dossier.
   const el = document.getElementById("login-code");
   if (el) el.value = urlCode.trim().toUpperCase();
+  // Le formulaire n'est plus le premier bloc de la page d'accueil : quand il
+  // est hors écran (affichage empilé), on amène directement dessus. Rejoué au
+  // "load" car les polices et le logo de l'établissement, chargés après coup,
+  // déplacent la cible ; sans effet si le bloc est déjà à l'écran.
+  const amenerAuFormulaire = () => {
+    const bloc = document.getElementById("connexion");
+    if (bloc && bloc.getBoundingClientRect().top > window.innerHeight * 0.6) {
+      bloc.scrollIntoView();
+    }
+  };
+  amenerAuFormulaire();
+  window.addEventListener("load", amenerAuFormulaire);
+  const mail = document.getElementById("login-email");
+  if (mail) mail.focus({ preventScroll: true });
 }
 
 const state = {
@@ -640,7 +654,9 @@ function formatH(hours) {
 /* ------------------------------------------------------------------ */
 
 if (state.code) {
-  api("GET", "/api/data")
+  // ?vue=1 : ouverture de l'espace (journalisée). Les refresh() qui suivent une
+  // action appellent /api/data sans ce marqueur : l'action est déjà tracée.
+  api("GET", "/api/data?vue=1")
     .then((data) => { state.data = data; enterApp(); })
     .catch(() => { sessionStorage.clear(); state.code = null; });
 }

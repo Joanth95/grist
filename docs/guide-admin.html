@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mode d'emploi — Administrateurs</title>
   <script src="theme.js?v=1"></script>
-  <link rel="stylesheet" href="styles.css?v=25">
-  <link rel="stylesheet" href="theme-modern.css?v=2">
+  <link rel="stylesheet" href="styles.css?v=26">
+  <link rel="stylesheet" href="theme-modern.css?v=3">
   <script src="config.js?v=21"></script>
   <style>
     .guide-wrap{max-width:860px;margin:auto;padding:0 1rem}
@@ -136,7 +136,11 @@
     <section class="guide-section" id="journal">
       <h2>8. Journal d'activité</h2>
       <p>Table <span class="code">JOURNAL_ACTIVITE</span> : le Worker y consigne automatiquement les connexions et actions des étudiants et des cadres (colonnes <span class="code">Horodatage</span>, <span class="code">Role</span>, <span class="code">Qui</span>, <span class="code">Nom</span>, <span class="code">Action</span>, <span class="code">Detail</span>). Utile pour comprendre « qui a fait quoi » en cas de question.</p>
+      <p>Trois colonnes complètent la ligne et rendent le journal <strong>filtrable</strong> dans Grist : <span class="code">Site</span>, <span class="code">Service</span> et <span class="code">Etudiant</span> (l'étudiant concerné par l'action). Elles sont <strong>créées automatiquement</strong> à la première écriture — si elles n'apparaissent pas dans une vue existante, ajoutez-les avec le sélecteur de colonnes du widget.</p>
       <ul>
+        <li>Le <span class="code">Detail</span> dit ce qui a réellement changé : <em>« Mardi 14/07/2026 : MAT → AS »</em>, <em>« tuteur : (vide) → Mme MARTIN · fin : 14/08/2026 → 21/08/2026 »</em>, <em>« Rattrapage du 15/07/2026, 08:00–12:00 — validée »</em>.</li>
+        <li>Les lignes <em>Consultation de l'espace cadre</em> indiquent le <strong>service réellement affiché</strong> (et l'onglet), pas la liste des services auxquels le cadre a accès. Chaque couple service/onglet n'est journalisé qu'une fois par session, et un simple rafraîchissement d'écran après une action ne crée plus de ligne en double.</li>
+        <li>L'ouverture du <strong>planning personnel d'un étudiant</strong> par un cadre est tracée nommément (<em>Consultation d'un dossier étudiant</em>), tout comme les <strong>auto-inscriptions</strong> depuis la page « entrée en stage ».</li>
         <li>L'écriture est en <em>best-effort</em> : un échec du journal ne bloque jamais l'utilisateur ;</li>
         <li>Les lignes de plus de <strong>30 jours</strong> sont purgées automatiquement (à chaque connexion, par lots) — pas d'entretien manuel à prévoir.</li>
         <li>Les actions sensibles y sont tracées, notamment la <strong>suppression d'une période</strong> par un cadre (bouton « Supprimer cette période » dans un dossier étudiant) : elle retire en cascade la période, son planning hebdomadaire et ses rendez-vous. Les semaines de planning devenues <strong>orphelines</strong> (période disparue) et vieilles de plus de 30 jours sont elles aussi purgées automatiquement.</li>
