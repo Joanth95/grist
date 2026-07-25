@@ -27,12 +27,18 @@
  *   POST   /api/periodes       { Service, Niveau, Du, Au } -> nouvelle période de stage (même étudiant)
  *   PATCH  /api/profil  { Numero_de_telephone?, Adresse_mail? } -> modifie ses coordonnées
  *
- * Espace cadre (email + code d'accès personnel dans X-Cadre-Email / X-Cadre-Code,
- * UTILISATEURS.Code_acces) : un cadre voit/modifie les services dont il est le
- * cadre principal (SERVICES.Cadre_ref), ceux où il figure en cadre secondaire
+ * Espace cadre : un cadre voit/modifie les services dont il est le cadre
+ * principal (SERVICES.Cadre_ref), ceux où il figure en cadre secondaire
  * (SERVICES.Cadres_secondaires, liste de références) et, s'il est le CSS du pôle
  * (Pole.CSS, exposé par la formule SERVICES.Pole_CSS), tous les services du pôle.
- *   POST   /api/cadre/login    { email, code }         -> payload des services du cadre
+ *
+ * Authentification en deux temps :
+ *   - la CONNEXION seule accepte email + code d'accès (UTILISATEURS.Code_acces)
+ *     et exige le code PIN personnel ;
+ *   - toutes les autres routes exigent le jeton de session délivré par la
+ *     connexion (en-tête X-Cadre-Session). Le code d'accès seul n'ouvre donc
+ *     plus aucune donnée : sans PIN valide, pas de jeton.
+ *   POST   /api/cadre/login    { email, code, pin }    -> { session, ...payload des services }
  *   GET    /api/cadre/data                             -> payload complet (rafraîchissement)
  *   POST   /api/cadre/vue  { serviceId, onglet, etudiantId? } -> journalise ce qui est réellement
  *                                                                affiché (service, onglet, dossier)
@@ -111,7 +117,10 @@ export default {
       if (!err.status) console.error(err);
       return new Response(JSON.stringify({ error: err.publicMessage || "Erreur interne du serveur" }), {
         status,
-        headers: { ...JSON_HEADERS, ...cors },
+        headers: {
+          ...JSON_HEADERS, ...cors,
+          ...(err.retryAfter ? { "Retry-After": String(err.retryAfter) } : {}),
+        },
       });
     }
   },
@@ -128,16 +137,57 @@ function corsHeaders(env, request) {
     "Access-Control-Allow-Origin": allowOrigin,
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, X-Student-Code, X-Student-Email, X-Cadre-Email, X-Cadre-Code",
+    "Access-Control-Allow-Headers": "Content-Type, X-Student-Code, X-Student-Email, X-Cadre-Session",
     "Access-Control-Max-Age": "86400",
   };
 }
 
-function httpError(status, publicMessage) {
+function httpError(status, publicMessage, retryAfter) {
   const err = new Error(publicMessage);
   err.status = status;
   err.publicMessage = publicMessage;
+  if (retryAfter) err.retryAfter = retryAfter;
   return err;
+}
+
+/* ------------------------------------------------------------------ */
+/* Limitation de débit                                                 */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Deux protections complémentaires contre les essais en série (le code
+ * anonymat est court et prévisible, le PIN cadre ne fait que 4 à 6 chiffres) :
+ *
+ *  1. ce compteur en mémoire, immédiat et sans dépendance, mais propre à
+ *     chaque isolat Cloudflare : il arrête un déluge sans rien garantir face
+ *     à un attaquant qui répartit ses essais ;
+ *  2. le verrouillage du PIN cadre, écrit dans Grist (voir verrouPin) : lui
+ *     est global et persistant, et c'est la vraie barrière sur le PIN.
+ */
+const seaux = new Map();
+
+/** Compte une tentative ; lève 429 au-delà de `max` dans la fenêtre donnée. */
+function limiterDebit(cle, max, fenetreSecondes, message) {
+  const maintenant = Date.now();
+  // Ménage : sans lui la carte grandirait indéfiniment dans un isolat de longue vie.
+  if (seaux.size > 5000) {
+    for (const [k, s] of seaux) if (s.expire <= maintenant) seaux.delete(k);
+  }
+  const seau = seaux.get(cle);
+  if (!seau || seau.expire <= maintenant) {
+    seaux.set(cle, { expire: maintenant + fenetreSecondes * 1000, n: 1 });
+    return;
+  }
+  seau.n++;
+  if (seau.n > max) {
+    const secondes = Math.max(1, Math.ceil((seau.expire - maintenant) / 1000));
+    throw httpError(429, message || `Trop de tentatives : réessayez dans ${secondes} seconde(s).`, secondes);
+  }
+}
+
+/** Identifie l'appelant : IP réelle fournie par Cloudflare, sinon repli global. */
+function ipAppelant(request) {
+  return request.headers.get("CF-Connecting-IP") || "inconnue";
 }
 
 async function route(request, env, ctx) {
@@ -154,10 +204,19 @@ async function route(request, env, ctx) {
     return listServices(env);
   }
   if (request.method === "POST" && path === "/api/inscription") {
+    // Endpoint public qui crée un dossier, une période et jusqu'à 30 semaines
+    // de planning : sans frein, il remplirait la base en quelques minutes.
+    limiterDebit(`inscription:${ipAppelant(request)}`, 5, 600,
+      "Trop d'inscriptions envoyées depuis cet appareil : patientez quelques minutes.");
     return inscription(request, env, ctx);
   }
   if (request.method === "POST" && path === "/api/login") {
     const body = await request.json().catch(() => ({}));
+    const ip = ipAppelant(request);
+    limiterDebit(`login:${ip}`, 15, 60);
+    // Second seau par code visé : empêche de balayer les codes possibles depuis
+    // plusieurs appareils, et de s'acharner sur un dossier précis.
+    limiterDebit(`login:code:${normalizeCode(body.code) || ip}`, 8, 60);
     const student = await authenticateCode(env, body.code, body.email);
     const payload = await buildPayload(env, student);
     logActivite(env, ctx, {
@@ -173,6 +232,9 @@ async function route(request, env, ctx) {
   }
   if (request.method === "POST" && path === "/api/cadre/login") {
     const body = await request.json().catch(() => ({}));
+    const ipCadre = ipAppelant(request);
+    limiterDebit(`cadre:${ipCadre}`, 15, 60);
+    limiterDebit(`cadre:compte:${String(body.email || "").trim().toLowerCase() || ipCadre}`, 10, 60);
     const cadre = await authenticateCadre(env, body.email, body.code);
 
     // Accès administrateur : une clé secrète forte (env.ADMIN_KEY) permet de se
@@ -188,7 +250,10 @@ async function route(request, env, ctx) {
       await ensureColumns(env, T_UTILISATEURS, [
         { id: "PIN_hash", label: "PIN (haché)", type: "Text" },
         { id: "Reinit_PIN", label: "Réinitialiser le PIN", type: "Bool" },
+        { id: "PIN_essais", label: "PIN — essais manqués", type: "Int" },
+        { id: "PIN_bloque_jusqu_a", label: "PIN — bloqué jusqu'à", type: "Int" },
       ]);
+      verifierVerrouPin(cadre);
       const pin = typeof body.pin === "string" ? body.pin.trim() : "";
       const storedPin = (cadre.fields.PIN_hash || "").trim();
       const resetDemande = cadre.fields.Reinit_PIN === true;
@@ -202,13 +267,21 @@ async function route(request, env, ctx) {
         const fields = { PIN_hash: await hashPin(pin) };
         if (resetDemande) fields.Reinit_PIN = false; // consomme la demande de reset
         await gristUpdate(env, T_UTILISATEURS, cadre.rowId, fields);
+        // Le jeton scelle l'empreinte des secrets du compte : elle doit refléter
+        // ce qui vient d'être écrit, sinon la session serait rejetée d'emblée.
+        Object.assign(cadre.fields, fields);
       } else {
         if (!pin) throw httpError(401, "Code PIN requis");
-        if (!(await verifyPin(pin, storedPin))) throw httpError(401, "Code PIN incorrect");
+        if (!(await verifyPin(pin, storedPin))) {
+          await noterEchecPin(env, cadre);
+          throw httpError(401, "Code PIN incorrect");
+        }
+        await reinitialiserVerrouPin(env, cadre);
       }
     }
 
     const payload = await buildCadrePayload(env, cadre);
+    payload.session = await creerSessionCadre(env, cadre);
     logActivite(env, ctx, {
       role: "Cadre",
       qui: (cadre.fields.Email || "").trim(),
@@ -223,11 +296,8 @@ async function route(request, env, ctx) {
   }
   // --- Endpoints cadre authentifiés ---
   if (path.startsWith("/api/cadre/")) {
-    const cadre = await authenticateCadre(
-      env,
-      request.headers.get("X-Cadre-Email"),
-      request.headers.get("X-Cadre-Code")
-    );
+    // Jeton de session uniquement : le code d'accès seul n'ouvre rien ici.
+    const cadre = await authenticateCadreSession(env, request.headers.get("X-Cadre-Session"));
     const who = {
       role: "Cadre",
       qui: (cadre.fields.Email || "").trim(),
@@ -350,6 +420,10 @@ async function route(request, env, ctx) {
       (info) => deleteSortie(env, student, Number(m[1]), info));
   }
   if (request.method === "POST" && path === "/api/periodes") {
+    // Chaque période crée jusqu'à 30 semaines de planning : on borne la casse
+    // qu'un compte compromis (ou un script en boucle) pourrait faire.
+    limiterDebit(`periode:${student.code}`, 5, 3600,
+      "Vous avez enregistré plusieurs stages coup sur coup : patientez avant d'en ajouter un autre.");
     return withLog(env, ctx, whoE, "Nouvelle période de stage", "",
       (info) => creerPeriodeEtudiant(request, env, student, info));
   }
@@ -374,21 +448,38 @@ function normalizeCode(code) {
 }
 
 async function authenticateCode(env, rawCode, rawEmail) {
+  // Message unique pour tous les échecs : un message différent selon que le
+  // code existe, qu'il lui manque l'e-mail ou que l'e-mail est faux permettrait
+  // de reconnaître les codes valides en les essayant un par un.
+  const invalide = () => httpError(401, "Code anonymat ou adresse e-mail incorrect");
+
   const code = normalizeCode(rawCode);
-  if (!code) throw httpError(401, "Code anonymat invalide");
-  const records = await gristFilter(env, T_ETUDIANTS, { Anonymat: [code] });
-  if (records.length !== 1) throw httpError(401, "Code anonymat invalide");
-  const student = { rowId: records[0].id, code, fields: records[0].fields };
+  if (!code) throw invalide();
+  let records = await gristFilter(env, T_ETUDIANTS, { Anonymat: [code] });
+  if (!records.length) throw invalide();
+  if (records.length > 1) {
+    // Deux dossiers peuvent partager un code (homonymes nés le même jour) :
+    // l'e-mail les départage, faute de quoi les deux étudiants se retrouvaient
+    // bloqués. S'il ne tranche pas, l'administrateur doit corriger les dossiers.
+    const fourni = (typeof rawEmail === "string" ? rawEmail : "").trim().toLowerCase();
+    records = fourni
+      ? records.filter((r) => (r.fields.Adresse_mail || "").trim().toLowerCase() === fourni)
+      : [];
+    if (records.length !== 1) {
+      console.error(`Code anonymat ${code} partagé par plusieurs dossiers : connexion impossible`);
+      throw invalide();
+    }
+  }
+  // `deuxiemeFacteur` : vrai seulement si l'e-mail du dossier a été prouvé.
+  const student = { rowId: records[0].id, code, fields: records[0].fields, deuxiemeFacteur: false };
 
   // 2ᵉ facteur : l'e-mail du dossier. Vérifié seulement si un e-mail y figure
   // (les dossiers sans e-mail restent accessibles au seul code, pas de blocage).
   const dossierEmail = (student.fields.Adresse_mail || "").trim().toLowerCase();
   if (dossierEmail) {
     const provided = (typeof rawEmail === "string" ? rawEmail : "").trim().toLowerCase();
-    if (!provided) throw httpError(401, "Adresse e-mail requise (celle de votre dossier)");
-    if (provided !== dossierEmail) {
-      throw httpError(401, "L'adresse e-mail ne correspond pas à celle de votre dossier");
-    }
+    if (!provided || provided !== dossierEmail) throw invalide();
+    student.deuxiemeFacteur = true;
   }
   return student;
 }
@@ -447,6 +538,130 @@ async function verifyPin(pin, stored) {
   return diff === 0;
 }
 
+/* ------------------------------------------------------------------ */
+/* Verrouillage du PIN après essais infructueux                        */
+/* ------------------------------------------------------------------ */
+
+// Un PIN de 4 chiffres, c'est 10 000 possibilités : sans verrou, elles se
+// parcourent. Le compteur vit dans Grist (colonnes PIN_essais et
+// PIN_bloque_jusqu_a, créées automatiquement), donc il est commun à tous les
+// isolats Cloudflare et survit aux redémarrages — contrairement au limiteur en
+// mémoire, qu'un attaquant réparti contournerait.
+// À savoir : quelqu'un qui connaît l'e-mail ET le code d'accès d'un cadre peut
+// ainsi le bloquer 15 minutes en saisissant de faux PIN. C'est le prix de la
+// protection ; la clé administrateur, elle, n'est jamais bloquée et permet de
+// dépanner immédiatement.
+const PIN_ESSAIS_MAX = 5;
+const PIN_BLOCAGE_SECONDES = 15 * 60;
+
+/** Lève 429 tant que le compte est sous verrou. */
+function verifierVerrouPin(cadre) {
+  const reste = (Number(cadre.fields.PIN_bloque_jusqu_a) || 0) - Math.floor(Date.now() / 1000);
+  if (reste > 0) {
+    throw httpError(429, `Trop de codes PIN erronés : ce compte est bloqué pendant encore `
+      + `${Math.ceil(reste / 60)} minute(s). En cas d'urgence, contactez l'administrateur.`, reste);
+  }
+}
+
+/** Enregistre un PIN erroné et verrouille le compte au-delà du seuil. */
+async function noterEchecPin(env, cadre) {
+  const essais = (Number(cadre.fields.PIN_essais) || 0) + 1;
+  const fields = essais >= PIN_ESSAIS_MAX
+    ? { PIN_essais: 0, PIN_bloque_jusqu_a: Math.floor(Date.now() / 1000) + PIN_BLOCAGE_SECONDES }
+    : { PIN_essais: essais };
+  // Best-effort : si Grist refuse l'écriture, on ne transforme pas une panne de
+  // journalisation en refus de connexion (le limiteur en mémoire reste actif).
+  await gristUpdate(env, T_UTILISATEURS, cadre.rowId, fields).catch(() => {});
+  Object.assign(cadre.fields, fields);
+  verifierVerrouPin(cadre); // annonce le blocage dès l'essai qui le déclenche
+}
+
+/** Remet les compteurs à zéro après une connexion réussie. */
+async function reinitialiserVerrouPin(env, cadre) {
+  if (!cadre.fields.PIN_essais && !cadre.fields.PIN_bloque_jusqu_a) return;
+  const fields = { PIN_essais: 0, PIN_bloque_jusqu_a: 0 };
+  await gristUpdate(env, T_UTILISATEURS, cadre.rowId, fields).catch(() => {});
+  Object.assign(cadre.fields, fields);
+}
+
+/* ------------------------------------------------------------------ */
+/* Session cadre : jeton signé (HMAC-SHA256), délivré par la connexion  */
+/* ------------------------------------------------------------------ */
+
+// Durée de vie d'une session cadre. Le jeton vit dans le sessionStorage du
+// navigateur (donc au plus le temps de l'onglet) ; cette borne serveur limite
+// en plus la fenêtre d'utilisation d'un jeton qui aurait fuité.
+const SESSION_TTL_SECONDES = 12 * 3600;
+
+// Clé de signature. SESSION_SECRET si l'installation en définit un (recommandé :
+// npx wrangler secret put SESSION_SECRET) ; à défaut, dérivée de la clé API
+// Grist, qui est déjà un secret du Worker — ainsi la protection fonctionne sans
+// configuration supplémentaire. Conséquence à connaître : changer le secret
+// utilisé invalide toutes les sessions en cours (les cadres se reconnectent).
+async function sessionKey(env) {
+  const secret = (env.SESSION_SECRET || env.GRIST_API_KEY || "").trim();
+  if (!secret) throw httpError(500, "Configuration du serveur incomplète");
+  return crypto.subtle.importKey(
+    "raw", new TextEncoder().encode("espace-cadre-session|" + secret),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+}
+
+function b64urlDepuisBytes(bytes) {
+  return bytesToB64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64urlDepuisTexte(texte) {
+  return b64urlDepuisBytes(new TextEncoder().encode(texte));
+}
+function texteDepuisB64url(s) {
+  const b64 = String(s).replace(/-/g, "+").replace(/_/g, "/");
+  const pad = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+  return new TextDecoder().decode(b64ToBytes(pad));
+}
+
+async function signer(env, donnees) {
+  const key = await sessionKey(env);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(donnees));
+  return b64urlDepuisBytes(new Uint8Array(sig));
+}
+
+/**
+ * Empreinte des secrets du compte (code d'accès + PIN). Elle est enfermée dans
+ * le jeton : changer le code d'accès, changer le PIN ou cocher « Réinitialiser
+ * le PIN » dans Grist coupe immédiatement les sessions ouvertes.
+ */
+async function empreinteCadre(fields) {
+  const base = [(fields.Code_acces || "").trim(), (fields.PIN_hash || "").trim(),
+    fields.Reinit_PIN === true ? "1" : "0"].join("|");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(base));
+  return b64urlDepuisBytes(new Uint8Array(digest)).slice(0, 22);
+}
+
+/** Jeton de session : "<payload b64url>.<signature b64url>". */
+async function creerSessionCadre(env, cadre) {
+  const payload = b64urlDepuisTexte(JSON.stringify({
+    u: cadre.rowId,
+    fp: await empreinteCadre(cadre.fields),
+    exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDES,
+  }));
+  return `${payload}.${await signer(env, payload)}`;
+}
+
+/** Contenu d'un jeton valide (signature + expiration), null sinon. */
+async function lireSessionCadre(env, jeton) {
+  const parts = String(jeton || "").split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+  if (!safeEqual(parts[1], await signer(env, parts[0]))) return null;
+  let payload;
+  try {
+    payload = JSON.parse(texteDepuisB64url(parts[0]));
+  } catch {
+    return null;
+  }
+  if (!payload || !Number.isInteger(payload.u) || payload.u <= 0) return null;
+  if (!(payload.exp > Math.floor(Date.now() / 1000))) return null;
+  return payload;
+}
+
 /** Comparaison de chaînes à temps constant (évite les attaques temporelles). */
 function safeEqual(a, b) {
   if (typeof a !== "string" || typeof b !== "string") return false;
@@ -487,7 +702,11 @@ function refIds(value) {
   return [];
 }
 
-/** Authentifie un cadre par email + code d'accès personnel (UTILISATEURS.Code_acces). */
+/**
+ * Authentifie un cadre par email + code d'accès personnel (UTILISATEURS.Code_acces).
+ * RÉSERVÉ À LA CONNEXION, qui vérifie ensuite le code PIN : toutes les autres
+ * routes exigent le jeton de session (authenticateCadreSession).
+ */
 async function authenticateCadre(env, rawEmail, rawCode) {
   const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : "";
   const code = typeof rawCode === "string" ? rawCode.trim() : "";
@@ -496,9 +715,30 @@ async function authenticateCadre(env, rawEmail, rawCode) {
   const users = await gristAll(env, T_UTILISATEURS);
   const match = users.find(
     (u) => (u.fields.Email || "").trim().toLowerCase() === email
-      && (u.fields.Code_acces || "").trim() === code
+      && safeEqual((u.fields.Code_acces || "").trim(), code)
   );
   if (!match) throw httpError(401, "Email ou code d'accès invalide");
+  return chargerCadre(env, match);
+}
+
+/**
+ * Authentifie un cadre par le jeton de session délivré à la connexion
+ * (en-tête X-Cadre-Session). Le compte est relu à chaque requête : une
+ * désactivation, un changement de code d'accès ou de PIN prend effet
+ * immédiatement, sans attendre l'expiration du jeton.
+ */
+async function authenticateCadreSession(env, jeton) {
+  const expiree = () => httpError(401, "Session expirée : reconnectez-vous");
+  const payload = await lireSessionCadre(env, jeton);
+  if (!payload) throw expiree();
+  const rows = await gristFilter(env, T_UTILISATEURS, { id: [payload.u] });
+  if (!rows.length) throw expiree();
+  if (!safeEqual(payload.fp, await empreinteCadre(rows[0].fields))) throw expiree();
+  return chargerCadre(env, rows[0]);
+}
+
+/** Contexte d'un cadre authentifié : compte actif + services qui lui sont ouverts. */
+async function chargerCadre(env, match) {
   if (!match.fields.Utilisateur_de_l_outil) {
     throw httpError(403, "Ce compte a été désactivé : contactez l'administrateur");
   }
@@ -600,6 +840,9 @@ async function buildPayload(env, student) {
       nom: student.fields.NOM || "",
       telephone: student.fields.Numero_de_telephone || "",
       email: student.fields.Adresse_mail || "",
+      // L'e-mail n'est modifiable que par qui l'a déjà prouvé à la connexion
+      // (voir updateProfilEtudiant) : le front grise le champ sinon.
+      emailModifiable: student.deuxiemeFacteur === true,
     },
     motifs: MOTIFS,
     periodes: periodes.map((p) => {
@@ -991,13 +1234,12 @@ async function creerSortiePourEtudiant(request, env, cadre, info) {
   const fin = String(body.Heure_fin || "").trim();
 
   if (!MOTIFS.includes(motif)) throw httpError(400, "Motif invalide");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw httpError(400, "Date invalide");
+  const dateEpoch = exigerDate(date, "Date");
   if (!TIME_RE.test(debut) || !TIME_RE.test(fin)) {
     throw httpError(400, "Heures invalides (format attendu : HH:MM)");
   }
 
   const compteStage = motif.toUpperCase() === "RETARD" ? false : body.Compte_stage !== false;
-  const dateEpoch = Date.parse(date + "T00:00:00Z") / 1000;
 
   const fields = {
     Anonymat: periode.fields.Etudiant,
@@ -1045,10 +1287,7 @@ async function validerSortie(request, env, cadre, rowId, info) {
     fields.Motif = motif;
   }
   if (body.Commentaire !== undefined) fields.Motif_ou_Commentaire = cleanText(body.Commentaire, 200);
-  if (body.Date !== undefined) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(body.Date)) throw httpError(400, "Date invalide");
-    fields.Date = Date.parse(body.Date + "T00:00:00Z") / 1000;
-  }
+  if (body.Date !== undefined) fields.Date = exigerDate(body.Date, "Date");
   if (body.Heure_debut !== undefined) {
     if (!TIME_RE.test(body.Heure_debut)) throw httpError(400, "Heure de début invalide (format HH:MM)");
     fields.Heure_debut = body.Heure_debut;
@@ -1092,6 +1331,13 @@ async function validerSortie(request, env, cadre, rowId, info) {
 /** Délai de grâce (jours) après la fin d'un stage avant verrouillage du
  *  planning et des rendez-vous. Même valeur côté espace-cadre.js. */
 const JOURS_VERROU_PLANNING = 5;
+
+/** Vrai si le stage appartient au passé — ni en cours, ni à venir. */
+function periodeTerminee(fields) {
+  if (fields.En_cours) return false;
+  if (typeof fields.Au !== "number") return false;
+  return epochToIso(fields.Au) < epochToIso(Math.floor(Date.now() / 1000));
+}
 
 /** Refuse la modification si le stage est terminé depuis plus de
  *  JOURS_VERROU_PLANNING jours (Au est un epoch à minuit UTC). */
@@ -1158,12 +1404,13 @@ async function updatePeriode(request, env, cadre, periodeId, info) {
     throw httpError(403, "Cet étudiant n'appartient pas à l'un de vos services");
   }
 
-  // La fiche (tuteur/niveau/dates) d'un stage déjà terminé ne se modifie
-  // plus : seul le stage en cours (En_cours, formule Grist Du <= aujourd'hui
-  // <= Au) reste éditable. Evaluation_envoyee reste modifiable même après la fin.
+  // La fiche (tuteur/niveau/dates) d'un stage TERMINÉ ne se modifie plus.
+  // Un stage à venir, lui, reste éditable : c'est justement avant qu'il commence
+  // qu'on corrige des dates saisies de travers. Evaluation_envoyee reste
+  // modifiable dans tous les cas (elle s'envoie après la fin du stage).
   const modifieLaFiche = body.Tuteur !== undefined || body.Niveau !== undefined
     || body.Du !== undefined || body.Au !== undefined;
-  if (modifieLaFiche && !rows[0].fields.En_cours) {
+  if (modifieLaFiche && periodeTerminee(rows[0].fields)) {
     throw httpError(403, "Ce stage est terminé : sa fiche ne peut plus être modifiée");
   }
 
@@ -1173,19 +1420,16 @@ async function updatePeriode(request, env, cadre, periodeId, info) {
     if (!NIVEAUX.includes(body.Niveau)) throw httpError(400, "Niveau invalide");
     fields.Niveau = body.Niveau;
   }
-  if (body.Du !== undefined) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(body.Du)) throw httpError(400, "Date de début invalide");
-    fields.Du = Date.parse(body.Du + "T00:00:00Z") / 1000;
-  }
-  if (body.Au !== undefined) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(body.Au)) throw httpError(400, "Date de fin invalide");
-    fields.Au = Date.parse(body.Au + "T00:00:00Z") / 1000;
-  }
+  if (body.Du !== undefined) fields.Du = exigerDate(body.Du, "Date de début");
+  if (body.Au !== undefined) fields.Au = exigerDate(body.Au, "Date de fin");
   if (body.Evaluation_envoyee !== undefined) fields.Evaluation_envoyee = !!body.Evaluation_envoyee;
   const du = fields.Du !== undefined ? fields.Du : rows[0].fields.Du;
   const au = fields.Au !== undefined ? fields.Au : rows[0].fields.Au;
-  if (typeof du === "number" && typeof au === "number" && du > au) {
-    throw httpError(400, "La fin du stage doit être après le début");
+  if (typeof du === "number" && typeof au === "number") {
+    if (du > au) throw httpError(400, "La fin du stage doit être après le début");
+    // Contrôle de durée seulement si les dates changent : une période plus
+    // longue déjà enregistrée reste modifiable sur ses autres champs.
+    if (fields.Du !== undefined || fields.Au !== undefined) verifierDureeStage(du, au);
   }
   if (!Object.keys(fields).length) throw httpError(400, "Aucune modification fournie");
 
@@ -1265,11 +1509,11 @@ async function creerRdv(request, env, cadre, info) {
   const type = cleanText(body.Type_de_rendez_vous, 80);
   const date = String(body.Date_rdv || "");
   if (!type) throw httpError(400, "Le type de rendez-vous est obligatoire");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw httpError(400, "Date de rendez-vous invalide");
+  const dateRdv = exigerDate(date, "Date de rendez-vous");
 
   const fields = {
     Periode: periodeId,
-    Date_rdv: Date.parse(date + "T00:00:00Z") / 1000,
+    Date_rdv: dateRdv,
     Type_de_rendez_vous: type,
     Formateur: cleanText(body.Formateur, 80),
     Commentaire: cleanText(body.Commentaire, 300),
@@ -1414,9 +1658,14 @@ async function changePin(request, env, cadre, info) {
     throw httpError(400, "Le nouveau PIN doit comporter 4 à 6 chiffres");
   }
   await ensureColumn(env, T_UTILISATEURS, "PIN_hash", "PIN (haché)");
-  await gristUpdate(env, T_UTILISATEURS, cadre.rowId, { PIN_hash: await hashPin(next) });
+  const fields = { PIN_hash: await hashPin(next) };
+  await gristUpdate(env, T_UTILISATEURS, cadre.rowId, fields);
   if (info) info.detail = "PIN modifié";
-  return json({ ok: true });
+  // Changer le PIN change l'empreinte du compte, donc invalide le jeton en
+  // cours (et ceux d'éventuelles autres sessions) : on en délivre un nouveau
+  // pour que le cadre reste connecté là où il vient d'agir.
+  Object.assign(cadre.fields, fields);
+  return json({ ok: true, session: await creerSessionCadre(env, cadre) });
 }
 
 /** Le cadre modifie son propre numéro de téléphone (UTILISATEURS.Telephone). */
@@ -1443,10 +1692,22 @@ async function updateProfilEtudiant(request, env, student, info) {
   }
   if (body.Adresse_mail !== undefined) {
     const email = cleanText(body.Adresse_mail, 120);
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw httpError(400, "Adresse mail invalide");
-    fields.Adresse_mail = email;
-    details.push(`e-mail : ${email || "(vidé)"}`);
+    const actuel = (student.fields.Adresse_mail || "").trim();
+    // L'e-mail du dossier EST le 2ᵉ facteur : on ne peut le poser ou le changer
+    // qu'après l'avoir prouvé. Sans cette règle, quiconque devine le code d'un
+    // dossier dépourvu d'e-mail y inscrit le sien et en verrouille l'accès au
+    // détriment de l'étudiant. Le téléphone, lui, reste librement modifiable.
+    if (email !== actuel) {
+      if (!student.deuxiemeFacteur) {
+        throw httpError(403, "L'adresse e-mail de votre dossier ne peut pas être ajoutée ni "
+          + "modifiée depuis cet écran : demandez-le à votre cadre de santé.");
+      }
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw httpError(400, "Adresse mail invalide");
+      fields.Adresse_mail = email;
+      details.push(`e-mail : ${email || "(vidé)"}`);
+    }
   }
+  if (!Object.keys(fields).length) return json({ ok: true, sansChangement: true });
   await gristUpdate(env, T_ETUDIANTS, student.rowId, fields);
   if (info) info.detail = details.join(" · ");
   return json({ ok: true, telephone: fields.Numero_de_telephone, email: fields.Adresse_mail });
@@ -1584,12 +1845,37 @@ function computeAlertesPeriode(periodeId, semaines, codesById, duIso, auIso) {
   return alertes;
 }
 
-/** Nombre de jours fériés (ISO) compris dans l'intervalle [du, au] (epoch). */
+/**
+ * Nombre de jours fériés compris dans [du, au] (epoch) qui tombent un jour
+ * ouvré (lundi-vendredi).
+ *
+ * Chaque férié compté retire 7 h du volume à réaliser, au motif qu'il fait
+ * perdre un jour de stage. Un férié tombant un samedi ou un dimanche n'en fait
+ * perdre aucun : le compter allégeait indûment les heures dues par l'étudiant.
+ */
 function nombreFeries(feriesIso, duEpoch, auEpoch) {
   if (typeof duEpoch !== "number" || typeof auEpoch !== "number") return 0;
   const duIso = epochToIso(duEpoch);
   const auIso = epochToIso(auEpoch);
-  return feriesIso.filter((iso) => iso >= duIso && iso <= auIso).length;
+  return feriesIso.filter((iso) => {
+    if (iso < duIso || iso > auIso) return false;
+    const jour = new Date(iso + "T00:00:00Z").getUTCDay(); // 0 = dimanche, 6 = samedi
+    return jour !== 0 && jour !== 6;
+  }).length;
+}
+
+/**
+ * Vérifie qu'un dossier trouvé par son code anonymat désigne bien la personne
+ * qui s'inscrit. Le code ne retient que les initiales et la date de naissance :
+ * deux étudiants peuvent le partager. Sans ce contrôle, le stage du second
+ * venait s'ajouter au dossier du premier, silencieusement.
+ */
+function memeIdentite(dossier, nom, prenom, ddnEpoch) {
+  const norm = (s) => String(s || "").trim().toLowerCase();
+  const f = dossier.fields || {};
+  if (norm(f.NOM) === norm(nom) && norm(f.PRENOM) === norm(prenom) && f.DDN === ddnEpoch) return;
+  throw httpError(409, "Un autre dossier porte déjà le même code d'accès (mêmes initiales et "
+    + "même date de naissance). Contactez le cadre du service, qui créera votre dossier.");
 }
 
 /** Coordonnées du cadre responsable d'un service (nom, email, téléphone). */
@@ -1620,8 +1906,11 @@ async function createSortie(request, env, student, info) {
   const debut = String(body.Heure_debut || "").trim();
   const fin = String(body.Heure_fin || "").trim();
 
-  if (!motif) throw httpError(400, "Le motif est obligatoire");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw httpError(400, "Date invalide");
+  // Même contrainte que la déclaration saisie par le cadre : le motif porte le
+  // TYPE (la formule Grist Ajustement_h y reconnaît « Retard »), la précision
+  // libre de l'étudiant va dans Motif_ou_Commentaire.
+  if (!MOTIFS.includes(motif)) throw httpError(400, "Motif invalide");
+  const dateEpoch = exigerDate(date, "Date");
   if (!TIME_RE.test(debut) || !TIME_RE.test(fin)) {
     throw httpError(400, "Heures invalides (format attendu : HH:MM)");
   }
@@ -1630,7 +1919,6 @@ async function createSortie(request, env, student, info) {
   // comme heures de stage sauf refus explicite.
   const compteStage = motif.toUpperCase() === "RETARD" ? false : body.Compte_stage !== false;
 
-  const dateEpoch = Date.parse(date + "T00:00:00Z") / 1000;
   const periode = await choisirPeriode(env, student, dateEpoch);
   const periodeId = periode ? periode.id : null;
 
@@ -1705,17 +1993,16 @@ async function creerPeriodeEtudiant(request, env, student, info) {
   const au = String(body.Au || "");
   const niveau = NIVEAUX.includes(body.Niveau) ? body.Niveau : "";
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(du) || !/^\d{4}-\d{2}-\d{2}$/.test(au)) {
-    throw httpError(400, "Dates de stage invalides");
-  }
-  if (du > au) throw httpError(400, "La fin du stage doit être après le début");
+  const duEpoch = exigerDate(du, "Date de début de stage");
+  const auEpoch = exigerDate(au, "Date de fin de stage");
+  if (duEpoch > auEpoch) throw httpError(400, "La fin du stage doit être après le début");
+  verifierDureeStage(duEpoch, auEpoch);
 
   const services = await gristAll(env, T_SERVICES);
   const service = services.find((s) => s.id === serviceId && s.fields.Recoit_des_etudiant);
   if (!service) throw httpError(400, "Service invalide");
 
   const periodes = await gristFilter(env, T_PERIODES, { Code_anonymat: [student.code] });
-  const duEpoch = Date.parse(du + "T00:00:00Z") / 1000;
   if (periodes.some((p) => p.fields.Du === duEpoch)) {
     throw httpError(409, "Une période de stage commençant à cette date existe déjà.");
   }
@@ -1758,12 +2045,12 @@ async function inscription(request, env, ctx) {
   const referent = cleanText(p.Referent_pedagogique, 80);
 
   if (!nom || !prenom) throw httpError(400, "Nom et prénom obligatoires");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(ddn)) throw httpError(400, "Date de naissance invalide");
+  const ddnEpoch = exigerDate(ddn, "Date de naissance");
   if (!formation) throw httpError(400, "Formation obligatoire");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(du) || !/^\d{4}-\d{2}-\d{2}$/.test(au)) {
-    throw httpError(400, "Dates de stage invalides");
-  }
-  if (du > au) throw httpError(400, "La fin du stage doit être après le début");
+  const duEpoch = exigerDate(du, "Date de début de stage");
+  const auEpoch = exigerDate(au, "Date de fin de stage");
+  if (duEpoch > auEpoch) throw httpError(400, "La fin du stage doit être après le début");
+  verifierDureeStage(duEpoch, auEpoch);
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw httpError(400, "Adresse mail invalide");
 
   const services = await gristAll(env, T_SERVICES);
@@ -1781,10 +2068,13 @@ async function inscription(request, env, ctx) {
   let dejaInscrit = false;
 
   if (existing.length === 1) {
+    // Le code ne distingue que les initiales et la date de naissance : deux
+    // personnes différentes peuvent le partager. Sans cette vérification, le
+    // stage du second serait rattaché au dossier du premier.
+    memeIdentite(existing[0], nom, prenom, ddnEpoch);
     studentRowId = existing[0].id;
     dejaInscrit = true;
     const periodes = await gristFilter(env, T_PERIODES, { Code_anonymat: [code] });
-    const duEpoch = Date.parse(du + "T00:00:00Z") / 1000;
     if (periodes.some((per) => per.fields.Du === duEpoch)) {
       throw httpError(409, "Une période de stage commençant à cette date existe déjà. Connectez-vous avec votre code.");
     }
@@ -1794,7 +2084,7 @@ async function inscription(request, env, ctx) {
     const studentFields = {
       NOM: nom,
       PRENOM: prenom,
-      DDN: Date.parse(ddn + "T00:00:00Z") / 1000,
+      DDN: ddnEpoch,
       FORMATION: formation,
       Civilite: civilite,
       Centre_de_formation: centre,
@@ -1834,8 +2124,8 @@ async function inscription(request, env, ctx) {
  * A_FAIRE = 35 h/semaine moins les jours fériés (accordés à l'étudiant).
  */
 async function creerPeriodeAvecSemaines(env, { studentRowId, code, serviceId, du, au, niveau, referent }) {
-  const duEpoch = Date.parse(du + "T00:00:00Z") / 1000;
-  const auEpoch = Date.parse(au + "T00:00:00Z") / 1000;
+  const duEpoch = exigerDate(du, "Date de début de stage");
+  const auEpoch = exigerDate(au, "Date de fin de stage");
 
   const feries = await gristAll(env, T_FERIES);
   const feriesIso = feries.map((f) => epochToIso(f.fields.Date)).filter(Boolean);
@@ -1861,7 +2151,7 @@ async function creerPeriodeAvecSemaines(env, { studentRowId, code, serviceId, du
 
   // Génère une semaine de planning (vide) par semaine de stage,
   // que le service remplira ensuite dans Grist.
-  const semainesGenerees = await genererSemaines(env, periodeId, du, au);
+  const semainesGenerees = await genererSemaines(env, periodeId, duEpoch, auEpoch);
   return { periodeId, semainesGenerees };
 }
 
@@ -1882,8 +2172,10 @@ async function inscriptionParCadre(request, env, cadre, info) {
   const au = String(p.Au || "");
   const niveau = NIVEAUX.includes(p.Niveau) ? p.Niveau : "";
   const referent = cleanText(p.Referent_pedagogique, 80);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(du) || !/^\d{4}-\d{2}-\d{2}$/.test(au)) throw httpError(400, "Dates de stage invalides");
-  if (du > au) throw httpError(400, "La fin du stage doit être après le début");
+  const duEpoch = exigerDate(du, "Date de début de stage");
+  const auEpoch = exigerDate(au, "Date de fin de stage");
+  if (duEpoch > auEpoch) throw httpError(400, "La fin du stage doit être après le début");
+  verifierDureeStage(duEpoch, auEpoch);
 
   let studentRowId;
   let code;
@@ -1910,7 +2202,7 @@ async function inscriptionParCadre(request, env, cadre, info) {
     const telephone = cleanText(body.Numero_de_telephone, 20);
 
     if (!nom || !prenom) throw httpError(400, "Nom et prénom obligatoires");
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(ddn)) throw httpError(400, "Date de naissance invalide");
+    const ddnEpoch = exigerDate(ddn, "Date de naissance");
     if (!formation) throw httpError(400, "Formation obligatoire");
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw httpError(400, "Adresse mail invalide");
 
@@ -1919,6 +2211,8 @@ async function inscriptionParCadre(request, env, cadre, info) {
 
     const existing = await gristFilter(env, T_ETUDIANTS, { Anonymat: [code] });
     if (existing.length === 1) {
+      // Homonyme né le même jour : c'est un autre étudiant, pas le même dossier.
+      memeIdentite(existing[0], nom, prenom, ddnEpoch);
       studentRowId = existing[0].id;
     } else if (existing.length > 1) {
       throw httpError(409, "Plusieurs dossiers correspondent à ce code : contactez l'administrateur");
@@ -1927,7 +2221,7 @@ async function inscriptionParCadre(request, env, cadre, info) {
         records: [{ fields: {
           NOM: nom,
           PRENOM: prenom,
-          DDN: Date.parse(ddn + "T00:00:00Z") / 1000,
+          DDN: ddnEpoch,
           FORMATION: formation,
           Civilite: civilite,
           Centre_de_formation: centre,
@@ -1941,7 +2235,6 @@ async function inscriptionParCadre(request, env, cadre, info) {
   }
 
   // Refus d'un doublon : même date de début sur le même service.
-  const duEpoch = Date.parse(du + "T00:00:00Z") / 1000;
   const periodesEtu = await gristFilter(env, T_PERIODES, { Code_anonymat: [code] });
   if (periodesEtu.some((per) => per.fields.Du === duEpoch && per.fields.Service === serviceId)) {
     throw httpError(409, "Une période commençant à cette date existe déjà pour cet étudiant sur ce service");
@@ -2025,7 +2318,12 @@ function cleanText(value, max) {
   return String(value || "").trim().slice(0, max);
 }
 
-/** Liste des lundis (epoch) couvrant la période [du, au]. */
+/**
+ * Liste des lundis (epoch) couvrant la période [du, au]. Le nombre de semaines
+ * n'est PAS plafonné ici : le plafond ne concerne que la création (voir
+ * verifierDureeStage), pour qu'une période déjà enregistrée — plus longue,
+ * saisie directement dans Grist — voie quand même ses heures calculées juste.
+ */
 function lundisDeLaPeriode(du, au) {
   const DAY = 86400;
   if (typeof du !== "number" || typeof au !== "number") return [];
@@ -2033,7 +2331,8 @@ function lundisDeLaPeriode(du, au) {
   const shift = (new Date(du * 1000).getUTCDay() + 6) % 7;
   let monday = du - shift * DAY;
   const lundis = [];
-  while (monday <= au && lundis.length < MAX_SEMAINES_GENEREES) {
+  // Garde-fou : une date aberrante ne doit pas faire tourner la boucle sans fin.
+  while (monday <= au && lundis.length < 520) {
     lundis.push(monday);
     monday += 7 * DAY;
   }
@@ -2045,9 +2344,21 @@ function nombreSemaines(du, au) {
   return lundisDeLaPeriode(du, au).length;
 }
 
-async function genererSemaines(env, periodeId, duIso, auIso) {
-  const du = Date.parse(duIso + "T00:00:00Z") / 1000;
-  const au = Date.parse(auIso + "T00:00:00Z") / 1000;
+/**
+ * Refuse un stage plus long que ce que l'application sait générer. Avant, la
+ * génération s'arrêtait en silence à 30 semaines : le planning était tronqué et
+ * les heures à réaliser sous-évaluées, sans que personne en soit averti.
+ */
+function verifierDureeStage(duEpoch, auEpoch) {
+  const semaines = nombreSemaines(duEpoch, auEpoch);
+  if (semaines > MAX_SEMAINES_GENEREES) {
+    throw httpError(400, `Ce stage couvre ${semaines} semaines, au-delà du maximum de `
+      + `${MAX_SEMAINES_GENEREES} géré par l'application. Vérifiez les dates, ou `
+      + `enregistrez le stage en plusieurs périodes.`);
+  }
+}
+
+async function genererSemaines(env, periodeId, du, au) {
   const records = lundisDeLaPeriode(du, au)
     .map((monday) => ({ fields: { Periode: periodeId, Semaine_debut: monday } }));
   if (records.length) {
@@ -2267,12 +2578,26 @@ function contexteStageEtudiant(payload) {
 // Durée de conservation du journal (jours). Au-delà, les lignes sont purgées.
 const JOURNAL_RETENTION_JOURS = 30;
 
+// Les purges sont déclenchées à chaque connexion, mais elles relisent des
+// tables entières (tout PLANNING_HEBDO pour les semaines orphelines) : inutile
+// de recommencer à chaque fois. Une passe par heure et par isolat suffit
+// largement pour du ménage, et le coût par connexion redevient nul.
+const PURGE_INTERVALLE_MS = 3600 * 1000;
+const dernieresPurges = new Map();
+function purgeTropRecente(nom) {
+  const maintenant = Date.now();
+  if (maintenant - (dernieresPurges.get(nom) || 0) < PURGE_INTERVALLE_MS) return true;
+  dernieresPurges.set(nom, maintenant);
+  return false;
+}
+
 /**
  * Supprime les lignes du journal de plus de JOURNAL_RETENTION_JOURS.
  * Appelé à chaque connexion (fréquence raisonnable). Best-effort, en waitUntil,
  * par lots de 500 lignes les plus anciennes (les suivantes partiront à la prochaine connexion).
  */
 function purgeJournal(env, ctx) {
+  if (purgeTropRecente("journal")) return;
   const p = (async () => {
     const cutoff = Math.floor(Date.now() / 1000) - JOURNAL_RETENTION_JOURS * 24 * 3600;
     const data = await grist(env, "GET", `/tables/${T_JOURNAL}/records?sort=Horodatage&limit=500`);
@@ -2295,6 +2620,7 @@ const HEBDO_ORPHELIN_RETENTION_JOURS = 30;
  * chaque suppression de période. Best-effort, en waitUntil, par lots de 500.
  */
 function purgePlanningsOrphelins(env, ctx) {
+  if (purgeTropRecente("plannings")) return;
   const p = (async () => {
     const cutoff = Math.floor(Date.now() / 1000) - HEBDO_ORPHELIN_RETENTION_JOURS * 24 * 3600;
     const [semaines, periodes] = await Promise.all([
@@ -2322,6 +2648,30 @@ function purgePlanningsOrphelins(env, ctx) {
 function epochToIso(value) {
   if (typeof value !== "number") return value || null;
   return new Date(value * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * Date « AAAA-MM-JJ » -> epoch (secondes, minuit UTC), ou null si la date
+ * n'existe pas.
+ *
+ * Le seul contrôle par expression régulière ne suffit pas : « 2026-02-31 »
+ * passe le filtre mais Date.parse le décale silencieusement au 3 mars, et
+ * « 2026-13-01 » donne NaN, écrit ensuite comme date VIDE dans Grist (et les
+ * comparaisons du > au, fausses avec NaN, ne rattrapaient rien). On exige donc
+ * que la date relue redonne exactement la chaîne de départ.
+ */
+function isoToEpoch(iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ""))) return null;
+  const epoch = Date.parse(iso + "T00:00:00Z") / 1000;
+  if (!Number.isFinite(epoch)) return null;
+  return epochToIso(epoch) === iso ? epoch : null;
+}
+
+/** Comme isoToEpoch, mais lève une 400 explicite si la date n'existe pas. */
+function exigerDate(iso, libelle) {
+  const epoch = isoToEpoch(iso);
+  if (epoch === null) throw httpError(400, `${libelle} invalide`);
+  return epoch;
 }
 
 function json(data, status = 200) {

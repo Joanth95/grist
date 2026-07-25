@@ -5,11 +5,16 @@ const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
-// Lien direct (?code=...&email=...) : permet d'ouvrir l'espace sans ressaisir
+// Lien direct (#code=...&email=...) : permet d'ouvrir l'espace sans ressaisir
 // ses identifiants (ex. lien fourni depuis Grist). L'e-mail est le 2ᵉ facteur
 // exigé par le Worker dès que le dossier en porte un : un lien qui ne
 // transporte que le code laisse l'étudiant le saisir lui-même.
-const urlParams = new URLSearchParams(location.search);
+//
+// Lus dans le FRAGMENT : contrairement à la query string, il n'est pas envoyé
+// au serveur, donc pas journalisé par l'hébergeur. L'ancienne forme
+// « ?code=... » reste acceptée pour les liens déjà distribués.
+const urlParams = new URLSearchParams(
+  location.hash.length > 1 ? location.hash.slice(1) : location.search.slice(1));
 const urlCode = urlParams.get("code");
 const urlEmail = urlParams.get("email");
 if (urlCode) {
@@ -129,6 +134,21 @@ function openProfilDialog() {
   const e = state.data.etudiant;
   $("profil-tel").value = e.telephone || "";
   $("profil-email").value = e.email || "";
+  // L'e-mail du dossier est le 2ᵉ facteur : seul celui qui l'a prouvé à la
+  // connexion peut le changer. Sur un dossier qui n'en porte pas encore, le
+  // champ reste en lecture seule — sinon le premier venu qui devine le code
+  // y mettrait le sien et priverait l'étudiant de son dossier.
+  const emailEl = $("profil-email");
+  const modifiable = e.emailModifiable !== false;
+  emailEl.readOnly = !modifiable;
+  const note = $("profil-email-note");
+  if (note) {
+    note.textContent = modifiable
+      ? "Votre e-mail sert de 2ᵉ facteur à la connexion : si vous le changez, "
+        + "vous devrez saisir la nouvelle adresse la prochaine fois."
+      : "L'adresse e-mail de votre dossier sert de 2ᵉ facteur à la connexion : "
+        + "elle ne peut pas être ajoutée ni modifiée ici. Demandez-le à votre cadre de santé.";
+  }
   $("profil-error").hidden = true;
   profilDialog.showModal();
 }

@@ -156,6 +156,14 @@ function keyToDate(key) { return new Date(key + 'T00:00:00Z'); }
 function dateToKey(d) { return d.toISOString().slice(0,10); }
 function addDaysKey(key, n) { const d = keyToDate(key); d.setUTCDate(d.getUTCDate()+n); return dateToKey(d); }
 function epochToKey(epoch) { if (epoch == null) return null; return dateToKey(new Date(epoch*1000)); }
+
+// Échappement de tout texte venant du document avant injection en HTML
+// (codes horaires, libellés, motifs) : ce widget a un accès complet au document.
+function escapeHtml(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
 function fmtDateFull(key) {
   const d = keyToDate(key);
   const dd = String(d.getUTCDate()).padStart(2,'0');
@@ -361,7 +369,7 @@ function render() {
       if (sortie) {
         if (sortie.Compte) {
           cls = 'sortie-oui';
-          text = '<span class="badge badge-oui">' + (code ? code.Code + '+' : '') + 'S</span>';
+          text = '<span class="badge badge-oui">' + (code ? escapeHtml(code.Code) + '+' : '') + 'S</span>';
           title = (sortie.Motif || 'Sortie comptée') + ' (' + sortie.Duree + 'h)';
         } else {
           cls = 'sortie-non';
@@ -371,12 +379,12 @@ function render() {
           } else if (sortie.Duree) {
             timeInfo = sortie.Duree + 'h';
           }
-          text = (code ? code.Code : '') + 
-                 '<div class="rattrapage-x">✕ ' + timeInfo + '</div>';
+          text = (code ? escapeHtml(code.Code) : '') +
+                 '<div class="rattrapage-x">✕ ' + escapeHtml(timeInfo) + '</div>';
           title = 'Rattrapage / Absence non comptée';
         }
       } else if (code) {
-        text = code.Code;
+        text = escapeHtml(code.Code);
         if (code.Code === 'R' || code.Code === 'ABS') cls = 'repos';
         title = code.Code + (code.Duree ? ' (' + code.Duree + 'h)' : '');
       }
@@ -387,7 +395,7 @@ function render() {
         dataAttrs = ' data-row-id="' + cellInfo.rowId + '" data-col="' + cellInfo.col + '" data-coderef="' + (coderef || '') + '"';
         if (!title) title = 'Cliquer pour modifier';
       }
-      html += '<td class="' + cls + '"' + dataAttrs + ' title="' + title.replace(/"/g,'&quot;') + '">' + text + '</td>';
+      html += '<td class="' + cls + '"' + dataAttrs + ' title="' + escapeHtml(title) + '">' + text + '</td>';
     }
     html += '</tr>';
   }
@@ -401,7 +409,7 @@ function render() {
     const c = CODES.Code[i];
     if (seen[c]) continue;
     seen[c] = true;
-    legendParts.push('<span class="chip"><strong>' + c + '</strong>&nbsp;' + (CODES.Libelle[i] || '') + '</span>');
+    legendParts.push('<span class="chip"><strong>' + escapeHtml(c) + '</strong>&nbsp;' + escapeHtml(CODES.Libelle[i] || '') + '</span>');
   }
   legendParts.push('<span class="chip"><span class="badge badge-oui">Code+S</span> sortie comptée</span>');
   legendParts.push('<span class="chip"><span class="rattrapage-x">✕</span> Rattrapage (ne compte pas) — Plage horaire affichée</span>');

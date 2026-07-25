@@ -1,7 +1,7 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 /* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
-const APP_VERSION = "v36"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v39"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -62,15 +62,23 @@ Vous y renseignerez votre identité et vos dates de stage ; un code d'accès per
 const tabLabel = (id) => (TABS.find((t) => t.id === id) || {}).label || id;
 const groupOfTab = (tabId) => TAB_GROUPS.find((g) => g.tabs.includes(tabId)) || TAB_GROUPS[0];
 
-// Lien direct (?email=...&code=...) : permet d'ouvrir l'espace cadre déjà
-// connecté, sans ressaisir les identifiants (ex. lien fourni depuis Grist).
-const urlParams = new URLSearchParams(location.search);
+// Lien direct (#email=...&code=...) : ouvre l'espace cadre sans ressaisir les
+// identifiants (ex. lien fourni depuis Grist).
+//
+// Ces paramètres se lisent dans le FRAGMENT, jamais dans la query string : le
+// fragment n'est pas envoyé au serveur, il ne se retrouve donc ni dans les
+// journaux d'accès de l'hébergeur ni dans un en-tête Referer. La forme
+// « ?email=... » reste acceptée pour ne pas casser les liens déjà distribués,
+// mais elle fuite côté serveur : régénérez-les en « # » (voir guide-admin).
+const urlParams = new URLSearchParams(
+  location.hash.length > 1 ? location.hash.slice(1) : location.search.slice(1));
 const urlEmail = urlParams.get("email");
 const urlCadreCode = urlParams.get("code");
-// Clé admin (?admin=...) : lien réservé à l'administrateur. Présente = connexion
+// Clé admin (#admin=...) : lien réservé à l'administrateur. Présente = connexion
 // directe sans PIN (impersonation d'un cadre). Traitée au démarrage, plus bas.
 const urlAdmin = urlParams.get("admin");
 if (urlEmail && urlCadreCode) {
+  // Efface les identifiants de la barre d'adresse (et de l'historique).
   history.replaceState(null, "", location.pathname);
   // Sans clé admin : on pré-remplit email + code ; le cadre valide avec son PIN.
   const emailEl = document.getElementById("login-email");
@@ -82,8 +90,9 @@ if (urlEmail && urlCadreCode) {
 }
 
 const state = {
-  email: sessionStorage.getItem("cadre_email") || null,
-  code: sessionStorage.getItem("cadre_code") || null,
+  // Seul le jeton de session est conservé : ni l'e-mail ni le code d'accès ne
+  // sont mémorisés, ils ne servent qu'à l'envoi du formulaire de connexion.
+  session: sessionStorage.getItem("cadre_session") || null,
   data: null, // { services, niveaux, motifs, moi, periodes, semaines, codes, sorties }
   selectedSite: null,
   selectedServiceId: null,
@@ -128,12 +137,21 @@ function periodeVerrouillee(p) {
 /* API                                                                 */
 /* ------------------------------------------------------------------ */
 
+/** Mémorise (ou efface) le jeton de session pour la durée de l'onglet. */
+function ouvrirSession(jeton) {
+  state.session = jeton || null;
+  if (jeton) sessionStorage.setItem("cadre_session", jeton);
+  else sessionStorage.removeItem("cadre_session");
+}
+
 async function api(method, path, body) {
   const res = await fetch(API + path, {
     method,
     headers: {
       "Content-Type": "application/json",
-      ...(state.email ? { "X-Cadre-Email": state.email, "X-Cadre-Code": state.code } : {}),
+      // Jeton de session délivré par /api/cadre/login (après vérification du
+      // PIN) : le code d'accès ne circule plus au-delà de la connexion.
+      ...(state.session ? { "X-Cadre-Session": state.session } : {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
@@ -154,16 +172,14 @@ $("login-form").addEventListener("submit", async (e) => {
   btn.disabled = true;
   btn.textContent = "Connexion…";
   try {
-    state.email = $("login-email").value.trim();
-    state.code = $("login-code").value.trim();
+    const email = $("login-email").value.trim();
+    const code = $("login-code").value.trim();
     const pin = $("login-pin").value.trim();
-    state.data = await api("POST", "/api/cadre/login", { email: state.email, code: state.code, pin });
-    sessionStorage.setItem("cadre_email", state.email);
-    sessionStorage.setItem("cadre_code", state.code);
+    state.data = await api("POST", "/api/cadre/login", { email, code, pin });
+    ouvrirSession(state.data.session);
     enterApp();
   } catch (err) {
-    state.email = null;
-    state.code = null;
+    ouvrirSession(null);
     errEl.textContent = err.message;
     errEl.hidden = false;
   } finally {
@@ -266,7 +282,10 @@ $("pin-form").addEventListener("submit", async (e) => {
   const btn = $("pin-save-btn");
   btn.disabled = true;
   try {
-    await api("PATCH", "/api/cadre/pin", { currentPin, newPin });
+    // Changer le PIN invalide le jeton en cours : le serveur en renvoie un
+    // nouveau, sans quoi la requête suivante retomberait sur l'écran de connexion.
+    const res = await api("PATCH", "/api/cadre/pin", { currentPin, newPin });
+    if (res.session) ouvrirSession(res.session);
     $("pin-dialog").close();
     alert("Votre code PIN a été modifié.");
   } catch (e2) {
@@ -1244,8 +1263,10 @@ function renderStagesFaits(allPeriodes) {
       { cours: "info", avenir: "pending", passe: "neutral" }[cat]));
     item.appendChild(header);
 
-    // La fiche n'est éditable que pour le stage en cours du service sélectionné.
-    const editable = p.En_cours && p.Service === state.selectedServiceId;
+    // La fiche reste éditable tant que le stage n'est pas terminé (en cours ou
+    // à venir) et qu'il relève du service sélectionné. Un stage à venir doit
+    // pouvoir être corrigé : c'est même le moment où ça sert.
+    const editable = cat !== "passe" && p.Service === state.selectedServiceId;
 
     const infoParts = [];
     if (!editable && p.Niveau) infoParts.push(p.Niveau);
@@ -2840,21 +2861,17 @@ if (urlAdmin && urlEmail && urlCadreCode) {
   (async () => {
     const errEl = document.getElementById("login-error");
     try {
-      state.email = urlEmail.trim();
-      state.code = urlCadreCode.trim();
       state.data = await api("POST", "/api/cadre/login",
-        { email: state.email, code: state.code, adminKey: urlAdmin });
-      sessionStorage.setItem("cadre_email", state.email);
-      sessionStorage.setItem("cadre_code", state.code);
+        { email: urlEmail.trim(), code: urlCadreCode.trim(), adminKey: urlAdmin });
+      ouvrirSession(state.data.session);
       enterApp();
     } catch (e) {
-      state.email = null;
-      state.code = null;
+      ouvrirSession(null);
       if (errEl) { errEl.textContent = e.message; errEl.hidden = false; }
     }
   })();
-} else if (state.email && state.code) {
+} else if (state.session) {
   api("GET", "/api/cadre/data")
     .then((data) => { state.data = data; enterApp(); })
-    .catch(() => { sessionStorage.clear(); state.email = null; state.code = null; });
+    .catch(() => { sessionStorage.clear(); ouvrirSession(null); });
 }

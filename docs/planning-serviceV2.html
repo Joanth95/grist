@@ -126,6 +126,16 @@ function dateToKey(d) { return d.toISOString().slice(0,10); }
 function addDaysKey(key, n) { const d = keyToDate(key); d.setUTCDate(d.getUTCDate()+n); return dateToKey(d); }
 function epochToKey(epoch) { if (epoch == null) return null; return dateToKey(new Date(epoch*1000)); }
 
+// Tout texte venant du document (nom d'étudiant, motif de sortie, libellé de
+// code…) passe par ici avant d'être injecté en HTML : ces valeurs sont saisies
+// par des tiers — l'inscription des étudiants est publique — et ce widget a un
+// accès complet au document Grist.
+function escapeHtml(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
 function fmtDateFull(key) {
   const d = keyToDate(key);
   const dd = String(d.getUTCDate()).padStart(2,'0');
@@ -177,7 +187,7 @@ function populateServiceSelect() {
     if (SERVICES.Recoit_des_etudiant[i] !== false) items.push({ id: SERVICES.id[i], nom });
   }
   items.sort((a,b) => a.nom.localeCompare(b.nom));
-  sel.innerHTML = items.length ? items.map(it => `<option value="${it.id}">${it.nom}</option>`).join('') : '<option value="">Aucun service disponible</option>';
+  sel.innerHTML = items.length ? items.map(it => `<option value="${it.id}">${escapeHtml(it.nom)}</option>`).join('') : '<option value="">Aucun service disponible</option>';
   return items;
 }
 
@@ -321,8 +331,8 @@ function render() {
     if (m.niveau) infoParts.push(m.niveau);
     infoParts.push(fmtDateFull(m.du) + ' → ' + fmtDateFull(m.au));
     if (m.tuteur) infoParts.push('Tuteur : ' + m.tuteur);
-    const infoLine = infoParts.join(' · ').replace(/</g,'&lt;');
-    html += `<tr><td class="student"><div class="student-name">${nom}</div><div class="student-info">${infoLine}</div></td>`;
+    const infoLine = escapeHtml(infoParts.join(' · '));
+    html += `<tr><td class="student"><div class="student-name">${escapeHtml(nom)}</div><div class="student-info">${infoLine}</div></td>`;
 
     for (const dk of days) {
       if (dk < m.du || dk > m.au) {
@@ -338,15 +348,15 @@ function render() {
       if (sortie) {
         if (sortie.Compte) {
           cls = 'sortie-oui';
-          text = `<span class="badge badge-oui">${code ? code.Code + '+' : ''}S</span>`;
+          text = `<span class="badge badge-oui">${code ? escapeHtml(code.Code) + '+' : ''}S</span>`;
           title = (sortie.Motif || 'Sortie comptée') + ' (' + sortie.Duree + 'h)';
         } else {
           cls = 'sortie-non';
-          text = `<span class="badge badge-non">${code ? code.Code : ''} ✕</span>`;
+          text = `<span class="badge badge-non">${code ? escapeHtml(code.Code) : ''} ✕</span>`;
           title = sortie.Motif || 'Absence non comptée';
         }
       } else if (code) {
-        text = code.Code;
+        text = escapeHtml(code.Code);
         if (code.Code === 'R' || code.Code === 'ABS') cls = 'repos';
         title = code.Code + (code.Duree ? ' (' + code.Duree + 'h)' : '');
       }
@@ -357,7 +367,7 @@ function render() {
         dataAttrs = ` data-row-id="${cellInfo.rowId}" data-col="${cellInfo.col}" data-coderef="${coderef || ''}"`;
         if (!title) title = 'Cliquer pour modifier';
       }
-      html += `<td class="${cls}"${dataAttrs} title="${title.replace(/"/g,'&quot;')}">${text}</td>`;
+      html += `<td class="${cls}"${dataAttrs} title="${escapeHtml(title)}">${text}</td>`;
     }
     html += '</tr>';
   }
@@ -371,7 +381,7 @@ function render() {
     const c = CODES.Code[i];
     if (seen[c]) continue;
     seen[c] = true;
-    legendParts.push(`<span class="chip"><strong>${c}</strong>&nbsp;${CODES.Libelle[i] || ''}</span>`);
+    legendParts.push(`<span class="chip"><strong>${escapeHtml(c)}</strong>&nbsp;${escapeHtml(CODES.Libelle[i] || '')}</span>`);
   }
   legendParts.push('<span class="chip"><span class="badge badge-oui">Code+S</span> sortie comptée</span>');
   legendParts.push('<span class="chip"><span class="badge badge-non">✕</span> absence non comptée</span>');
@@ -386,7 +396,7 @@ function render() {
   const genDate = String(now.getDate()).padStart(2,'0') + '/' + String(now.getMonth()+1).padStart(2,'0') + '/' + now.getFullYear() + ' à ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
   const currentViewMode = document.getElementById('viewMode') ? document.getElementById('viewMode').value : 'month';
   const periodLabel = (currentViewMode === '31days') ? 'Période 31 jours' : 'Mois complet';
-  document.getElementById('printHeader').innerHTML = `<h1>Planning de service — ${serviceLabel}</h1><p class="subtitle">${periodLabel} : du ${fmtDayLabel(windowStart).num} au ${fmtDayLabel(windowEnd).num} • Généré le ${genDate}</p>`;
+  document.getElementById('printHeader').innerHTML = `<h1>Planning de service — ${escapeHtml(serviceLabel)}</h1><p class="subtitle">${periodLabel} : du ${fmtDayLabel(windowStart).num} au ${fmtDayLabel(windowEnd).num} • Généré le ${genDate}</p>`;
 }
 
 function codesListSorted() {
