@@ -10,7 +10,7 @@
    case UTILISATEURS.Administrateur est cochée passent la porte. Le contrôle
    qui compte est côté Worker : ici, on n'affiche que ce qui est autorisé. */
 
-const APP_VERSION = "v6"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-admin.html)
+const APP_VERSION = "v7"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-admin.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 
@@ -34,6 +34,11 @@ const state = {
   editionPole: null,
   rechercheSvc: "",
   voirFermes: true,
+  // Onglet « Étudiants » : liste résumée chargée à la première ouverture ; le
+  // dossier complet d'un étudiant précis est chargé à la demande (pas gardé
+  // en mémoire, pour toujours voir le dernier état).
+  etu: null, // { formations, etudiants }
+  rechercheEtu: "",
 };
 
 /* ------------------------------------------------------------------ */
@@ -69,6 +74,7 @@ async function api(method, path, body) {
 const vuesSignalees = new Set();
 const LIBELLES_ONGLETS = {
   cadres: "Cadres", services: "Services", poles: "Pôles", organigramme: "Organigramme",
+  etudiants: "Étudiants",
 };
 function marqueurVue(ecran, onglet) {
   if (vuesSignalees.has(ecran)) return "";
@@ -655,7 +661,7 @@ document.querySelectorAll(".admin-tab").forEach((btn) => {
   btn.addEventListener("click", () => montrerOnglet(btn.dataset.onglet));
 });
 
-const ONGLETS = ["cadres", "services", "poles", "organigramme"];
+const ONGLETS = ["cadres", "services", "poles", "organigramme", "etudiants"];
 
 async function montrerOnglet(id) {
   state.onglet = id;
@@ -663,16 +669,19 @@ async function montrerOnglet(id) {
     b.classList.toggle("active", b.dataset.onglet === id));
   for (const o of ONGLETS) $(`tab-${o}`).hidden = o !== id;
 
-  // Services, pôles et organigramme partagent les mêmes données : un seul
-  // chargement, à la première ouverture de l'un des trois.
-  if (id !== "cadres") {
-    try {
+  try {
+    if (id === "etudiants") {
+      if (!state.etu) await chargerEtudiants(id);
+      else rendreEtudiants();
+    } else if (id !== "cadres") {
+      // Services, pôles et organigramme partagent les mêmes données : un seul
+      // chargement, à la première ouverture de l'un des trois.
       if (!state.svc) await chargerServices(id);
       else if (id === "poles") rendrePoles();
       else if (id === "organigramme") rendreOrganigramme();
-    } catch (err) {
-      toast(err.message, true);
     }
+  } catch (err) {
+    toast(err.message, true);
   }
 }
 
@@ -1420,6 +1429,266 @@ function toast(message, erreur) {
   document.body.appendChild(el);
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.remove(), 4000);
+}
+
+/* ------------------------------------------------------------------ */
+/* Écran des étudiants                                                 */
+/* ------------------------------------------------------------------ */
+
+async function chargerEtudiants(onglet) {
+  state.etu = await api("GET", "/api/admin/etudiants" + marqueurVue("etudiants", onglet));
+  rendreEtudiants();
+}
+
+/** JJ/MM/AAAA depuis une date ISO (AAAA-MM-JJ). "" si absente. */
+function dateFr(iso) {
+  if (!iso) return "";
+  const [a, m, j] = iso.split("-");
+  return a && m && j ? `${j}/${m}/${a}` : iso;
+}
+
+function etudiantsAffiches() {
+  const q = state.rechercheEtu.trim().toLowerCase();
+  return (state.etu.etudiants || [])
+    .filter((e) => !q || [e.nom, e.prenom, e.anonymat, e.formation, e.centre]
+      .join(" ").toLowerCase().includes(q))
+    .sort((a, b) => (a.nom || "").localeCompare(b.nom || "", "fr")
+      || (a.prenom || "").localeCompare(b.prenom || "", "fr"));
+}
+
+function rendreEtudiants() {
+  const wrap = $("etudiants-wrap");
+  wrap.textContent = "";
+
+  const liste = etudiantsAffiches();
+  if (!liste.length) {
+    wrap.appendChild(messageVide(state.rechercheEtu
+      ? "Aucun étudiant ne correspond à cette recherche."
+      : "Aucun dossier étudiant pour l'instant."));
+    return;
+  }
+
+  const table = document.createElement("table");
+  table.className = "admin";
+
+  const thead = document.createElement("thead");
+  const trh = document.createElement("tr");
+  for (const titre of ["Étudiant", "Formation", "Service actuel", "Stages", ""]) {
+    const th = document.createElement("th");
+    th.textContent = titre;
+    trh.appendChild(th);
+  }
+  thead.appendChild(trh);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  for (const e of liste) {
+    const tr = document.createElement("tr");
+
+    const nom = document.createElement("div");
+    nom.className = "cadre-nom";
+    nom.textContent = [e.prenom, e.nom].filter(Boolean).join(" ") || "(sans nom)";
+    const code = document.createElement("div");
+    code.className = "cadre-sous";
+    code.textContent = e.anonymat || "";
+    tr.appendChild(cellule(nom, code));
+
+    const formation = document.createElement("div");
+    formation.textContent = e.formation || "—";
+    const centre = document.createElement("div");
+    centre.className = "cadre-sous";
+    centre.textContent = e.centre || "";
+    tr.appendChild(cellule(formation, centre));
+
+    const service = document.createElement("div");
+    service.textContent = e.service_actuel || "aucun stage en cours";
+    if (!e.service_actuel) service.style.color = "var(--texte-doux)";
+    tr.appendChild(cellule(service, e.enCours ? badge("En cours", "ok") : null));
+
+    tr.appendChild(cellule(String(e.nbPeriodes)));
+
+    const actions = cellule(
+      bouton("Voir le dossier", () => ouvrirFicheEtudiant(e.id), "btn btn-secondary btn-small")
+    );
+    actions.className = "actions";
+    tr.appendChild(actions);
+
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+}
+
+$("search-etu").addEventListener("input", (e) => {
+  state.rechercheEtu = e.target.value;
+  rendreEtudiants();
+});
+
+/* ------------------------------------------------------------------ */
+/* Fiche d'un étudiant (lecture seule) : identité + tout l'historique  */
+/* ------------------------------------------------------------------ */
+
+const dlgEtu = $("etudiant-dialog");
+
+async function ouvrirFicheEtudiant(id) {
+  try {
+    const fiche = await api("GET", `/api/admin/etudiants/${id}`);
+    rendreFicheEtudiant(fiche);
+    dlgEtu.showModal();
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+function ligneIdentite(label, valeur) {
+  const span = document.createElement("span");
+  const b = document.createElement("b");
+  b.textContent = label;
+  span.appendChild(b);
+  span.appendChild(document.createTextNode(valeur || "—"));
+  return span;
+}
+
+/** Section de la fiche : titre + contenu (tableau ou message si vide). */
+function sectionEtu(titre, contenu) {
+  const section = document.createElement("div");
+  section.className = "etu-section";
+  const h = document.createElement("h3");
+  h.textContent = titre;
+  section.appendChild(h);
+  section.appendChild(contenu);
+  return section;
+}
+
+function tableEtu(entetes, lignes) {
+  const table = document.createElement("table");
+  table.className = "admin";
+  const thead = document.createElement("thead");
+  const trh = document.createElement("tr");
+  for (const t of entetes) {
+    const th = document.createElement("th");
+    th.textContent = t;
+    trh.appendChild(th);
+  }
+  thead.appendChild(trh);
+  table.appendChild(thead);
+  const tbody = document.createElement("tbody");
+  for (const tr of lignes) tbody.appendChild(tr);
+  table.appendChild(tbody);
+  return table;
+}
+
+function sectionPeriodes(periodes) {
+  const contenu = !periodes.length
+    ? messageVide("Aucun stage enregistré.")
+    : tableEtu(["Service", "Dates", "Heures", "Tuteur / référent", "Évaluation"], periodes.map((p) => {
+        const tr = document.createElement("tr");
+
+        const service = document.createElement("div");
+        service.textContent = p.Site ? `${p.Service_nom} (${p.Site})` : (p.Service_nom || "—");
+        const niveau = document.createElement("div");
+        niveau.className = "cadre-sous";
+        niveau.textContent = p.Niveau || "";
+        tr.appendChild(cellule(service, niveau));
+
+        tr.appendChild(cellule(
+          `${dateFr(p.Du)} → ${dateFr(p.Au)}`,
+          p.En_cours ? badge("En cours", "ok") : null
+        ));
+
+        const heures = document.createElement("div");
+        heures.textContent = `${p.FAIT} h faites / ${p.A_FAIRE} h à faire`;
+        const solde = document.createElement("div");
+        solde.className = "cadre-sous";
+        solde.textContent = `Solde : ${p.Solde_heures > 0 ? "+" : ""}${p.Solde_heures} h`;
+        tr.appendChild(cellule(heures, solde));
+
+        const tuteur = document.createElement("div");
+        tuteur.textContent = p.Tuteur || "—";
+        const referent = document.createElement("div");
+        referent.className = "cadre-sous";
+        referent.textContent = p.Referent_pedagogique ? `Réf. péda. : ${p.Referent_pedagogique}` : "";
+        if (p.cadre) referent.textContent += (referent.textContent ? " · " : "") + `Cadre : ${p.cadre.nom}`;
+        tr.appendChild(cellule(tuteur, referent));
+
+        const evalTexte = !p.Lien_evaluation ? "—"
+          : p.Evaluation_repondue ? "Répondue"
+          : p.Evaluation_envoyee ? "Envoyée, sans réponse"
+          : "Pas encore envoyée";
+        tr.appendChild(cellule(evalTexte));
+
+        return tr;
+      }));
+  return sectionEtu(`Historique des stages (${periodes.length})`, contenu);
+}
+
+function sectionSorties(sorties) {
+  const contenu = !sorties.length
+    ? messageVide("Aucune déclaration de sortie.")
+    : tableEtu(["Date", "Motif", "Commentaire", "Horaires", "Statut"], sorties.map((s) => {
+        const tr = document.createElement("tr");
+        tr.appendChild(cellule(dateFr(s.Date)));
+        tr.appendChild(cellule(s.Motif || "—"));
+        tr.appendChild(cellule(s.Commentaire || ""));
+        tr.appendChild(cellule(`${s.Heure_debut || "?"} – ${s.Heure_fin || "?"}`));
+        tr.appendChild(cellule(badge(s.Valide ? "Validée" : "En attente", s.Valide ? "ok" : "pending")));
+        return tr;
+      }));
+  return sectionEtu(`Déclarations de sorties (${sorties.length})`, contenu);
+}
+
+function sectionRdvs(rdvs) {
+  const contenu = !rdvs.length
+    ? messageVide("Aucun rendez-vous formateur.")
+    : tableEtu(["Date", "Type", "Formateur", "Commentaire"], rdvs.map((r) => {
+        const tr = document.createElement("tr");
+        tr.appendChild(cellule(dateFr(r.Date_rdv)));
+        tr.appendChild(cellule(r.Type_de_rendez_vous || "—"));
+        tr.appendChild(cellule(r.Formateur || "—"));
+        tr.appendChild(cellule(r.Commentaire || ""));
+        return tr;
+      }));
+  return sectionEtu(`Rendez-vous formateur (${rdvs.length})`, contenu);
+}
+
+function sectionJournal(journal) {
+  const contenu = !journal.length
+    ? messageVide("Aucune ligne de journal pour cet étudiant (30 derniers jours).")
+    : tableEtu(["Horodatage", "Rôle", "Qui", "Action", "Détail", "Service"], journal.map((j) => {
+        const tr = document.createElement("tr");
+        tr.appendChild(cellule(j.Horodatage ? new Date(j.Horodatage * 1000).toLocaleString("fr-FR") : "—"));
+        tr.appendChild(cellule(j.Role || ""));
+        tr.appendChild(cellule(j.Qui || ""));
+        tr.appendChild(cellule(j.Action || ""));
+        tr.appendChild(cellule(j.Detail || ""));
+        tr.appendChild(cellule([j.Service, j.Site].filter(Boolean).join(" — ")));
+        return tr;
+      }));
+  return sectionEtu(`Journal d'activité (${journal.length})`, contenu);
+}
+
+function rendreFicheEtudiant(fiche) {
+  const et = fiche.etudiant;
+  $("etudiant-dialog-title").textContent =
+    [et.prenom, et.nom].filter(Boolean).join(" ") || "Dossier étudiant";
+
+  const wrap = $("etu-detail");
+  wrap.textContent = "";
+
+  const identite = document.createElement("div");
+  identite.className = "etu-identite";
+  identite.appendChild(ligneIdentite("Code anonymat", et.anonymat));
+  identite.appendChild(ligneIdentite("Formation", et.formation));
+  identite.appendChild(ligneIdentite("Centre de formation", et.centre));
+  identite.appendChild(ligneIdentite("Date de naissance", dateFr(et.ddn)));
+  identite.appendChild(ligneIdentite("E-mail", et.email));
+  identite.appendChild(ligneIdentite("Téléphone", et.telephone));
+  wrap.appendChild(identite);
+
+  wrap.appendChild(sectionPeriodes(fiche.periodes));
+  wrap.appendChild(sectionSorties(fiche.sorties));
+  wrap.appendChild(sectionRdvs(fiche.rdvs));
+  wrap.appendChild(sectionJournal(fiche.journal));
 }
 
 /* ------------------------------------------------------------------ */

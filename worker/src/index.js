@@ -523,6 +523,23 @@ async function route(request, env, ctx) {
       }
       return json(await listerOrganisationAdmin(env));
     }
+    if (request.method === "GET" && path === "/api/admin/etudiants") {
+      if (estOuverture(request)) {
+        logActivite(env, ctx, { ...whoA, action: "Consultation de l'espace administrateur",
+          detail: ongletVu(request) || "onglet « Étudiants »" });
+      }
+      return json(await listerEtudiantsAdmin(env));
+    }
+    const aem = path.match(/^\/api\/admin\/etudiants\/(\d+)$/);
+    if (request.method === "GET" && aem) {
+      // Contrairement aux listes d'ensemble (gardées par estOuverture), chaque
+      // ouverture d'un dossier précis est journalisée : c'est la consultation
+      // la plus sensible de l'espace admin (tout l'historique d'un étudiant).
+      const fiche = await ficheEtudiantAdmin(env, Number(aem[1]));
+      logActivite(env, ctx, { ...whoA, action: "Consultation d'un dossier étudiant (admin)",
+        etudiantId: Number(aem[1]) });
+      return json(fiche);
+    }
     if (request.method === "POST" && path === "/api/admin/services") {
       return withLog(env, ctx, whoA, "Création d'un service", "",
         (info) => creerServiceAdmin(request, env, info));
@@ -2269,6 +2286,202 @@ async function listerOrganisationAdmin(env) {
         Codes: refIds(s.fields.Codes_horaires),
       };
     }),
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Espace administrateur : dossiers des étudiants                      */
+/* ------------------------------------------------------------------ */
+
+/** Nom d'un service pour l'affichage (« Nom (Site) »), ou "" si absent. */
+function nomServiceAvecSite(service, sitesById) {
+  if (!service) return "";
+  const site = siteName(service, sitesById);
+  return site ? `${service.fields.Nom || ""} (${site})` : (service.fields.Nom || "");
+}
+
+/**
+ * Écran « Étudiants » de l'espace admin : un dossier par étudiant, tous
+ * services confondus (contrairement à l'espace cadre, borné aux services du
+ * cadre connecté). Résumé seulement — le détail (périodes, sorties, rdv,
+ * journal) est chargé à la demande par ficheEtudiantAdmin, pour ne pas
+ * ramener tout l'historique de tous les étudiants à chaque ouverture de l'écran.
+ */
+async function listerEtudiantsAdmin(env) {
+  const [students, periodesAll, servicesAll, sites] = await Promise.all([
+    gristAll(env, T_ETUDIANTS),
+    gristAll(env, T_PERIODES),
+    gristAll(env, T_SERVICES),
+    gristAll(env, T_SITES),
+  ]);
+  const servicesById = new Map(servicesAll.map((s) => [s.id, s]));
+  const sitesById = new Map(sites.map((s) => [s.id, s]));
+
+  const periodesParEtudiant = new Map();
+  for (const p of periodesAll) {
+    const id = p.fields.Etudiant;
+    if (!id) continue;
+    if (!periodesParEtudiant.has(id)) periodesParEtudiant.set(id, []);
+    periodesParEtudiant.get(id).push(p);
+  }
+
+  return {
+    formations: FORMATIONS,
+    etudiants: students.map((e) => {
+      const periodes = (periodesParEtudiant.get(e.id) || [])
+        .slice()
+        .sort((a, b) => (b.fields.Du || 0) - (a.fields.Du || 0));
+      const enCours = periodes.find((p) => p.fields.En_cours) || null;
+      const dernier = enCours || periodes[0] || null;
+      const service = dernier ? servicesById.get(dernier.fields.Service) : null;
+      return {
+        id: e.id,
+        nom: e.fields.NOM || "",
+        prenom: e.fields.PRENOM || "",
+        anonymat: e.fields.Anonymat || "",
+        formation: e.fields.FORMATION || "",
+        centre: e.fields.Centre_de_formation || "",
+        email: e.fields.Adresse_mail || "",
+        telephone: e.fields.Numero_de_telephone || "",
+        niveau: dernier ? dernier.fields.Niveau || "" : "",
+        nbPeriodes: periodes.length,
+        enCours: !!enCours,
+        service_actuel: nomServiceAvecSite(service, sitesById),
+        dernier_du: dernier ? epochToIso(dernier.fields.Du) : null,
+        dernier_au: dernier ? epochToIso(dernier.fields.Au) : null,
+      };
+    }),
+  };
+}
+
+/**
+ * Dossier complet d'un étudiant : identité, historique de TOUTES ses périodes
+ * de stage (tous services, contrairement à l'espace cadre), ses déclarations
+ * de sorties, ses rendez-vous formateur et les dernières lignes du journal
+ * d'activité qui le concernent (connexions, consultations de son dossier).
+ */
+async function ficheEtudiantAdmin(env, etudiantId) {
+  const students = await gristFilter(env, T_ETUDIANTS, { id: [etudiantId] });
+  if (!students.length) throw httpError(404, "Dossier étudiant introuvable");
+  const student = students[0];
+
+  const [periodes, servicesAll, sites, users, evaluations, sorties, rdvsAll] = await Promise.all([
+    gristFilter(env, T_PERIODES, { Etudiant: [etudiantId] }),
+    gristAll(env, T_SERVICES),
+    gristAll(env, T_SITES),
+    gristAll(env, T_UTILISATEURS),
+    gristAll(env, T_EVALUATIONS),
+    gristFilter(env, T_SORTIES, { Anonymat: [etudiantId] }),
+    gristAll(env, T_RDV),
+  ]);
+
+  const servicesById = new Map(servicesAll.map((s) => [s.id, s]));
+  const sitesById = new Map(sites.map((s) => [s.id, s]));
+  const usersById = new Map(users.map((u) => [u.id, u]));
+
+  // Évaluation répondue : cf. buildCadrePayload — lien par UUID de la période,
+  // avec repli sur la référence directe Periode_de_stage.
+  const periodeIdByUuid = new Map(periodes.map((p) => [p.fields.UUID, p.id]).filter(([uuid]) => uuid));
+  const periodesAvecReponse = new Set();
+  for (const e of evaluations) {
+    const periodeId = (e.fields.Cle_lien && periodeIdByUuid.get(e.fields.Cle_lien))
+      || e.fields.Periode_de_stage || null;
+    if (periodeId) periodesAvecReponse.add(periodeId);
+  }
+
+  const periodeIdSet = new Set(periodes.map((p) => p.id));
+  const rdvs = rdvsAll.filter((r) => periodeIdSet.has(r.fields.Periode));
+
+  const nomComplet = nomCompletEtudiant(student);
+  // Best-effort : un journal indisponible (colonne pas encore créée, Grist en
+  // défaut) ne doit pas empêcher d'afficher le reste du dossier.
+  const journalBrut = nomComplet
+    ? await gristFilter(env, T_JOURNAL, { Etudiant: [nomComplet] }).catch(() => [])
+    : [];
+
+  return {
+    etudiant: {
+      id: student.id,
+      nom: student.fields.NOM || "",
+      prenom: student.fields.PRENOM || "",
+      anonymat: student.fields.Anonymat || "",
+      formation: student.fields.FORMATION || "",
+      centre: student.fields.Centre_de_formation || "",
+      email: student.fields.Adresse_mail || "",
+      telephone: student.fields.Numero_de_telephone || "",
+      ddn: epochToIso(student.fields.DDN),
+    },
+    periodes: periodes
+      .slice()
+      .sort((a, b) => (b.fields.Du || 0) - (a.fields.Du || 0))
+      .map((p) => {
+        const svc = servicesById.get(p.fields.Service);
+        const fait = p.fields.FAIT ?? 0;
+        const aFaire = p.fields.A_FAIRE ?? 0;
+        return {
+          id: p.id,
+          Service_nom: (svc && svc.fields.Nom) || "",
+          Site: svc ? siteName(svc, sitesById) : "",
+          Du: epochToIso(p.fields.Du),
+          Au: epochToIso(p.fields.Au),
+          Niveau: p.fields.Niveau || "",
+          Tuteur: p.fields.Tuteur || "",
+          Referent_pedagogique: p.fields.Referent_pedagogique || "",
+          En_cours: !!p.fields.En_cours,
+          A_FAIRE: aFaire,
+          FAIT: fait,
+          Solde_heures: Math.round((fait - aFaire) * 100) / 100,
+          Lien_evaluation: p.fields.Lien_evaluation || "",
+          Evaluation_envoyee: !!p.fields.Evaluation_envoyee,
+          Evaluation_repondue: periodesAvecReponse.has(p.id),
+          cadre: cadreInfo(svc, usersById),
+        };
+      }),
+    sorties: sorties
+      .slice()
+      .sort((a, b) => (b.fields.Date || 0) - (a.fields.Date || 0))
+      .map((s) => ({
+        id: s.id,
+        Periode: s.fields.Pour_le_stage_du_ || s.fields.Rapprochement_manuel || null,
+        Motif: s.fields.Motif || "",
+        Commentaire: s.fields.Motif_ou_Commentaire || "",
+        Date: epochToIso(s.fields.Date),
+        Heure_debut: s.fields.Heure_debut || "",
+        Heure_fin: s.fields.Heure_fin || "",
+        Compte_stage: !!s.fields.Compte_stage,
+        Valide: !!s.fields.Valide,
+        Duree_heures: s.fields.Duree_heures ?? 0,
+        Ajustement_h: s.fields.Ajustement_h ?? 0,
+      })),
+    rdvs: rdvs
+      .slice()
+      .sort((a, b) => (b.fields.Date_rdv || 0) - (a.fields.Date_rdv || 0))
+      .map((r) => ({
+        id: r.id,
+        Date_rdv: epochToIso(r.fields.Date_rdv),
+        Type_de_rendez_vous: r.fields.Type_de_rendez_vous || "",
+        Formateur: r.fields.Formateur || "",
+        Commentaire: r.fields.Commentaire || "",
+      })),
+    // Journal : les 100 lignes les plus récentes concernant cet étudiant
+    // (connexions, consultations de son dossier par un cadre ou un admin).
+    // La colonne JOURNAL_ACTIVITE.Etudiant est un texte (nom complet) — même
+    // limite que le reste du journal (voir logActivite) : un homonyme exact
+    // mélangerait les deux dossiers.
+    journal: journalBrut
+      .slice()
+      .sort((a, b) => (b.fields.Horodatage || 0) - (a.fields.Horodatage || 0))
+      .slice(0, 100)
+      .map((j) => ({
+        id: j.id,
+        Horodatage: j.fields.Horodatage || null,
+        Role: j.fields.Role || "",
+        Qui: j.fields.Qui || "",
+        Action: j.fields.Action || "",
+        Detail: j.fields.Detail || "",
+        Service: j.fields.Service || "",
+        Site: j.fields.Site || "",
+      })),
   };
 }
 

@@ -107,6 +107,20 @@
       background:var(--succes-bg);color:var(--succes);border-radius:4px;padding:.7rem 1.2rem;
       box-shadow:0 2px 12px rgba(0,0,0,.18);font-weight:600;max-width:90vw}
     .toast.ko{background:var(--alerte-bg);color:var(--alerte)}
+
+    /* Dossier étudiant (lecture seule) : plus large que les fiches habituelles,
+       et défilant puisqu'il peut cumuler plusieurs stages et tout un journal. */
+    #etudiant-dialog{max-width:54rem;max-height:88vh;overflow-y:auto}
+    .etu-identite{display:grid;grid-template-columns:repeat(auto-fill,minmax(12rem,1fr));
+      gap:.5rem 1.2rem;margin:0 0 1.1rem;padding:.7rem .9rem;
+      border:1px solid var(--gris-bordure);border-radius:4px}
+    .etu-identite span{font-size:.92rem}
+    .etu-identite b{display:block;font-size:.68rem;font-weight:700;text-transform:uppercase;
+      letter-spacing:.03em;color:var(--texte-doux);margin-bottom:.1rem}
+    .etu-section{margin:0 0 1.3rem}
+    .etu-section h3{margin:0 0 .4rem;font-size:.95rem}
+    .etu-section table.admin{font-size:.85rem}
+    .etu-section table.admin th,.etu-section table.admin td{padding:.4rem .5rem}
   </style>
 </head>
 <body>
@@ -172,6 +186,7 @@
         <button type="button" class="admin-tab" data-onglet="services">Services</button>
         <button type="button" class="admin-tab" data-onglet="poles">Pôles</button>
         <button type="button" class="admin-tab" data-onglet="organigramme">Organigramme</button>
+        <button type="button" class="admin-tab" data-onglet="etudiants">Étudiants</button>
       </div>
 
       <section id="tab-cadres">
@@ -235,6 +250,22 @@
         </div>
 
         <div id="orga-wrap"></div>
+      </section>
+
+      <section id="tab-etudiants" hidden>
+        <h2>Dossiers des étudiants</h2>
+        <p class="section-note">Retrouvez le dossier complet d'un étudiant : son identité,
+          l'historique de tous ses stages — même dans d'autres services que le service
+          actuel —, ses déclarations de sorties, ses rendez-vous formateur et les dernières
+          lignes du journal d'activité qui le concernent.</p>
+
+        <div class="admin-bar">
+          <input type="search" id="search-etu"
+                 placeholder="Rechercher un étudiant (nom, prénom, code anonymat, formation, centre)…"
+                 autocomplete="off" spellcheck="false">
+        </div>
+
+        <div id="etudiants-wrap" class="admin-table-wrap"></div>
       </section>
     </main>
 
@@ -419,9 +450,20 @@
     </form>
   </dialog>
 
+  <!-- Dossier complet d'un étudiant : lecture seule -->
+  <dialog id="etudiant-dialog">
+    <form method="dialog">
+      <h2 id="etudiant-dialog-title">Dossier étudiant</h2>
+      <div id="etu-detail"></div>
+      <div class="dialog-actions">
+        <button type="submit" class="btn btn-primary">Fermer</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="config.js?v=21"></script>
   <script src="layout.js?v=26"></script>
   <script src="etablissement.js?v=29"></script>
-  <script src="espace-admin.js?v=7"></script>
+  <script src="espace-admin.js?v=8"></script>
 </body>
 </html>
