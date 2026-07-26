@@ -10,7 +10,7 @@
    case UTILISATEURS.Administrateur est cochée passent la porte. Le contrôle
    qui compte est côté Worker : ici, on n'affiche que ce qui est autorisé. */
 
-const APP_VERSION = "v7"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-admin.html)
+const APP_VERSION = "v9"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-admin.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 
@@ -39,6 +39,8 @@ const state = {
   // en mémoire, pour toujours voir le dernier état).
   etu: null, // { formations, etudiants }
   rechercheEtu: "",
+  // Onglet « Établissement » : paramètres généraux, chargés à la première ouverture.
+  etab: null,
 };
 
 /* ------------------------------------------------------------------ */
@@ -51,14 +53,17 @@ function ouvrirSession(jeton) {
   else sessionStorage.removeItem("cadre_session");
 }
 
+/* `body` en FormData (téléversement du logo) part tel quel, sans l'en-tête
+ * JSON : le navigateur pose lui-même le Content-Type multipart avec sa borne. */
 async function api(method, path, body) {
+  const estFormData = body instanceof FormData;
   const res = await fetch(API + path, {
     method,
     headers: {
-      "Content-Type": "application/json",
+      ...(estFormData ? {} : { "Content-Type": "application/json" }),
       ...(state.session ? { "X-Cadre-Session": state.session } : {}),
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : estFormData ? body : JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
@@ -74,7 +79,7 @@ async function api(method, path, body) {
 const vuesSignalees = new Set();
 const LIBELLES_ONGLETS = {
   cadres: "Cadres", services: "Services", poles: "Pôles", organigramme: "Organigramme",
-  etudiants: "Étudiants",
+  etudiants: "Étudiants", etablissement: "Établissement",
 };
 function marqueurVue(ecran, onglet) {
   if (vuesSignalees.has(ecran)) return "";
@@ -661,7 +666,7 @@ document.querySelectorAll(".admin-tab").forEach((btn) => {
   btn.addEventListener("click", () => montrerOnglet(btn.dataset.onglet));
 });
 
-const ONGLETS = ["cadres", "services", "poles", "organigramme", "etudiants"];
+const ONGLETS = ["cadres", "services", "poles", "organigramme", "etudiants", "etablissement"];
 
 async function montrerOnglet(id) {
   state.onglet = id;
@@ -673,6 +678,9 @@ async function montrerOnglet(id) {
     if (id === "etudiants") {
       if (!state.etu) await chargerEtudiants(id);
       else rendreEtudiants();
+    } else if (id === "etablissement") {
+      if (!state.etab) await chargerEtablissement(id);
+      else rendreEtablissement();
     } else if (id !== "cadres") {
       // Services, pôles et organigramme partagent les mêmes données : un seul
       // chargement, à la première ouverture de l'un des trois.
@@ -1690,6 +1698,110 @@ function rendreFicheEtudiant(fiche) {
   wrap.appendChild(sectionRdvs(fiche.rdvs));
   wrap.appendChild(sectionJournal(fiche.journal));
 }
+
+/* ------------------------------------------------------------------ */
+/* Écran Établissement : paramètres généraux (table Grist ETABLISSEMENT) */
+/* ------------------------------------------------------------------ */
+
+async function chargerEtablissement(onglet) {
+  state.etab = await api("GET", "/api/admin/etablissement" + marqueurVue("etablissement", onglet));
+  rendreEtablissement();
+}
+
+/* Cache lu par etablissement.js (en-tête/pied de page de toutes les pages) :
+ * même forme que la réponse de /api/config, donc réutilisable telle quelle.
+ * Un reflet immédiat, en attendant le prochain chargement d'une autre page. */
+function rafraichirCacheEtab() {
+  try { localStorage.setItem("etablissement-config", JSON.stringify(state.etab)); } catch { /* stockage plein : ignoré */ }
+}
+
+function rendreEtablissement() {
+  const e = state.etab || {};
+  $("e-nom").value = e.nom || "";
+  $("e-sous-titre").value = e.sousTitre || "";
+  $("e-description").value = e.description || "";
+  $("e-domaine-mail").value = e.domaineMail || "";
+  $("e-mode-public").checked = e.modeEtablissementPublic !== false;
+  $("e-beta").checked = e.afficherBeta !== false;
+  $("e-footer-texte").value = e.textePiedDePage || "";
+  $("e-footer-lien").value = e.urlDocumentGrist || "";
+  rendreLogoEtab();
+  rafraichirCacheEtab();
+}
+
+function rendreLogoEtab() {
+  const e = state.etab || {};
+  const img = $("e-logo-apercu");
+  if (e.logoId && API) {
+    img.src = API + "/api/config/logo?v=" + encodeURIComponent(e.logoId);
+    img.hidden = false;
+    $("e-logo-vide").hidden = true;
+    $("e-logo-retirer").hidden = false;
+  } else {
+    img.hidden = true;
+    img.removeAttribute("src");
+    $("e-logo-vide").hidden = false;
+    $("e-logo-retirer").hidden = true;
+  }
+}
+
+$("etab-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = $("etab-save-btn");
+  const errEl = $("etab-error");
+  errEl.hidden = true;
+  btn.disabled = true;
+  try {
+    const corps = {
+      nom: $("e-nom").value.trim(),
+      sousTitre: $("e-sous-titre").value.trim(),
+      description: $("e-description").value.trim(),
+      domaineMail: $("e-domaine-mail").value.trim(),
+      modeEtablissementPublic: $("e-mode-public").checked,
+      afficherBeta: $("e-beta").checked,
+      textePiedDePage: $("e-footer-texte").value.trim(),
+      urlDocumentGrist: $("e-footer-lien").value.trim(),
+    };
+    state.etab = await api("PATCH", "/api/admin/etablissement", corps);
+    rendreEtablissement();
+    toast("Paramètres de l'établissement enregistrés.");
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* Le logo se change à part du reste du formulaire : l'envoi du fichier à
+ * Grist est immédiat (pas d'état "logo en attente" à gérer côté client). */
+$("e-logo-fichier").addEventListener("change", async (e) => {
+  const fichier = e.target.files && e.target.files[0];
+  e.target.value = ""; // permet de reproposer le même fichier ensuite
+  if (!fichier) return;
+  try {
+    const form = new FormData();
+    form.append("logo", fichier);
+    const res = await api("POST", "/api/admin/etablissement/logo", form);
+    state.etab = { ...state.etab, logoId: res.logoId };
+    rendreEtablissement();
+    toast("Logo mis à jour.");
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
+$("e-logo-retirer").addEventListener("click", async () => {
+  if (!confirm("Retirer le logo de l'établissement ?\n\nLe site affichera un monogramme à la place.")) return;
+  try {
+    await api("DELETE", "/api/admin/etablissement/logo");
+    state.etab = { ...state.etab, logoId: null };
+    rendreEtablissement();
+    toast("Logo retiré.");
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
 
 /* ------------------------------------------------------------------ */
 /* Démarrage : reprise d'une session déjà ouverte dans cet onglet      */

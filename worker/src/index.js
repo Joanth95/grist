@@ -82,6 +82,12 @@
  *   POST   /api/admin/sites  { NOM }                           -> crée un site
  *   POST   /api/admin/poles  { Nom, CSS: [ids] }               -> crée un pôle
  *   PATCH  /api/admin/poles/:id  { Nom?, CSS? }                -> renomme, change le cadre sup
+ *   GET    /api/admin/etablissement[?vue=1&onglet=…]           -> paramètres généraux (identité,
+ *                                                                 pied de page, domaine mail, habillage…)
+ *   PATCH  /api/admin/etablissement  { nom?, description?, ... } -> modifie ces paramètres
+ *                                                                 (table ETABLISSEMENT, 1 seule ligne)
+ *   POST   /api/admin/etablissement/logo  (multipart, champ "logo") -> change le logo
+ *   DELETE /api/admin/etablissement/logo                       -> retire le logo
  *
  * La table Pole n'a pas de schéma imposé (elle vient du document d'origine) :
  * ses colonnes — nom du pôle, cadre(s) supérieur(s), et la référence qui relie
@@ -522,6 +528,25 @@ async function route(request, env, ctx) {
           detail: ongletVu(request) || "onglet « Services »" });
       }
       return json(await listerOrganisationAdmin(env));
+    }
+    if (request.method === "GET" && path === "/api/admin/etablissement") {
+      if (estOuverture(request)) {
+        logActivite(env, ctx, { ...whoA, action: "Consultation de l'espace administrateur",
+          detail: ongletVu(request) || "onglet « Établissement »" });
+      }
+      return json(await listerEtablissementAdmin(env));
+    }
+    if (request.method === "PATCH" && path === "/api/admin/etablissement") {
+      return withLog(env, ctx, whoA, "Modification des paramètres de l'établissement", "",
+        (info) => modifierEtablissementAdmin(request, env, info));
+    }
+    if (request.method === "POST" && path === "/api/admin/etablissement/logo") {
+      return withLog(env, ctx, whoA, "Changement du logo de l'établissement", "",
+        (info) => televerserLogoEtablissement(request, env, info));
+    }
+    if (request.method === "DELETE" && path === "/api/admin/etablissement/logo") {
+      return withLog(env, ctx, whoA, "Suppression du logo de l'établissement", "",
+        (info) => supprimerLogoEtablissement(env, info));
     }
     if (request.method === "GET" && path === "/api/admin/etudiants") {
       if (estOuverture(request)) {
@@ -1161,6 +1186,127 @@ async function getLogoEtablissement(env) {
       "Cache-Control": "public, max-age=86400",
     },
   });
+}
+
+/** Colonnes ETABLISSEMENT facultatives (le document d'origine ne les a pas
+ *  forcément) : créées à la volée dès qu'un administrateur les renseigne
+ *  depuis l'onglet « Établissement », comme PIN_hash pour un compte cadre.
+ *  Nom, Description, Sous_titre et Logo sont supposées déjà présentes : ce
+ *  sont les colonnes d'origine de la table, toujours lues par /api/config. */
+const COLONNES_ETABLISSEMENT = [
+  { id: "Url_document_grist", label: "Lien du pied de page", type: "Text" },
+  { id: "Texte_pied_de_page", label: "Texte du pied de page", type: "Text" },
+  { id: "Afficher_bandeau_beta", label: "Afficher le bandeau bêta", type: "Bool" },
+  { id: "DOMAINE_MAIL", label: "Domaine mail de l'établissement", type: "Text" },
+  { id: "Mode_etablissement_public", label: "Habillage public (DSFR)", type: "Bool" },
+];
+
+/** Première (et seule) ligne de la table ETABLISSEMENT, ou null si la table
+ *  est vide ou absente. */
+async function ligneEtablissement(env) {
+  try {
+    const records = await gristAll(env, T_ETABLISSEMENT);
+    return records[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Paramètres de l'établissement pour l'écran d'administration : mêmes champs
+ * que /api/config (voir getConfigEtablissement), mais destinés à être relus
+ * puis modifiés depuis un formulaire, pas seulement affichés.
+ */
+async function listerEtablissementAdmin(env) {
+  const ligne = await ligneEtablissement(env);
+  const f = (ligne && ligne.fields) || {};
+  return {
+    nom: f.Nom || "",
+    description: f.Description || "",
+    sousTitre: f.Sous_titre || "",
+    logoId: premierePieceJointe(f.Logo),
+    urlDocumentGrist: f.Url_document_grist || "",
+    textePiedDePage: f.Texte_pied_de_page || "",
+    afficherBeta: f.Afficher_bandeau_beta !== false,
+    domaineMail: f.DOMAINE_MAIL || "",
+    modeEtablissementPublic: f.Mode_etablissement_public !== false,
+  };
+}
+
+/** L'administrateur modifie les paramètres de l'établissement (table à une
+ *  seule ligne, créée au besoin — un document tout neuf n'en a pas encore). */
+async function modifierEtablissementAdmin(request, env, info) {
+  const body = await request.json().catch(() => ({}));
+  const fields = {};
+  if (body.nom !== undefined) fields.Nom = cleanText(body.nom, 120);
+  if (body.description !== undefined) fields.Description = cleanText(body.description, 300);
+  if (body.sousTitre !== undefined) fields.Sous_titre = cleanText(body.sousTitre, 160);
+  if (body.urlDocumentGrist !== undefined) fields.Url_document_grist = cleanText(body.urlDocumentGrist, 300);
+  if (body.textePiedDePage !== undefined) fields.Texte_pied_de_page = cleanText(body.textePiedDePage, 500);
+  if (body.domaineMail !== undefined) fields.DOMAINE_MAIL = cleanText(body.domaineMail, 120).replace(/^@+/, "");
+  if (body.afficherBeta !== undefined) fields.Afficher_bandeau_beta = !!body.afficherBeta;
+  if (body.modeEtablissementPublic !== undefined) fields.Mode_etablissement_public = !!body.modeEtablissementPublic;
+  if (!Object.keys(fields).length) throw httpError(400, "Aucune modification fournie");
+  if (body.nom !== undefined && !fields.Nom) throw httpError(400, "Le nom de l'établissement est obligatoire");
+
+  await ensureColumns(env, T_ETABLISSEMENT, COLONNES_ETABLISSEMENT);
+  const ligne = await ligneEtablissement(env);
+  if (ligne) {
+    await gristUpdate(env, T_ETABLISSEMENT, ligne.id, fields);
+  } else {
+    await grist(env, "POST", `/tables/${T_ETABLISSEMENT}/records`, { records: [{ fields }] });
+  }
+  if (info) info.detail = Object.keys(fields).join(", ");
+  return json(await listerEtablissementAdmin(env));
+}
+
+/** L'administrateur envoie un nouveau logo (multipart/form-data, champ
+ *  "logo") : la pièce jointe part chez Grist, puis la ligne ETABLISSEMENT est
+ *  mise à jour pour pointer dessus. L'ancienne pièce jointe reste dans le
+ *  document (Grist ne l'efface pas), mais n'est plus référencée nulle part. */
+async function televerserLogoEtablissement(request, env, info) {
+  const form = await request.formData().catch(() => null);
+  const file = form ? form.get("logo") : null;
+  if (!file || typeof file === "string") throw httpError(400, "Fichier logo manquant");
+  if (!file.type || !file.type.startsWith("image/")) throw httpError(400, "Le logo doit être une image");
+  if (file.size > 3 * 1024 * 1024) throw httpError(400, "Image trop lourde (3 Mo maximum)");
+
+  const up = new FormData();
+  up.append("upload", file, file.name || "logo");
+  const base = (env.GRIST_BASE_URL || "https://grist.numerique.gouv.fr/api").replace(/\/$/, "");
+  const res = await fetch(`${base}/docs/${env.GRIST_DOC_ID}/attachments`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.GRIST_API_KEY}` },
+    body: up,
+  });
+  if (!res.ok) {
+    console.error(`Grist attachments POST -> ${res.status}: ${await res.text()}`);
+    throw httpError(502, "Erreur lors de l'envoi du logo à Grist");
+  }
+  const attachs = await res.json().catch(() => null);
+  const attId = Array.isArray(attachs) ? attachs[0] : null;
+  if (!attId) throw httpError(502, "Réponse inattendue de Grist après l'envoi du logo");
+
+  const ligne = await ligneEtablissement(env);
+  const fields = { Logo: ["L", attId] };
+  if (ligne) {
+    await gristUpdate(env, T_ETABLISSEMENT, ligne.id, fields);
+  } else {
+    await grist(env, "POST", `/tables/${T_ETABLISSEMENT}/records`, { records: [{ fields }] });
+  }
+  if (info) info.detail = file.name || "";
+  return json({ logoId: attId });
+}
+
+/** Retire le logo actuel (la ligne ETABLISSEMENT reste, seule sa colonne Logo
+ *  est vidée) : le site retombe sur le monogramme de repli. */
+async function supprimerLogoEtablissement(env, info) {
+  const ligne = await ligneEtablissement(env);
+  if (ligne && ligne.fields.Logo) {
+    await gristUpdate(env, T_ETABLISSEMENT, ligne.id, { Logo: ["L"] });
+  }
+  if (info) info.detail = "logo retiré";
+  return json({ ok: true });
 }
 
 async function listServices(env) {

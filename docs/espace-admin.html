@@ -121,6 +121,14 @@
     .etu-section h3{margin:0 0 .4rem;font-size:.95rem}
     .etu-section table.admin{font-size:.85rem}
     .etu-section table.admin th,.etu-section table.admin td{padding:.4rem .5rem}
+
+    /* Onglet Établissement : formulaire de paramètres, pas de tableau */
+    .etab-form{max-width:38rem}
+    .etab-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(14rem,1fr));gap:0 1rem}
+    .etab-logo-ligne{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+    #e-logo-apercu{width:4.5rem;height:4.5rem;object-fit:contain;background:var(--gris-fond);
+      border:1px solid var(--gris-bordure);border-radius:4px;padding:.3rem}
+    .etab-logo-actions{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
   </style>
 </head>
 <body>
@@ -187,6 +195,7 @@
         <button type="button" class="admin-tab" data-onglet="poles">Pôles</button>
         <button type="button" class="admin-tab" data-onglet="organigramme">Organigramme</button>
         <button type="button" class="admin-tab" data-onglet="etudiants">Étudiants</button>
+        <button type="button" class="admin-tab" data-onglet="etablissement">Établissement</button>
       </div>
 
       <section id="tab-cadres">
@@ -266,6 +275,80 @@
         </div>
 
         <div id="etudiants-wrap" class="admin-table-wrap"></div>
+      </section>
+
+      <section id="tab-etablissement" hidden>
+        <h2>Paramètres de l'établissement</h2>
+        <p class="section-note">L'identité affichée aux étudiants et aux cadres — en-tête, pied de
+          page, domaine mail, habillage du site. Ces réglages se faisaient jusqu'ici dans le
+          document Grist, table <strong>ETABLISSEMENT</strong>.</p>
+
+        <form id="etab-form" class="etab-form">
+          <div class="etab-grid">
+            <div>
+              <label for="e-nom">Nom de l'établissement</label>
+              <input type="text" id="e-nom" maxlength="120" required autocomplete="off"
+                     placeholder="CHR Metz-Thionville">
+            </div>
+            <div>
+              <label for="e-sous-titre">Sous-titre / accroche <span class="optional">(facultatif)</span></label>
+              <input type="text" id="e-sous-titre" maxlength="160" autocomplete="off">
+            </div>
+          </div>
+
+          <label for="e-description">Description courte <span class="optional">(facultatif)</span>
+            <span class="fr-hint-text">Affichée sous le nom, dans l'en-tête.</span>
+          </label>
+          <input type="text" id="e-description" maxlength="300" autocomplete="off">
+
+          <div class="fiche-section">
+            <h3>Logo</h3>
+            <div class="etab-logo-ligne">
+              <img id="e-logo-apercu" alt="Logo de l'établissement" hidden>
+              <span id="e-logo-vide" class="cadre-sous">Aucun logo : un monogramme est affiché à la place.</span>
+              <div class="etab-logo-actions">
+                <label class="btn btn-ghost btn-small" for="e-logo-fichier">Changer le logo…</label>
+                <input type="file" id="e-logo-fichier" accept="image/*" hidden>
+                <button type="button" class="btn btn-ghost btn-small" id="e-logo-retirer" hidden>Retirer</button>
+              </div>
+            </div>
+            <p class="save-hint">Image de préférence carrée (PNG ou SVG à fond transparent), 3 Mo
+              maximum. Le changement est immédiat, sans passer par « Enregistrer ».</p>
+          </div>
+
+          <div class="fiche-section">
+            <h3>Domaine mail</h3>
+            <label for="e-domaine-mail">Domaine mail des cadres <span class="optional">(facultatif)</span>
+              <span class="fr-hint-text">Complète automatiquement "prenom.nom" en
+                "prenom.nom@domaine" dans les champs email des cadres.</span>
+            </label>
+            <input type="text" id="e-domaine-mail" maxlength="120" autocomplete="off" placeholder="chr-exemple.fr">
+          </div>
+
+          <div class="fiche-section">
+            <h3>Habillage et pied de page</h3>
+            <label class="checkbox-label"><input type="checkbox" id="e-mode-public" checked>
+              Rendu public officiel (DSFR)</label>
+            <p class="save-hint">Décoché, le site passe à un habillage "moderne" alternatif.</p>
+
+            <label class="checkbox-label"><input type="checkbox" id="e-beta" checked>
+              Afficher le bandeau « Version bêta »</label>
+
+            <label for="e-footer-texte">Texte du pied de page <span class="optional">(facultatif)</span></label>
+            <textarea id="e-footer-texte" rows="2" maxlength="500"></textarea>
+
+            <label for="e-footer-lien">Lien complémentaire en pied de page <span class="optional">(facultatif)</span>
+              <span class="fr-hint-text">Par exemple un règlement intérieur ou une page d'aide.
+                Laissez vide pour garder le lien par défaut.</span>
+            </label>
+            <input type="url" id="e-footer-lien" maxlength="300" autocomplete="off" placeholder="https://…">
+          </div>
+
+          <p id="etab-error" class="error" hidden></p>
+          <div class="dialog-actions">
+            <button type="submit" class="btn btn-primary" id="etab-save-btn">Enregistrer</button>
+          </div>
+        </form>
       </section>
     </main>
 
@@ -464,6 +547,6 @@
   <script src="config.js?v=21"></script>
   <script src="layout.js?v=26"></script>
   <script src="etablissement.js?v=29"></script>
-  <script src="espace-admin.js?v=8"></script>
+  <script src="espace-admin.js?v=9"></script>
 </body>
 </html>
