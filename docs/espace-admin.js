@@ -10,7 +10,7 @@
    case UTILISATEURS.Administrateur est cochée passent la porte. Le contrôle
    qui compte est côté Worker : ici, on n'affiche que ce qui est autorisé. */
 
-const APP_VERSION = "v9"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-admin.html)
+const APP_VERSION = "v10"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-admin.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 
@@ -79,7 +79,7 @@ async function api(method, path, body) {
 const vuesSignalees = new Set();
 const LIBELLES_ONGLETS = {
   cadres: "Cadres", services: "Services", poles: "Pôles", organigramme: "Organigramme",
-  etudiants: "Étudiants", etablissement: "Établissement",
+  etudiants: "Étudiants", configuration: "Configuration",
 };
 function marqueurVue(ecran, onglet) {
   if (vuesSignalees.has(ecran)) return "";
@@ -666,7 +666,21 @@ document.querySelectorAll(".admin-tab").forEach((btn) => {
   btn.addEventListener("click", () => montrerOnglet(btn.dataset.onglet));
 });
 
-const ONGLETS = ["cadres", "services", "poles", "organigramme", "etudiants", "etablissement"];
+/* Sous-onglets de l'onglet « Configuration » (un seul pour l'instant :
+ * Établissement — la structure accueille les prochains sans y retoucher). */
+document.querySelectorAll(".admin-subtab").forEach((btn) => {
+  btn.addEventListener("click", () => montrerSousOnglet(btn.dataset.subonglet));
+});
+
+function montrerSousOnglet(id) {
+  document.querySelectorAll(".admin-subtab").forEach((b) =>
+    b.classList.toggle("active", b.dataset.subonglet === id));
+  document.querySelectorAll(".admin-subtab-panel").forEach((p) => {
+    p.hidden = p.id !== `subtab-${id}`;
+  });
+}
+
+const ONGLETS = ["cadres", "services", "poles", "organigramme", "etudiants", "configuration"];
 
 async function montrerOnglet(id) {
   state.onglet = id;
@@ -678,7 +692,7 @@ async function montrerOnglet(id) {
     if (id === "etudiants") {
       if (!state.etu) await chargerEtudiants(id);
       else rendreEtudiants();
-    } else if (id === "etablissement") {
+    } else if (id === "configuration") {
       if (!state.etab) await chargerEtablissement(id);
       else rendreEtablissement();
     } else if (id !== "cadres") {
