@@ -202,6 +202,12 @@
     .compteur-solde-pos { color: #18753c; font-weight: 600; }
     .compteur-solde-neg { color: var(--rouge); font-weight: 600; }
     table.service-planning thead th { background: var(--gris-fond); }
+    @media (max-width: 640px) {
+      table.service-planning th.student-col, table.service-planning td.student-col { min-width: 130px; }
+      table.service-planning th.compteurs-col, table.service-planning td.compteurs-col {
+        position: static; min-width: 130px; border-left: 2px solid var(--gris-bordure);
+      }
+    }
     .etu-meta-small { font-size: 0.75rem; color: var(--texte-doux); font-weight: 400; }
     td.hors-periode { background: var(--gris-fond); }
     td.code-cell { cursor: pointer; }
