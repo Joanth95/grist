@@ -1085,14 +1085,27 @@ async function chargerCadre(env, match) {
 /* ------------------------------------------------------------------ */
 
 async function buildPayload(env, student) {
-  const [periodes, services, codes, sorties, users, feries] = await Promise.all([
+  const [periodes, services, codes, sorties, users, feries, evaluations] = await Promise.all([
     gristFilter(env, T_PERIODES, { Code_anonymat: [student.code] }),
     gristAll(env, T_SERVICES),
     gristAll(env, T_CODES),
     gristFilter(env, T_SORTIES, { Anonymat: [student.rowId] }),
     gristAll(env, T_UTILISATEURS),
     gristAll(env, T_FERIES),
+    gristAll(env, T_EVALUATIONS),
   ]);
+
+  // Questionnaire de satisfaction déjà rempli : cf. buildCadrePayload — lien
+  // par UUID de la période (Cle_lien), avec repli sur la référence directe.
+  const periodeIdByUuid = new Map(
+    periodes.map((p) => [p.fields.UUID, p.id]).filter(([uuid]) => uuid)
+  );
+  const periodesAvecReponse = new Set();
+  for (const e of evaluations) {
+    const periodeId = (e.fields.Cle_lien && periodeIdByUuid.get(e.fields.Cle_lien))
+      || e.fields.Periode_de_stage || null;
+    if (periodeId) periodesAvecReponse.add(periodeId);
+  }
 
   const serviceById = new Map(services.map((s) => [s.id, s]));
   const usersById = new Map(users.map((u) => [u.id, u]));
@@ -1187,6 +1200,10 @@ async function buildPayload(env, student) {
           ? Math.round(100 * (1 - (absencesByPeriode[p.id] || 0) / joursPrevusByPeriode[p.id]))
           : null,
         Tuteur: p.fields.Tuteur || "",
+        // Questionnaire de satisfaction : lien personnel de la période, et
+        // indicateur de réponse pour ne plus proposer de le remplir deux fois.
+        Lien_evaluation: p.fields.Lien_evaluation || "",
+        Evaluation_repondue: periodesAvecReponse.has(p.id),
         cadre: cadreInfo(service, usersById),
       };
     }),

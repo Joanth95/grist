@@ -280,7 +280,44 @@ function renderPeriode() {
   if (p.cadre && p.cadre.nom) {
     card.appendChild(renderCadre(p.cadre));
   }
+  const invite = renderEvaluationInvite(p);
+  if (invite) card.appendChild(invite);
   container.appendChild(card);
+}
+
+/** Le questionnaire de satisfaction s'ouvre 10 jours avant la fin du stage et
+ *  reste accessible 40 jours après (même fenêtre que l'envoi côté cadre). */
+function evaluationOuverte(p) {
+  if (!p.Au) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffJours = Math.round((today - new Date(p.Au + "T00:00:00")) / 86400000);
+  return diffJours >= -10 && diffJours <= 40;
+}
+
+/** Accès au questionnaire de satisfaction de fin de stage, sur la période
+ *  affichée : bouton tant qu'il n'a pas été rempli, remerciement ensuite. */
+function renderEvaluationInvite(p) {
+  const lien = p.Lien_evaluation || "";
+  // Le lien vient de Grist : on n'ouvre que du http(s), jamais un javascript:.
+  if (!/^https?:\/\//i.test(lien)) return null;
+
+  const wrap = el("div", "periode-eval");
+  if (p.Evaluation_repondue) {
+    wrap.appendChild(el("p", "eval-note",
+      "✅ Questionnaire de satisfaction : merci, votre réponse a bien été enregistrée."));
+    return wrap;
+  }
+  if (!evaluationOuverte(p)) return null;
+
+  const a = el("a", "btn btn-primary", "📝 Compléter le questionnaire de satisfaction");
+  a.href = lien;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  wrap.appendChild(a);
+  wrap.appendChild(el("p", "eval-note",
+    "Quelques minutes suffisent. Vos réponses sont dépouillées de façon anonyme et aident à améliorer l'accueil des prochains étudiants."));
+  return wrap;
 }
 
 /** Bloc coordonnées du cadre du service (nom, email, téléphone). */
