@@ -126,6 +126,11 @@ const T_UTILISATEURS = "UTILISATEURS";
 const T_FERIES = "JOURS_FERIES";
 const T_EVALUATIONS = "EVALUATION_STAGE_ETUDIANT";
 const T_RDV = "RDV_FORMATEUR";
+// Commentaires + pièces jointes par période de stage (table déjà utilisée à la
+// main dans Grist, avant le site : feuille de présence, bilan final...). Le
+// bilan final s'y reconnaît par son Commentaire contenant "bilan" (insensible
+// à la casse) — voir bilansDeLaPeriode.
+const T_COMMENTAIRES = "BDD_COM";
 const T_JOURNAL = "JOURNAL_ACTIVITE_V2";
 const T_ETABLISSEMENT = "ETABLISSEMENT";
 const T_POLE = "Pole";
@@ -1408,7 +1413,7 @@ function siteName(service, sitesById) {
 
 /** Payload complet des services/étudiants/planning rattachés au cadre. */
 async function buildCadrePayload(env, cadre) {
-  const [periodesAll, students, codes, feries, evaluations, servicesAll, sites, rdvsAll] = await Promise.all([
+  const [periodesAll, students, codes, feries, evaluations, servicesAll, sites, rdvsAll, commentaires] = await Promise.all([
     gristAll(env, T_PERIODES),
     gristAll(env, T_ETUDIANTS),
     gristAll(env, T_CODES),
@@ -1417,7 +1422,14 @@ async function buildCadrePayload(env, cadre) {
     gristAll(env, T_SERVICES),
     gristAll(env, T_SITES),
     gristAll(env, T_RDV),
+    gristAll(env, T_COMMENTAIRES),
   ]);
+
+  // Bilan final : reconnu parmi les commentaires/pièces jointes de chaque
+  // période par son texte (voir MOTIF_BILAN) — pas de colonne dédiée.
+  const periodesAvecBilan = new Set(
+    commentaires.filter((c) => MOTIF_BILAN.test(c.fields.Commentaire || "")).map((c) => c.fields.Periode_de_stage)
+  );
 
   const servicesById = new Map(servicesAll.map((s) => [s.id, s]));
   const sitesById = new Map(sites.map((s) => [s.id, s]));
@@ -1539,7 +1551,7 @@ async function buildCadrePayload(env, cadre) {
         Lien_evaluation: p.fields.Lien_evaluation || "",
         Evaluation_envoyee: !!p.fields.Evaluation_envoyee,
         Evaluation_repondue: periodesAvecReponse.has(p.id),
-        Bilan_final: !!premierePieceJointe(p.fields.Bilan_final),
+        Bilan_final: periodesAvecBilan.has(p.id),
         Alertes: computeAlertesPeriode(p.id, semaines, codesById, epochToIso(p.fields.Du), epochToIso(p.fields.Au)),
       };
     }),
@@ -2504,12 +2516,6 @@ async function listerOrganisationAdmin(env) {
 /* Espace administrateur : dossiers des étudiants                      */
 /* ------------------------------------------------------------------ */
 
-/** Colonne facultative (absente du document Grist d'origine), créée à la
- *  volée dès qu'un admin dépose un premier bilan de stage. */
-const COLONNES_PERIODE_BILAN = [
-  { id: "Bilan_final", label: "Bilan final de stage", type: "Attachments" },
-];
-
 /** Nom d'un service pour l'affichage (« Nom (Site) »), ou "" si absent. */
 function nomServiceAvecSite(service, sitesById) {
   if (!service) return "";
@@ -2583,7 +2589,7 @@ async function ficheEtudiantAdmin(env, etudiantId) {
   if (!students.length) throw httpError(404, "Dossier étudiant introuvable");
   const student = students[0];
 
-  const [periodes, servicesAll, sites, users, evaluations, sorties, rdvsAll] = await Promise.all([
+  const [periodes, servicesAll, sites, users, evaluations, sorties, rdvsAll, commentaires] = await Promise.all([
     gristFilter(env, T_PERIODES, { Etudiant: [etudiantId] }),
     gristAll(env, T_SERVICES),
     gristAll(env, T_SITES),
@@ -2591,7 +2597,14 @@ async function ficheEtudiantAdmin(env, etudiantId) {
     gristAll(env, T_EVALUATIONS),
     gristFilter(env, T_SORTIES, { Anonymat: [etudiantId] }),
     gristAll(env, T_RDV),
+    gristAll(env, T_COMMENTAIRES),
   ]);
+
+  // Bilan final : reconnu parmi les commentaires/pièces jointes de chaque
+  // période par son texte (voir MOTIF_BILAN) — pas de colonne dédiée.
+  const periodesAvecBilan = new Set(
+    commentaires.filter((c) => MOTIF_BILAN.test(c.fields.Commentaire || "")).map((c) => c.fields.Periode_de_stage)
+  );
 
   const servicesById = new Map(servicesAll.map((s) => [s.id, s]));
   const sitesById = new Map(sites.map((s) => [s.id, s]));
@@ -2653,7 +2666,7 @@ async function ficheEtudiantAdmin(env, etudiantId) {
           Lien_evaluation: p.fields.Lien_evaluation || "",
           Evaluation_envoyee: !!p.fields.Evaluation_envoyee,
           Evaluation_repondue: periodesAvecReponse.has(p.id),
-          Bilan_final: !!premierePieceJointe(p.fields.Bilan_final),
+          Bilan_final: periodesAvecBilan.has(p.id),
           cadre: cadreInfo(svc, usersById),
         };
       }),
@@ -2847,13 +2860,28 @@ async function periodeDeLEtudiant(env, etudiantId, periodeId) {
 }
 
 const TYPES_BILAN_AUTORISES = ["application/pdf", "image/png", "image/jpeg"];
+/** Motif reconnaissant "le" bilan final parmi les autres commentaires/pièces
+ *  jointes d'une période (feuille de présence, etc.) : son Commentaire
+ *  contient "bilan", qu'il ait été déposé à la main dans Grist (ex.
+ *  "BARILLE_Yannick_Bilan_Final.pdf") ou via le site (voir deposerBilan). */
+const MOTIF_BILAN = /bilan/i;
+
+/** Toutes les lignes BDD_COM reconnues comme "bilan" pour une période, triées
+ *  de la plus récente à la plus ancienne. */
+async function bilansDeLaPeriode(env, periodeId) {
+  const rows = await gristFilter(env, T_COMMENTAIRES, { Periode_de_stage: [periodeId] });
+  return rows
+    .filter((r) => MOTIF_BILAN.test(r.fields.Commentaire || ""))
+    .sort((a, b) => (b.fields.Cree_le || 0) - (a.fields.Cree_le || 0));
+}
 
 /**
  * Dépose le bilan final d'un stage (multipart/form-data, champ "bilan") : PDF
- * ou image, sur la colonne Attachments PERIODES_DE_STAGE.Bilan_final, créée à
- * la volée au premier dépôt. Commun à l'espace admin (n'importe quel dossier)
- * et à l'espace cadre (périodes de ses propres services) : seule la
- * vérification d'accès en amont diffère (periodeDeLEtudiant / ensurePeriodeInScope).
+ * ou image, en nouvelle ligne de BDD_COM (table de commentaires/pièces
+ * jointes par période déjà utilisée à la main dans Grist). Commun à l'espace
+ * admin (n'importe quel dossier) et à l'espace cadre (périodes de ses propres
+ * services) : seule la vérification d'accès en amont diffère
+ * (periodeDeLEtudiant / ensurePeriodeInScope).
  */
 async function deposerBilan(request, env, periode, info) {
   const form = await request.formData().catch(() => null);
@@ -2864,9 +2892,14 @@ async function deposerBilan(request, env, periode, info) {
     throw httpError(400, "Le bilan doit être un PDF ou une image (JPEG/PNG)");
   }
 
-  await ensureColumns(env, T_PERIODES, COLONNES_PERIODE_BILAN);
   const attId = await envoyerPieceJointeGrist(env, file, "bilan-de-stage");
-  await gristUpdate(env, T_PERIODES, periode.id, { Bilan_final: ["L", attId] });
+  await grist(env, "POST", `/tables/${T_COMMENTAIRES}/records`, {
+    records: [{ fields: {
+      Periode_de_stage: periode.id,
+      Commentaire: "Bilan final de stage",
+      Piece_jointe: ["L", attId],
+    } }],
+  });
 
   if (info) {
     info.etudiantId = periode.fields.Etudiant;
@@ -2876,10 +2909,12 @@ async function deposerBilan(request, env, periode, info) {
   return json({ ok: true });
 }
 
-/** Retire le bilan d'un stage (la pièce jointe reste dans le document Grist,
- *  seule la référence sur la période est effacée — même logique que le logo). */
+/** Retire le(s) bilan(s) d'un stage : supprime la ou les lignes BDD_COM
+ *  reconnues comme telles (la pièce jointe reste dans le document Grist,
+ *  seule la ligne qui la référence disparaît — même logique que le logo). */
 async function retirerBilan(env, periode, info) {
-  if (periode.fields.Bilan_final) await gristUpdate(env, T_PERIODES, periode.id, { Bilan_final: ["L"] });
+  const bilans = await bilansDeLaPeriode(env, periode.id);
+  if (bilans.length) await grist(env, "POST", `/tables/${T_COMMENTAIRES}/data/delete`, bilans.map((b) => b.id));
   if (info) {
     info.etudiantId = periode.fields.Etudiant;
     info.serviceId = periode.fields.Service;
@@ -2888,10 +2923,11 @@ async function retirerBilan(env, periode, info) {
   return json({ ok: true });
 }
 
-/** Proxifie le téléchargement du bilan d'un stage (la clé API Grist reste
- *  côté Worker, jamais exposée au navigateur). */
+/** Proxifie le téléchargement du bilan le plus récent d'un stage (la clé API
+ *  Grist reste côté Worker, jamais exposée au navigateur). */
 async function telechargerBilan(env, periode) {
-  const attId = premierePieceJointe(periode.fields.Bilan_final);
+  const bilans = await bilansDeLaPeriode(env, periode.id);
+  const attId = bilans.length ? premierePieceJointe(bilans[0].fields.Piece_jointe) : null;
   if (!attId) throw httpError(404, "Aucun bilan pour ce stage");
 
   const base = (env.GRIST_BASE_URL || "https://grist.numerique.gouv.fr/api").replace(/\/$/, "");
