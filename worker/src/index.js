@@ -56,6 +56,11 @@
  *   GET    /api/cadre/periodes/:id/planning-imprimable        -> HTML de la fiche de stage imprimable
  *                                                                (colonne formule PERIODES_DE_STAGE.Planning_HTML,
  *                                                                logo réaligné sur ETABLISSEMENT.Logo)
+ *   POST   /api/cadre/periodes/:id/bilan  (multipart, champ "bilan") -> dépose le bilan final de ce
+ *                                                                stage (PDF ou image), pour une période
+ *                                                                de l'un de ses services
+ *   GET    /api/cadre/periodes/:id/bilan                       -> télécharge le bilan
+ *   DELETE /api/cadre/periodes/:id/bilan                       -> retire le bilan
  *   POST   /api/cadre/rdv  { periodeId, Date_rdv, ... }        -> ajoute un rendez-vous formateur/tuteur
  *   DELETE /api/cadre/rdv/:id                                  -> supprime un rendez-vous formateur
  *
@@ -470,6 +475,21 @@ async function route(request, env, ctx) {
       return withLog(env, ctx, who, "Impression de la fiche de stage", `période #${im[1]}`,
         (info) => planningImprimable(request, env, cadre, Number(im[1]), info));
     }
+    const cbm = path.match(/^\/api\/cadre\/periodes\/(\d+)\/bilan$/);
+    if (cbm) {
+      const periodeId = Number(cbm[1]);
+      if (request.method === "POST") {
+        return withLog(env, ctx, who, "Dépôt du bilan final de stage", `période #${periodeId}`,
+          async (info) => deposerBilan(request, env, await ensurePeriodeInScope(env, cadre, periodeId), info));
+      }
+      if (request.method === "DELETE") {
+        return withLog(env, ctx, who, "Suppression du bilan final de stage", `période #${periodeId}`,
+          async (info) => retirerBilan(env, await ensurePeriodeInScope(env, cadre, periodeId), info));
+      }
+      if (request.method === "GET") {
+        return telechargerBilan(env, await ensurePeriodeInScope(env, cadre, periodeId));
+      }
+    }
     if (request.method === "POST" && path === "/api/cadre/rdv") {
       return withLog(env, ctx, who, "Ajout d'un RDV formateur", "",
         (info) => creerRdv(request, env, cadre, info));
@@ -591,14 +611,14 @@ async function route(request, env, ctx) {
       const periodeId = Number(abm[2]);
       if (request.method === "POST") {
         return withLog(env, ctx, whoA, "Dépôt du bilan final de stage", "",
-          (info) => televerserBilanPeriode(request, env, etuId, periodeId, info));
+          async (info) => deposerBilan(request, env, await periodeDeLEtudiant(env, etuId, periodeId), info));
       }
       if (request.method === "DELETE") {
         return withLog(env, ctx, whoA, "Suppression du bilan final de stage", "",
-          (info) => supprimerBilanPeriode(env, etuId, periodeId, info));
+          async (info) => retirerBilan(env, await periodeDeLEtudiant(env, etuId, periodeId), info));
       }
       if (request.method === "GET") {
-        return telechargerBilanPeriode(env, etuId, periodeId);
+        return telechargerBilan(env, await periodeDeLEtudiant(env, etuId, periodeId));
       }
     }
     if (request.method === "POST" && path === "/api/admin/services") {
@@ -1519,6 +1539,7 @@ async function buildCadrePayload(env, cadre) {
         Lien_evaluation: p.fields.Lien_evaluation || "",
         Evaluation_envoyee: !!p.fields.Evaluation_envoyee,
         Evaluation_repondue: periodesAvecReponse.has(p.id),
+        Bilan_final: !!premierePieceJointe(p.fields.Bilan_final),
         Alertes: computeAlertesPeriode(p.id, semaines, codesById, epochToIso(p.fields.Du), epochToIso(p.fields.Au)),
       };
     }),
@@ -2813,7 +2834,9 @@ async function fusionnerEtudiantsAdmin(request, env, info) {
 }
 
 /** Vérifie qu'une période de stage appartient bien à cet étudiant (pas à un
- *  autre dossier) avant d'en toucher le bilan final. */
+ *  autre dossier) avant d'en toucher le bilan final — utilisé côté admin,
+ *  qui voit tous les dossiers. Le cadre, lui, passe par ensurePeriodeInScope
+ *  (bornée à ses propres services). */
 async function periodeDeLEtudiant(env, etudiantId, periodeId) {
   const rows = await gristFilter(env, T_PERIODES, { id: [periodeId] });
   const periode = rows[0];
@@ -2825,11 +2848,14 @@ async function periodeDeLEtudiant(env, etudiantId, periodeId) {
 
 const TYPES_BILAN_AUTORISES = ["application/pdf", "image/png", "image/jpeg"];
 
-/** L'administrateur dépose le bilan final d'un stage (multipart/form-data,
- *  champ "bilan") : PDF ou image, sur la colonne Attachments PERIODES_DE_STAGE.
- *  Bilan_final, créée à la volée au premier dépôt. */
-async function televerserBilanPeriode(request, env, etudiantId, periodeId, info) {
-  const periode = await periodeDeLEtudiant(env, etudiantId, periodeId);
+/**
+ * Dépose le bilan final d'un stage (multipart/form-data, champ "bilan") : PDF
+ * ou image, sur la colonne Attachments PERIODES_DE_STAGE.Bilan_final, créée à
+ * la volée au premier dépôt. Commun à l'espace admin (n'importe quel dossier)
+ * et à l'espace cadre (périodes de ses propres services) : seule la
+ * vérification d'accès en amont diffère (periodeDeLEtudiant / ensurePeriodeInScope).
+ */
+async function deposerBilan(request, env, periode, info) {
   const form = await request.formData().catch(() => null);
   const file = form ? form.get("bilan") : null;
   if (!file || typeof file === "string") throw httpError(400, "Fichier manquant");
@@ -2840,10 +2866,11 @@ async function televerserBilanPeriode(request, env, etudiantId, periodeId, info)
 
   await ensureColumns(env, T_PERIODES, COLONNES_PERIODE_BILAN);
   const attId = await envoyerPieceJointeGrist(env, file, "bilan-de-stage");
-  await gristUpdate(env, T_PERIODES, periodeId, { Bilan_final: ["L", attId] });
+  await gristUpdate(env, T_PERIODES, periode.id, { Bilan_final: ["L", attId] });
 
   if (info) {
-    info.etudiantId = etudiantId;
+    info.etudiantId = periode.fields.Etudiant;
+    info.serviceId = periode.fields.Service;
     info.detail = `${file.name || "bilan"} — stage du ${jDateEpoch(periode.fields.Du)}`;
   }
   return json({ ok: true });
@@ -2851,11 +2878,11 @@ async function televerserBilanPeriode(request, env, etudiantId, periodeId, info)
 
 /** Retire le bilan d'un stage (la pièce jointe reste dans le document Grist,
  *  seule la référence sur la période est effacée — même logique que le logo). */
-async function supprimerBilanPeriode(env, etudiantId, periodeId, info) {
-  const periode = await periodeDeLEtudiant(env, etudiantId, periodeId);
-  if (periode.fields.Bilan_final) await gristUpdate(env, T_PERIODES, periodeId, { Bilan_final: ["L"] });
+async function retirerBilan(env, periode, info) {
+  if (periode.fields.Bilan_final) await gristUpdate(env, T_PERIODES, periode.id, { Bilan_final: ["L"] });
   if (info) {
-    info.etudiantId = etudiantId;
+    info.etudiantId = periode.fields.Etudiant;
+    info.serviceId = periode.fields.Service;
     info.detail = `stage du ${jDateEpoch(periode.fields.Du)}`;
   }
   return json({ ok: true });
@@ -2863,8 +2890,7 @@ async function supprimerBilanPeriode(env, etudiantId, periodeId, info) {
 
 /** Proxifie le téléchargement du bilan d'un stage (la clé API Grist reste
  *  côté Worker, jamais exposée au navigateur). */
-async function telechargerBilanPeriode(env, etudiantId, periodeId) {
-  const periode = await periodeDeLEtudiant(env, etudiantId, periodeId);
+async function telechargerBilan(env, periode) {
   const attId = premierePieceJointe(periode.fields.Bilan_final);
   if (!attId) throw httpError(404, "Aucun bilan pour ce stage");
 

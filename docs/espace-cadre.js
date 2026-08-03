@@ -1,7 +1,7 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 /* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
-const APP_VERSION = "v40"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v41"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -144,16 +144,19 @@ function ouvrirSession(jeton) {
   else sessionStorage.removeItem("cadre_session");
 }
 
+/* `body` en FormData (dépôt du bilan de stage) part tel quel, sans l'en-tête
+ * JSON : le navigateur pose lui-même le Content-Type multipart avec sa borne. */
 async function api(method, path, body) {
+  const estFormData = body instanceof FormData;
   const res = await fetch(API + path, {
     method,
     headers: {
-      "Content-Type": "application/json",
+      ...(estFormData ? {} : { "Content-Type": "application/json" }),
       // Jeton de session délivré par /api/cadre/login (après vérification du
       // PIN) : le code d'accès ne circule plus au-delà de la connexion.
       ...(state.session ? { "X-Cadre-Session": state.session } : {}),
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : estFormData ? body : JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
@@ -1288,12 +1291,86 @@ function renderStagesFaits(allPeriodes) {
         "Stage dans un autre service : consultation seule."));
     }
 
+    // Le bilan final se dépose souvent une fois le stage terminé (contrairement
+    // à la fiche ci-dessus) : accessible pour n'importe quel stage de l'un de
+    // ses propres services, quel que soit son état (en cours, à venir, passé).
+    if (state.data.services.some((s) => s.id === p.Service)) {
+      item.appendChild(renderBilanSection(p));
+    }
+
     // Une période déclarée par erreur peut être supprimée tant que le stage
     // n'est pas terminé ; le planning hebdomadaire rattaché part avec elle.
     if (cat !== "passe" && p.Service === state.selectedServiceId) {
       item.appendChild(renderSuppressionPeriode(p));
     }
     wrap.appendChild(item);
+  }
+  return wrap;
+}
+
+/** Téléchargement du bilan d'un stage : requiert le jeton de session (pas une
+ *  simple URL publique), donc un fetch manuel plutôt qu'un lien <a href>. */
+async function telechargerBilan(periodeId) {
+  try {
+    const res = await fetch(`${API}/api/cadre/periodes/${periodeId}/bilan`, {
+      headers: state.session ? { "X-Cadre-Session": state.session } : {},
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Erreur ${res.status}`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+/** Bilan final de stage (PDF ou photo) : dépôt, téléchargement, retrait. */
+function renderBilanSection(p) {
+  const wrap = el("div", "bilan-section");
+
+  if (p.Bilan_final) {
+    const dlBtn = el("button", "btn btn-ghost btn-small", "📄 Télécharger le bilan final");
+    dlBtn.type = "button";
+    dlBtn.addEventListener("click", () => telechargerBilan(p.id));
+    wrap.appendChild(dlBtn);
+
+    const rmBtn = el("button", "btn btn-ghost btn-small", "Retirer");
+    rmBtn.type = "button";
+    rmBtn.addEventListener("click", async () => {
+      if (!confirm("Retirer le bilan final de ce stage ?")) return;
+      try {
+        await api("DELETE", `/api/cadre/periodes/${p.id}/bilan`);
+        await refresh();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+    wrap.appendChild(rmBtn);
+  } else {
+    const label = el("label", "btn btn-ghost btn-small", "📄 Téléverser le bilan final…");
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/pdf,image/png,image/jpeg";
+    input.hidden = true;
+    input.addEventListener("change", async () => {
+      const fichier = input.files && input.files[0];
+      input.value = "";
+      if (!fichier) return;
+      try {
+        const form = new FormData();
+        form.append("bilan", fichier);
+        await api("POST", `/api/cadre/periodes/${p.id}/bilan`, form);
+        await refresh();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+    label.appendChild(input);
+    wrap.appendChild(label);
   }
   return wrap;
 }
