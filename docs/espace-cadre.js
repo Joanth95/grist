@@ -1,7 +1,7 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 /* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
-const APP_VERSION = "v44"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v45"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -1201,7 +1201,11 @@ function renderVerbatims(titre, textes) {
     const item = el("div", "satis-verbatim");
     item.appendChild(el("p", "satis-verbatim-txt", t.txt));
     const meta = [];
-    if (t.periode && t.periode.Du) meta.push(`stage du ${frDate(t.periode.Du)}`);
+    if (t.periode && t.periode.Du) {
+      meta.push(t.periode.Au
+        ? `stage du ${frDate(t.periode.Du)} au ${frDate(t.periode.Au)}`
+        : `stage du ${frDate(t.periode.Du)}`);
+    }
     if (t.date) meta.push(`répondu le ${frDate(t.date)}`);
     if (meta.length) item.appendChild(el("div", "satis-verbatim-meta", meta.join(" · ")));
     wrap.appendChild(item);
