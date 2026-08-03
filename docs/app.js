@@ -285,14 +285,23 @@ function renderPeriode() {
   container.appendChild(card);
 }
 
-/** Le questionnaire de satisfaction s'ouvre 10 jours avant la fin du stage et
- *  reste accessible 40 jours après (même fenêtre que l'envoi côté cadre). */
-function evaluationOuverte(p) {
-  if (!p.Au) return false;
+/** Un stage est terminé le lendemain de sa date de fin — sauf si le service le
+ *  maintient « en cours ». Sert au questionnaire comme aux déclarations. */
+function stageTermine(p) {
+  return !!p && !p.En_cours && !!p.Au && p.Au < isoDate(new Date());
+}
+
+/** Jours écoulés depuis la fin du stage (négatif s'il n'est pas fini). */
+function joursDepuisFin(p) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const diffJours = Math.round((today - new Date(p.Au + "T00:00:00")) / 86400000);
-  return diffJours >= -10 && diffJours <= 40;
+  return Math.round((today - new Date(p.Au + "T00:00:00")) / 86400000);
+}
+
+/** Le questionnaire de satisfaction ne s'ouvre qu'une fois le stage terminé,
+ *  et reste accessible 40 jours (au-delà, le cadre relance par mail). */
+function evaluationOuverte(p) {
+  return stageTermine(p) && joursDepuisFin(p) <= 40;
 }
 
 /** Accès au questionnaire de satisfaction de fin de stage, sur la période
@@ -345,6 +354,12 @@ function renderSorties() {
   container.innerHTML = "";
   const p = currentPeriode();
   const isDefault = p && defaultPeriode() && p.id === defaultPeriode().id;
+
+  // Stage terminé : plus rien à déclarer (le serveur refuse aussi). Les
+  // déclarations déjà saisies restent consultables.
+  const fini = stageTermine(p);
+  $("add-sortie-btn").hidden = fini;
+  $("sortie-closed-note").hidden = !fini;
 
   // Déclarations de la période sélectionnée ; celles sans période rattachée
   // apparaissent sous la période par défaut.

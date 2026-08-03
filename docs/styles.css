@@ -480,6 +480,13 @@ input[type="checkbox"], input[type="radio"] {
   border-top: 1px solid var(--gris-bordure);
   font-size: 0.9rem;
 }
+/* Stage terminé : rappel à la place du bouton « + Déclarer » */
+.closed-note {
+  background: var(--alerte-bg);
+  border-left: 4px solid var(--alerte);
+  padding: 0.6rem 0.9rem;
+}
+
 /* Accès au questionnaire de satisfaction, en bas de la carte de période */
 .periode-eval {
   margin-top: 0.75rem;

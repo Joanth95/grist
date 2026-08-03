@@ -3593,6 +3593,13 @@ async function createSortie(request, env, student, info) {
   const periode = await choisirPeriode(env, student, dateEpoch);
   const periodeId = periode ? periode.id : null;
 
+  // Un stage terminé ne se déclare plus : l'étudiant passe par le cadre, qui
+  // saisit lui-même la déclaration (le front masque déjà le bouton).
+  if (periode && periodeTerminee(periode.fields)) {
+    throw httpError(403, "Ce stage est terminé : vous ne pouvez plus y ajouter de déclaration. "
+      + "Contactez le cadre de votre service.");
+  }
+
   const fields = {
     Anonymat: student.rowId,
     Code_anonymat: student.code,

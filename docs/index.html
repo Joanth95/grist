@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Espace étudiant</title>
   <script src="theme.js?v=1"></script>
-  <link rel="stylesheet" href="styles.css?v=27">
+  <link rel="stylesheet" href="styles.css?v=28">
   <link rel="stylesheet" href="theme-modern.css?v=3">
 
 </head>
@@ -211,6 +211,8 @@
         <p class="section-note">Rattrapage = heures ajoutées · Retard = déduites ·
           Sortie de stage = temps de formation, compté ou non selon la case.
           Le planning ci-dessous est établi par le service et ne se modifie pas ici.</p>
+        <p id="sortie-closed-note" class="section-note closed-note" hidden>Ce stage est terminé :
+          il n'est plus possible d'y ajouter une déclaration. En cas d'oubli, contactez le cadre du service.</p>
         <div id="sorties"></div>
       </section>
 
@@ -352,6 +354,6 @@
   <script src="config.js?v=21"></script>
   <script src="layout.js?v=26"></script>
   <script src="etablissement.js?v=29"></script>
-  <script src="app.js?v=30"></script>
+  <script src="app.js?v=31"></script>
 </body>
 </html>
