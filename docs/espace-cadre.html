@@ -121,7 +121,6 @@
     .dossier-search { flex: 1 1 320px; max-width: 520px; padding: 0.55rem 0.7rem; border: 1px solid var(--gris-bordure); border-radius: 4px; font-size: 0.92rem; background: var(--blanc); color: var(--texte); }
     .dossier-search-results:not(:empty) { background: var(--blanc); border: 1px solid var(--gris-bordure); border-radius: var(--radius); padding: 0.5rem 1rem; margin-bottom: 1.1rem; }
     .search-none { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; font-size: 0.9rem; color: var(--texte-doux); padding: 0.4rem 0; }
-    .etu-card-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.6rem 0 0.1rem; }
     .btn-small { padding: 0.3rem 0.7rem; font-size: 0.82rem; }
     .mail-form { display: flex; flex-direction: column; gap: 0.9rem; margin: 0.9rem 0; }
     .mail-form > label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; font-weight: 600; color: var(--texte-doux); }
@@ -134,9 +133,7 @@
     .etu-nom { font-weight: 700; font-size: 1.05rem; }
     .etu-meta { color: var(--texte-doux); font-size: 0.9rem; }
     .etu-dates { color: var(--texte-doux); font-size: 0.88rem; margin-top: 0.15rem; }
-    .etu-fiche { display: flex; gap: 0.75rem; flex-wrap: wrap; margin: 0.6rem 0; }
-    .etu-fiche label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.8rem; color: var(--texte-doux); }
-    .etu-fiche input, .etu-fiche select { padding: 0.4rem 0.5rem; border: 1px solid var(--gris-bordure); border-radius: 4px; font-size: 0.9rem; }
+    .fiche-grid input, .fiche-grid select { padding: 0.4rem 0.5rem; border: 1px solid var(--gris-bordure); border-radius: 4px; font-size: 0.9rem; }
     .pending-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid var(--gris-bordure); }
     .pending-row:last-child { border-bottom: none; }
     .pending-main { flex: 1; }
@@ -155,40 +152,141 @@
     .nouveau-code-form .checkbox-label { flex-direction: row; align-items: center; gap: 0.4rem; }
     .anonymat-badge { font-family: ui-monospace, monospace; font-weight: 700; background: var(--gris-fond); border: 1px solid var(--gris-bordure); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85rem; }
 
-    .sub-tabs { display: flex; gap: 0.4rem; margin: 0.75rem 0 0.5rem; }
+    .sub-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.75rem 0 0.5rem; }
     .sub-tab { background: var(--gris-fond); border: 1px solid var(--gris-bordure); border-radius: 999px; padding: 0.3rem 0.8rem; font-size: 0.82rem; font-weight: 600; color: var(--texte-doux); cursor: pointer; }
     .sub-tab.active { background: var(--bleu); border-color: var(--bleu); color: var(--blanc); }
     .dossier-category-tabs { margin-top: 0; }
-    .stage-block { border-top: 1px solid var(--gris-bordure); padding-top: 0.6rem; margin-top: 0.6rem; }
-    .stage-block:first-child { border-top: none; padding-top: 0; margin-top: 0.4rem; }
 
     /* Historique des stages : une carte par période, liseré selon le statut */
-    .stage-item { border: 1px solid var(--gris-bordure); border-left: 4px solid var(--gris-bordure); border-radius: var(--radius); padding: 0.6rem 0.85rem; margin-top: 0.6rem; }
+    .stage-item { background: var(--blanc); border: 1px solid var(--gris-bordure); border-left: 4px solid var(--gris-bordure); border-radius: var(--radius); padding: 1rem 1.25rem; }
+    .stage-item .etu-meta { margin: 0.35rem 0 0.85rem; }
     .stage-item.stage-cours { border-left-color: var(--bleu); }
     .stage-item.stage-avenir { border-left-color: #ffb056; }
-    .stage-item-header { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
     .stage-service { font-weight: 700; }
     .stage-dates { color: var(--texte-doux); font-size: 0.9rem; }
-    .bilan-section { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.6rem; }
+    .bilan-section { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
     .bilan-section label.btn { cursor: pointer; }
+    .bilan-etat { font-size: 0.88rem; color: var(--texte-doux); }
+    .doc-bloc + .doc-bloc { margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--gris-bordure); }
+    .doc-bloc-titre { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--texte-doux); margin: 0 0 0.55rem; }
 
     /* Liste des dossiers : chaque carte ouvre le dossier en pleine page */
     .etu-card-lien { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
     .etu-card-lien:hover, .etu-card-lien:focus-visible { border-color: var(--bleu); box-shadow: 0 2px 8px rgba(0,0,0,.08); }
     .etu-ouvrir { margin-top: 0.5rem; font-size: 0.85rem; font-weight: 600; color: var(--bleu); }
 
-    /* Dossier en pleine page : en-tête d'identité au-dessus des onglets */
-    .dossier-entete { margin: 0.8rem 0 0.6rem; padding-bottom: 0.6rem; border-bottom: 1px solid var(--gris-bordure); }
     .section-titre { margin: 1.2rem 0 0.4rem; font-size: 1rem; }
 
+    /* ================================================================
+       Dossier d'un étudiant, en pleine page
+       Colonne centrée (la page entière est en pleine largeur pour le
+       planning de service, ce qui étirait le dossier sur tout l'écran),
+       puis une carte par sujet : identité, stage, planning, déclarations,
+       rendez-vous, documents.
+       ================================================================ */
+    .dossier-page { max-width: 68rem; margin: 0 auto; display: flex; flex-direction: column; align-items: stretch; gap: 1rem; }
+    .dossier-retour { align-self: flex-start; margin-left: -0.7rem; }
+
+    /* Bandeau d'identité */
+    .dossier-hero {
+      display: flex; align-items: flex-start; gap: 1rem; flex-wrap: wrap;
+      background: var(--blanc); border: 1px solid var(--gris-bordure); border-radius: var(--radius);
+      padding: 1.1rem 1.25rem;
+    }
+    .dossier-hero-avatar {
+      flex: none; width: 3rem; height: 3rem; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--info-bg); color: var(--bleu); font-weight: 800; font-size: 0.95rem; letter-spacing: 0.02em;
+    }
+    .dossier-hero-main { flex: 1 1 14rem; min-width: 0; }
+    .dossier-hero-nom { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    .dossier-hero-nom h2 { margin: 0; font-size: 1.3rem; line-height: 1.2; }
+    .dossier-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
+    .dossier-chip {
+      font-size: 0.78rem; font-weight: 600; color: var(--texte-doux);
+      background: var(--gris-fond); border: 1px solid var(--gris-bordure); border-radius: 999px; padding: 0.15rem 0.6rem;
+    }
+    .dossier-hero-contact { margin-top: 0.5rem; font-size: 0.88rem; color: var(--texte-doux); }
+    .dossier-hero-contact a { color: var(--bleu); text-decoration: none; }
+    .dossier-hero-contact a:hover { text-decoration: underline; }
+    .dossier-hero-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+    @media (max-width: 640px) { .dossier-hero-actions { width: 100%; } }
+
+    /* Onglets du dossier (Stage dans le service / Historique) */
+    .dossier-page-tabs { margin: 0; }
+
+    /* Cartes de section */
+    .dossier-sections { display: flex; flex-direction: column; gap: 1rem; }
+    .dossier-card {
+      background: var(--blanc); border: 1px solid var(--gris-bordure); border-radius: var(--radius);
+      padding: 1rem 1.25rem 1.15rem;
+    }
+    .dossier-card-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap;
+      margin-bottom: 0.85rem;
+    }
+    .dossier-card-title { margin: 0; font-size: 1rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    .dossier-card-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+    .count-pill {
+      background: var(--gris-fond); color: var(--texte-doux); border: 1px solid var(--gris-bordure);
+      border-radius: 999px; padding: 0.02rem 0.5rem; font-size: 0.76rem; font-weight: 700;
+    }
+    .dossier-card .empty { padding: 1.25rem 0.5rem; }
+
+    /* En-tête de la carte « stage » : service, dates, statut */
+    .stage-head { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+    .stage-head .stage-service { font-size: 1.05rem; }
+
+    /* Compteurs d'heures */
+    .stage-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.6rem; }
+    .stage-stat { background: var(--gris-fond); border: 1px solid var(--gris-bordure); border-radius: var(--radius); padding: 0.6rem 0.8rem; }
+    .stage-stat-val { font-size: 1.4rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .stage-stat-lab { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--texte-doux); margin-top: 0.25rem; }
+    .stage-stat.is-pos .stage-stat-val { color: var(--succes); }
+    .stage-stat.is-neg .stage-stat-val { color: var(--rouge); }
+    .stage-progress { margin-top: 0.8rem; }
+    .stage-progress-track { height: 0.5rem; background: var(--gris-contraste); border-radius: 999px; overflow: hidden; }
+    .stage-progress-bar { height: 100%; background: var(--bleu); border-radius: 999px; min-width: 2px; }
+    .stage-progress-txt { font-size: 0.78rem; color: var(--texte-doux); margin-top: 0.3rem; }
+
+    /* Fiche modifiable (tuteur, niveau, dates) */
+    .fiche-bloc { margin-top: 1.1rem; padding-top: 0.9rem; border-top: 1px solid var(--gris-bordure); }
+    .fiche-legende { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--texte-doux); margin: 0 0 0.6rem; }
+    .fiche-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.75rem 1rem; }
+    .fiche-grid label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.8rem; color: var(--texte-doux); }
+    .fiche-actions { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.85rem; }
+    .fiche-actions .save-hint { margin: 0; }
+
+    /* Sélecteur de période quand l'étudiant a plusieurs stages ici */
+    .periode-picker { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.85rem; color: var(--texte-doux); }
+
+    /* Verrou / stage terminé */
+    .dossier-lock { display: flex; gap: 0.6rem; align-items: flex-start; font-size: 0.85rem; line-height: 1.45;
+      background: var(--alerte-bg); color: var(--alerte); border-radius: var(--radius); padding: 0.7rem 0.85rem; margin-top: 1rem; }
+
+    @media (max-width: 640px) {
+      .dossier-hero, .dossier-card, .stage-item { padding: 0.9rem 1rem; }
+      .dossier-hero-actions .btn { flex: 1 1 auto; text-align: center; }
+    }
+
+    /* Zone de suppression, volontairement discrète et en bas de page */
+    .dossier-danger { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap;
+      border: 1px dashed var(--gris-bordure); border-radius: var(--radius); padding: 0.85rem 1.1rem; }
+    .dossier-danger-txt { font-size: 0.85rem; color: var(--texte-doux); }
+
     /* Commentaires et documents d'un stage */
-    .commentaires-section { margin-top: 0.8rem; }
     .commentaire-item { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.5rem 0;
       border-bottom: 1px solid var(--gris-bordure); }
     .commentaire-item > div:first-child { flex: 1; }
     .commentaire-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
-    .commentaire-form { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-top: 0.6rem; }
-    .commentaire-form input[type="text"] { flex: 1; min-width: 12rem; }
+    .commentaire-item:last-of-type { border-bottom: none; }
+    .commentaire-form { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-top: 0.75rem; }
+    .commentaire-form input[type="text"] {
+      flex: 1 1 16rem; padding: 0.5rem 0.6rem; border: 1px solid var(--gris-bordure); border-radius: 4px;
+      font: inherit; font-size: 0.9rem; background: var(--blanc); color: var(--texte);
+    }
+    .commentaire-fichier { cursor: pointer; }
+    .commentaire-fichier-nom { font-size: 0.82rem; color: var(--texte-doux); }
     .badge.info { background: #e8edff; border-color: #c3cffa; color: var(--bleu); }
     .badge.neutral { background: var(--gris-fond); border-color: var(--gris-bordure); color: var(--texte-doux); }
     @media (prefers-color-scheme: dark) {
@@ -211,6 +309,23 @@
     table.mini-planning th, table.mini-planning td,
     table.service-planning th, table.service-planning td { border: 1px solid var(--gris-bordure); padding: 0.4rem 0.5rem; text-align: center; }
     table.mini-planning th:first-child, table.mini-planning td:first-child { text-align: left; }
+
+    /* Planning d'une période : grille légère, cadrée par .planning-wrap */
+    .planning-wrap { border: 1px solid var(--gris-bordure); border-radius: var(--radius); overflow-x: auto; }
+    .planning-wrap table.mini-planning { margin: 0; border: none; min-width: 34rem; }
+    .planning-wrap table.mini-planning th, .planning-wrap table.mini-planning td {
+      border: none; border-bottom: 1px solid var(--gris-bordure); padding: 0.55rem 0.5rem;
+    }
+    .planning-wrap table.mini-planning td + td { border-left: 1px solid var(--gris-bordure); }
+    .planning-wrap table.mini-planning thead th {
+      background: var(--gris-fond); font-size: 0.72rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.03em; color: var(--texte-doux);
+    }
+    .planning-wrap table.mini-planning tbody th { font-weight: 600; white-space: nowrap; }
+    .planning-wrap table.mini-planning tbody tr:last-child th,
+    .planning-wrap table.mini-planning tbody tr:last-child td { border-bottom: none; }
+    .planning-wrap table.mini-planning tbody tr:hover th,
+    .planning-wrap table.mini-planning tbody tr:hover td { background: var(--gris-fond); }
     table.service-planning { display: block; overflow-x: auto; white-space: nowrap; }
     table.service-planning th.student-col, table.service-planning td.student-col {
       position: sticky; left: 0; background: var(--blanc); text-align: left; min-width: 180px; z-index: 1;
@@ -312,7 +427,7 @@
 
     /* Alignement DSFR des champs définis localement ci-dessus */
     .cadre-tel-input, .cadre-service-select select, .dossier-search,
-    .mail-form input, .mail-form textarea, .etu-fiche input, .etu-fiche select,
+    .mail-form input, .mail-form textarea, .fiche-grid input, .fiche-grid select,
     .nouveau-code-form input, .planning-controls input[type="date"],
     .stats-controls input[type="date"] {
       background: var(--gris-contraste);
@@ -331,7 +446,7 @@
        ================================================================ */
 
     html[data-theme="modern"] .cadre-tel-input, html[data-theme="modern"] .dossier-search,
-    html[data-theme="modern"] .mail-form input, html[data-theme="modern"] .mail-form textarea, html[data-theme="modern"] .etu-fiche input, html[data-theme="modern"] .etu-fiche select,
+    html[data-theme="modern"] .mail-form input, html[data-theme="modern"] .mail-form textarea, html[data-theme="modern"] .fiche-grid input, html[data-theme="modern"] .fiche-grid select,
     html[data-theme="modern"] .nouveau-code-form input, html[data-theme="modern"] .planning-controls input[type="date"],
     html[data-theme="modern"] .stats-controls input[type="date"] {
       background: var(--blanc);
@@ -798,6 +913,6 @@
   <script src="config.js?v=21"></script>
   <script src="layout.js?v=26"></script>
   <script src="etablissement.js?v=29"></script>
-  <script src="espace-cadre.js?v=42"></script>
+  <script src="espace-cadre.js?v=43"></script>
 </body>
 </html>

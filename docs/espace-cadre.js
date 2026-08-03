@@ -1183,15 +1183,19 @@ function renderDossierTab() {
   const container = $("dossier-list");
   container.innerHTML = "";
 
-  // Un dossier ouvert prend toute la place : la liste et son classement
-  // Passé/En cours/À venir s'effacent le temps de la consultation.
+  // Un dossier ouvert prend toute la place : la liste, son classement
+  // Passé/En cours/À venir et la note d'aide s'effacent le temps de la
+  // consultation.
   const tabsBar = $("dossier-category-tabs");
+  const note = document.querySelector("#tab-dossier .section-note");
   if (state.dossierOuvert) {
     tabsBar.hidden = true;
+    if (note) note.hidden = true;
     renderDossierPage(container);
     return;
   }
   tabsBar.hidden = false;
+  if (note) note.hidden = false;
   renderDossierCategoryTabs();
 
   const students = studentsDuService(state.dossierCategory);
@@ -1253,43 +1257,18 @@ function renderDossierPage(container) {
     return;
   }
 
-  const retour = el("button", "btn btn-ghost btn-small", "← Retour à la liste");
+  const page = el("div", "dossier-page");
+  container.appendChild(page);
+
+  const retour = el("button", "btn btn-ghost btn-small dossier-retour", "← Retour à la liste");
   retour.type = "button";
   retour.addEventListener("click", () => { state.dossierOuvert = null; renderDossierTab(); });
-  container.appendChild(retour);
+  page.appendChild(retour);
 
-  const entete = el("div", "dossier-entete");
-  const titre = el("div", "");
-  titre.appendChild(el("span", "etu-nom", `${st.etudiant.prenom} ${st.etudiant.nom}`.trim()));
-  if (st.etudiant.anonymat) {
-    titre.append(document.createTextNode(" "));
-    titre.appendChild(el("span", "anonymat-badge", st.etudiant.anonymat));
-  }
-  entete.appendChild(titre);
-
-  const metaParts = [st.etudiant.formation, st.etudiant.centre].filter(Boolean);
-  if (st.etudiant.ddn) {
-    const age = calculerAge(st.etudiant.ddn);
-    metaParts.push(`Né(e) le ${frDateCourt(st.etudiant.ddn)}${age != null ? ` (${age} ans)` : ""}`);
-  }
-  if (metaParts.length) entete.appendChild(el("div", "etu-meta", metaParts.join(" · ")));
-  const contactParts = [st.etudiant.telephone, st.etudiant.email].filter(Boolean);
-  if (contactParts.length) entete.appendChild(el("div", "etu-meta", contactParts.join(" · ")));
-  container.appendChild(entete);
-
-  const actions = el("div", "etu-card-actions");
-  const addStageBtn = el("button", "btn btn-ghost btn-small", "+ Ajouter un stage");
-  addStageBtn.type = "button";
-  addStageBtn.addEventListener("click", () => openInscriptionDialog(st.etudiant));
-  actions.appendChild(addStageBtn);
-  const mailBtn = el("button", "btn btn-ghost btn-small", "✉ Mail de bienvenue");
-  mailBtn.type = "button";
-  mailBtn.addEventListener("click", () => envoyerMailBienvenue(st));
-  actions.appendChild(mailBtn);
-  container.appendChild(actions);
+  page.appendChild(renderDossierHero(st));
 
   const allPeriodes = state.data.periodes.filter((p) => p.Etudiant.id === st.id);
-  const tabs = el("div", "sub-tabs");
+  const tabs = el("div", "sub-tabs dossier-page-tabs");
   const defs = [
     { id: "service", label: `Stage dans le service (${st.periodes.length})` },
     { id: "historique", label: `Historique des stages (${allPeriodes.length})` },
@@ -1300,17 +1279,89 @@ function renderDossierPage(container) {
     btn.addEventListener("click", () => { state.dossierPageTab = t.id; renderDossierTab(); });
     tabs.appendChild(btn);
   }
-  container.appendChild(tabs);
+  page.appendChild(tabs);
 
-  container.appendChild(state.dossierPageTab === "service"
+  page.appendChild(state.dossierPageTab === "service"
     ? renderStageDuService(st)
     : renderHistoriqueStages(allPeriodes));
+}
+
+/** Bandeau d'identité du dossier : initiales, nom, informations en pastilles,
+ *  contacts cliquables et actions sur l'étudiant. */
+function renderDossierHero(st) {
+  const etu = st.etudiant;
+  const nomComplet = `${etu.prenom} ${etu.nom}`.trim();
+  const hero = el("div", "dossier-hero");
+
+  const avatar = el("div", "dossier-hero-avatar", cadreInitials(nomComplet));
+  avatar.setAttribute("aria-hidden", "true");
+  hero.appendChild(avatar);
+
+  const main = el("div", "dossier-hero-main");
+  const ligneNom = el("div", "dossier-hero-nom");
+  ligneNom.appendChild(el("h2", "", nomComplet || "Étudiant"));
+  if (etu.anonymat) ligneNom.appendChild(el("span", "anonymat-badge", etu.anonymat));
+  main.appendChild(ligneNom);
+
+  const chips = el("div", "dossier-chips");
+  const ajouterChip = (texte) => { if (texte) chips.appendChild(el("span", "dossier-chip", texte)); };
+  ajouterChip(etu.formation);
+  ajouterChip(etu.centre);
+  if (etu.ddn) {
+    const age = calculerAge(etu.ddn);
+    ajouterChip(`Né(e) le ${frDateCourt(etu.ddn)}${age != null ? ` · ${age} ans` : ""}`);
+  }
+  if (chips.children.length) main.appendChild(chips);
+
+  const contact = el("div", "dossier-hero-contact");
+  const ajouterLien = (texte, href) => {
+    if (!texte) return;
+    if (contact.children.length) contact.append(document.createTextNode(" · "));
+    const a = document.createElement("a");
+    a.href = href;
+    a.textContent = texte;
+    contact.appendChild(a);
+  };
+  ajouterLien(etu.telephone, `tel:${String(etu.telephone || "").replace(/\s+/g, "")}`);
+  ajouterLien(etu.email, `mailto:${etu.email}`);
+  if (contact.children.length) main.appendChild(contact);
+  hero.appendChild(main);
+
+  const actions = el("div", "dossier-hero-actions");
+  const addStageBtn = el("button", "btn btn-secondary btn-small", "+ Ajouter un stage");
+  addStageBtn.type = "button";
+  addStageBtn.addEventListener("click", () => openInscriptionDialog(etu));
+  actions.appendChild(addStageBtn);
+  const mailBtn = el("button", "btn btn-secondary btn-small", "✉ Mail de bienvenue");
+  mailBtn.type = "button";
+  mailBtn.addEventListener("click", () => envoyerMailBienvenue(st));
+  actions.appendChild(mailBtn);
+  hero.appendChild(actions);
+
+  return hero;
+}
+
+/** Carte de section du dossier : titre facultatif (avec compteur facultatif),
+ *  zone d'actions à droite de l'en-tête, et corps. */
+function dossierCard(titre, compteur) {
+  const card = el("section", "dossier-card");
+  const head = el("div", "dossier-card-head");
+  if (titre) {
+    const t = el("h3", "dossier-card-title", titre);
+    if (compteur != null) t.appendChild(el("span", "count-pill", String(compteur)));
+    head.appendChild(t);
+  }
+  const actions = el("div", "dossier-card-actions");
+  head.appendChild(actions);
+  const body = el("div", "dossier-card-body");
+  card.append(head, body);
+  return { card, head, actions, body };
 }
 
 /** Onglet « Stage dans le service » : la fiche modifiable, le planning, les
  *  déclarations, les rendez-vous, le bilan final et les commentaires. */
 function renderStageDuService(st) {
-  const wrap = el("div", "");
+  const wrap = el("div", "dossier-sections");
   const periodes = [...st.periodes].sort((a, b) => (b.Du || "").localeCompare(a.Du || ""));
 
   let selectedId = state.dossierSelectedPeriode[st.id];
@@ -1319,80 +1370,161 @@ function renderStageDuService(st) {
     state.dossierSelectedPeriode[st.id] = selectedId;
   }
 
-  if (periodes.length > 1) {
-    const sel = document.createElement("select");
-    sel.innerHTML = periodes.map((p) =>
-      `<option value="${p.id}" ${p.id === selectedId ? "selected" : ""}>${frDate(p.Du)} → ${frDate(p.Au)}</option>`).join("");
-    sel.addEventListener("change", () => {
-      state.dossierSelectedPeriode[st.id] = Number(sel.value);
-      renderDossierTab();
-    });
-    wrap.appendChild(sel);
-  }
-
   const p = periodes.find((x) => x.id === selectedId);
   const cat = periodeCategory(p);
   const verrou = periodeVerrouillee(p);
 
-  const enTete = el("div", "stage-item-header");
+  /* ---- Carte « stage » : période, compteurs d'heures, fiche ---- */
+  const stage = dossierCard(null);
+  const enTete = el("div", "stage-head");
   enTete.appendChild(el("span", "stage-service", p.Service_nom || "Service"));
   enTete.appendChild(el("span", "stage-dates", `${frDate(p.Du)} → ${frDate(p.Au)}`));
   enTete.appendChild(badge(
     { cours: "En cours", avenir: "À venir", passe: "Terminé" }[cat],
     { cours: "info", avenir: "pending", passe: "neutral" }[cat]));
-  wrap.appendChild(enTete);
+  stage.head.insertBefore(enTete, stage.head.firstChild);
 
-  const soldeTxt = `${p.Solde_heures > 0 ? "+" : ""}${formatH(p.Solde_heures)}`;
-  wrap.appendChild(el("div", "sortie-meta",
-    `Heures effectuées : ${formatH(p.FAIT)} / ${formatH(p.A_FAIRE)} prévues · Solde ${soldeTxt}`));
+  const printBtn = el("button", "btn btn-secondary btn-small", "🖨 Imprimer la fiche");
+  printBtn.type = "button";
+  printBtn.addEventListener("click", () => imprimerFicheStage(p, printBtn));
+  stage.actions.appendChild(printBtn);
 
-  // La fiche (tuteur, niveau, dates) reste modifiable tant que le stage n'est
-  // pas terminé ; sinon on n'affiche que le rappel.
-  if (cat !== "passe") wrap.appendChild(renderFiche(p));
-  else wrap.appendChild(el("p", "save-hint", "Stage terminé : la fiche n'est plus modifiable."));
+  // Plusieurs stages dans ce service : le sélecteur de période reste juste
+  // au-dessus des compteurs, qui dépendent de la période choisie.
+  if (periodes.length > 1) {
+    const picker = el("div", "periode-picker");
+    const id = `periode-picker-${st.id}`;
+    const lab = el("label", "", "Période affichée");
+    lab.htmlFor = id;
+    const sel = document.createElement("select");
+    sel.id = id;
+    sel.innerHTML = periodes.map((x) =>
+      `<option value="${x.id}" ${x.id === selectedId ? "selected" : ""}>${frDate(x.Du)} → ${frDate(x.Au)}</option>`).join("");
+    sel.addEventListener("change", () => {
+      state.dossierSelectedPeriode[st.id] = Number(sel.value);
+      renderDossierTab();
+    });
+    picker.append(lab, sel);
+    stage.body.appendChild(picker);
+    picker.style.marginBottom = "0.85rem";
+  }
+
+  stage.body.appendChild(renderStageStats(p));
 
   if (verrou) {
-    wrap.appendChild(el("p", "empty",
+    stage.body.appendChild(el("div", "dossier-lock",
       "🔒 Stage terminé depuis plus de 5 jours : le planning, les déclarations et les "
       + "rendez-vous sont verrouillés. En cas de besoin, contactez l'administrateur."));
   }
 
-  wrap.appendChild(renderMiniPlanning(p, verrou));
+  // La fiche (tuteur, niveau, dates) reste modifiable tant que le stage n'est
+  // pas terminé ; sinon on n'affiche que le rappel.
+  if (cat !== "passe") {
+    stage.body.appendChild(renderFiche(p));
+  } else {
+    const fin = el("div", "fiche-bloc");
+    fin.appendChild(el("p", "save-hint", "Stage terminé : la fiche n'est plus modifiable."));
+    stage.body.appendChild(fin);
+  }
+  wrap.appendChild(stage.card);
 
-  const actions = el("div", "dossier-actions");
+  /* ---- Planning de la période ---- */
+  const planning = dossierCard("Planning hebdomadaire");
+  planning.body.appendChild(renderMiniPlanning(p, verrou));
+  wrap.appendChild(planning.card);
+
+  /* ---- Déclarations d'heures ---- */
+  const sorties = state.data.sorties.filter((s) => s.Periode === p.id);
+  const decl = dossierCard("Déclarations d'heures", sorties.length);
   if (!verrou) {
-    const declareBtn = el("button", "btn btn-primary", "+ Déclarer");
+    const declareBtn = el("button", "btn btn-primary btn-small", "+ Déclarer");
     declareBtn.type = "button";
     declareBtn.addEventListener("click", () => openSortieDialog(periodes, selectedId));
-    actions.appendChild(declareBtn);
+    decl.actions.appendChild(declareBtn);
   }
-  const printBtn = el("button", "btn btn-ghost", "🖨 Imprimer la fiche de stage");
-  printBtn.type = "button";
-  printBtn.addEventListener("click", () => imprimerFicheStage(p, printBtn));
-  actions.appendChild(printBtn);
-  wrap.appendChild(actions);
+  decl.body.appendChild(renderSortiesList(p));
+  wrap.appendChild(decl.card);
 
-  wrap.appendChild(renderSortiesList(p));
-  wrap.appendChild(renderRdvsSection(p, verrou));
-  wrap.appendChild(renderBilanSection(p));
-  wrap.appendChild(renderCommentairesSection(p));
+  /* ---- Rendez-vous formateurs / tuteur ---- */
+  const rdvs = (state.data.rdvs || []).filter((r) => r.Periode === p.id);
+  const rdv = dossierCard("Rendez-vous formateurs / tuteur", rdvs.length);
+  if (!verrou) {
+    const addBtn = el("button", "btn btn-secondary btn-small", "+ Rendez-vous");
+    addBtn.type = "button";
+    addBtn.addEventListener("click", () => openRdvDialog(p));
+    rdv.actions.appendChild(addBtn);
+  }
+  rdv.body.appendChild(renderRdvsList(p, verrou));
+  wrap.appendChild(rdv.card);
+
+  /* ---- Bilan final, commentaires et pièces jointes ---- */
+  const docs = dossierCard("Bilan et documents");
+  const blocBilan = el("div", "doc-bloc");
+  blocBilan.appendChild(el("p", "doc-bloc-titre", "Bilan final de stage"));
+  blocBilan.appendChild(renderBilanSection(p));
+  docs.body.appendChild(blocBilan);
+
+  const blocCom = el("div", "doc-bloc");
+  blocCom.appendChild(el("p", "doc-bloc-titre", "Commentaires et pièces jointes"));
+  blocCom.appendChild(renderCommentairesSection(p));
+  docs.body.appendChild(blocCom);
+  wrap.appendChild(docs.card);
 
   if (cat !== "passe") wrap.appendChild(renderSuppressionPeriode(p));
+  return wrap;
+}
+
+/** Compteurs d'heures de la période : trois tuiles et une jauge d'avancement. */
+function renderStageStats(p) {
+  const wrap = el("div", "");
+
+  const stats = el("div", "stage-stats");
+  const tuile = (valeur, libelle, variante) => {
+    const t = el("div", "stage-stat" + (variante ? " " + variante : ""));
+    t.appendChild(el("div", "stage-stat-val", valeur));
+    t.appendChild(el("div", "stage-stat-lab", libelle));
+    return t;
+  };
+  const solde = p.Solde_heures || 0;
+  stats.appendChild(tuile(formatH(p.FAIT), "Heures effectuées"));
+  stats.appendChild(tuile(formatH(p.A_FAIRE), "Heures prévues"));
+  stats.appendChild(tuile(`${solde > 0 ? "+" : ""}${formatH(solde)}`, "Solde",
+    solde > 0 ? "is-pos" : (solde < 0 ? "is-neg" : "")));
+  wrap.appendChild(stats);
+
+  const prevu = Number(p.A_FAIRE) || 0;
+  if (prevu > 0) {
+    const fait = Number(p.FAIT) || 0;
+    const pct = Math.max(0, Math.min(100, Math.round((fait / prevu) * 100)));
+    const prog = el("div", "stage-progress");
+    const track = el("div", "stage-progress-track");
+    const bar = el("div", "stage-progress-bar");
+    bar.style.width = `${pct}%`;
+    track.appendChild(bar);
+    prog.appendChild(track);
+    prog.appendChild(el("div", "stage-progress-txt", `${pct} % du temps de stage réalisé`));
+    wrap.appendChild(prog);
+  }
   return wrap;
 }
 
 /** Onglet « Historique des stages » : tous les stages de l'étudiant, tous
  *  services confondus, en lecture seule — planning et heures faites. */
 function renderHistoriqueStages(allPeriodes) {
-  const wrap = el("div", "");
+  const wrap = el("div", "dossier-sections");
   const periodes = [...allPeriodes].sort((a, b) => (b.Du || "").localeCompare(a.Du || ""));
-  if (!periodes.length) return el("p", "empty", "Aucun stage enregistré.");
+  if (!periodes.length) {
+    const vide = dossierCard("Historique");
+    vide.body.appendChild(el("p", "empty", "Aucun stage enregistré."));
+    wrap.appendChild(vide.card);
+    return wrap;
+  }
 
   for (const p of periodes) {
     const cat = periodeCategory(p);
     const item = el("div", `stage-item stage-${cat}`);
 
-    const header = el("div", "stage-item-header");
+    const header = el("div", "stage-head");
     header.appendChild(el("span", "stage-service", p.Service_nom || "Service inconnu"));
     header.appendChild(el("span", "stage-dates", `${frDate(p.Du)} → ${frDate(p.Au)}`));
     header.appendChild(badge(
@@ -1437,7 +1569,8 @@ function renderBilanSection(p) {
   const wrap = el("div", "bilan-section");
 
   if (p.Bilan_final) {
-    const dlBtn = el("button", "btn btn-ghost btn-small", "📄 Télécharger le bilan final");
+    wrap.appendChild(el("span", "bilan-etat", "Bilan déposé."));
+    const dlBtn = el("button", "btn btn-secondary btn-small", "📄 Télécharger le bilan final");
     dlBtn.type = "button";
     dlBtn.addEventListener("click", () => telechargerFichier(`/api/cadre/periodes/${p.id}/bilan`));
     wrap.appendChild(dlBtn);
@@ -1455,7 +1588,8 @@ function renderBilanSection(p) {
     });
     wrap.appendChild(rmBtn);
   } else {
-    const label = el("label", "btn btn-ghost btn-small", "📄 Téléverser le bilan final…");
+    wrap.appendChild(el("span", "bilan-etat", "Aucun bilan déposé pour ce stage."));
+    const label = el("label", "btn btn-secondary btn-small", "📄 Téléverser le bilan final…");
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "application/pdf,image/png,image/jpeg";
@@ -1482,9 +1616,7 @@ function renderBilanSection(p) {
 /** Commentaires et pièces jointes du stage (table Grist BDD_COM) : liste
  *  chargée à la demande, plus un formulaire d'ajout (texte + fichier). */
 function renderCommentairesSection(p) {
-  const wrap = el("div", "commentaires-section");
-  wrap.appendChild(el("h3", "section-titre", "Commentaires et documents"));
-
+  const wrap = el("div", "");
   const liste = el("div", "");
   wrap.appendChild(liste);
 
@@ -1548,12 +1680,22 @@ function renderCommentairesSection(p) {
   input.placeholder = "Ajouter un commentaire…";
   form.appendChild(input);
 
+  // Champ fichier masqué derrière un bouton, pour rester dans le même
+  // vocabulaire visuel que le reste de la page.
   const fichier = document.createElement("input");
   fichier.type = "file";
   fichier.accept = "application/pdf,image/png,image/jpeg";
-  form.appendChild(fichier);
+  fichier.hidden = true;
+  const joindre = el("label", "btn btn-secondary btn-small commentaire-fichier", "📎 Joindre un fichier");
+  const nomFichier = el("span", "commentaire-fichier-nom", "");
+  fichier.addEventListener("change", () => {
+    const f = fichier.files && fichier.files[0];
+    nomFichier.textContent = f ? f.name : "";
+  });
+  joindre.appendChild(fichier);
+  form.append(joindre, nomFichier);
 
-  const envoyer = el("button", "btn btn-ghost btn-small", "Ajouter");
+  const envoyer = el("button", "btn btn-secondary btn-small", "Ajouter");
   envoyer.type = "button";
   envoyer.addEventListener("click", async () => {
     const texte = input.value.trim();
@@ -1582,9 +1724,11 @@ function renderCommentairesSection(p) {
  *  double confirmation, puis suppression en cascade côté Worker (période +
  *  semaines de planning + rendez-vous formateur). */
 function renderSuppressionPeriode(p) {
-  const wrap = el("div", "");
-  wrap.style.marginTop = "0.6rem";
-  const btn = el("button", "btn btn-danger", "Supprimer cette période");
+  const wrap = el("div", "dossier-danger");
+  wrap.appendChild(el("div", "dossier-danger-txt",
+    "Période créée par erreur ? Sa suppression retire aussi le planning hebdomadaire "
+    + "et les rendez-vous rattachés."));
+  const btn = el("button", "btn btn-danger btn-small", "Supprimer cette période");
   btn.type = "button";
   btn.addEventListener("click", async () => {
     const etu = `${p.Etudiant.prenom} ${p.Etudiant.nom}`.trim() || "cet étudiant";
@@ -1605,7 +1749,7 @@ function renderSuppressionPeriode(p) {
 }
 
 function renderFiche(p) {
-  const wrap = el("div", "etu-fiche");
+  const wrap = el("div", "fiche-grid");
 
   const tuteurLabel = el("label", "", "Tuteur");
   const tuteurInput = document.createElement("input");
@@ -1631,12 +1775,14 @@ function renderFiche(p) {
   auInput.value = p.Au || "";
   auLabel.appendChild(auInput);
 
-  const saveBtn = el("button", "btn btn-ghost", "Enregistrer la fiche");
+  const saveBtn = el("button", "btn btn-secondary btn-small", "Enregistrer la fiche");
   saveBtn.type = "button";
 
-  wrap.append(tuteurLabel, niveauLabel, duLabel, auLabel, saveBtn);
+  wrap.append(tuteurLabel, niveauLabel, duLabel, auLabel);
 
   const hint = el("p", "save-hint", "");
+  const barre = el("div", "fiche-actions");
+  barre.append(saveBtn, hint);
 
   saveBtn.addEventListener("click", async () => {
     saveBtn.disabled = true;
@@ -1657,8 +1803,9 @@ function renderFiche(p) {
     }
   });
 
-  const container = el("div", "");
-  container.append(wrap, hint);
+  const container = el("div", "fiche-bloc");
+  container.appendChild(el("p", "fiche-legende", "Fiche du stage"));
+  container.append(wrap, barre);
   return container;
 }
 
@@ -1691,25 +1838,11 @@ async function imprimerFicheStage(p, btn) {
   }
 }
 
-/** Section « Rendez-vous formateurs » d'une période : liste + bouton d'ajout.
- *  Si `verrou`, la suppression n'est plus proposée (contacter l'administrateur). */
-function renderRdvsSection(p, verrou) {
+/** Liste des rendez-vous formateurs d'une période (le bouton d'ajout est porté
+ *  par l'en-tête de la carte). Si `verrou`, la suppression n'est plus proposée
+ *  (contacter l'administrateur). */
+function renderRdvsList(p, verrou) {
   const wrap = el("div", "");
-  wrap.style.marginTop = "1rem";
-
-  const head = el("div", "");
-  head.style.display = "flex";
-  head.style.alignItems = "center";
-  head.style.justifyContent = "space-between";
-  head.style.gap = "0.5rem";
-  head.appendChild(el("div", "dual-list-title", "Rendez-vous formateurs / tuteur"));
-  if (!verrou) {
-    const addBtn = el("button", "btn btn-ghost", "+ Rendez-vous");
-    addBtn.type = "button";
-    addBtn.addEventListener("click", () => openRdvDialog(p));
-    head.appendChild(addBtn);
-  }
-  wrap.appendChild(head);
 
   const rdvs = (state.data.rdvs || []).filter((r) => r.Periode === p.id)
     .sort((a, b) => (a.Date_rdv || "").localeCompare(b.Date_rdv || ""));
@@ -1775,13 +1908,15 @@ function renderMiniPlanning(p, verrou) {
     tbody.appendChild(tr);
   }
   table.appendChild(tbody);
-  return table;
+
+  const box = el("div", "planning-wrap");
+  box.appendChild(table);
+  return box;
 }
 
 /** Liste (lecture seule) des déclarations d'une période. */
 function renderSortiesList(p) {
   const wrap = el("div", "");
-  wrap.style.marginTop = "0.75rem";
   const sorties = state.data.sorties.filter((s) => s.Periode === p.id)
     .sort((a, b) => (b.Date || "").localeCompare(a.Date || ""));
 
