@@ -425,6 +425,14 @@
     .dist-bar { height: 100%; background: var(--bleu); border-radius: 999px; min-width: 2px; }
     .dist-val { flex: 0 0 auto; color: var(--texte-doux); font-variant-numeric: tabular-nums; }
 
+    /* ---------- Questionnaires de satisfaction ---------- */
+    .satis-theme-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
+    .satis-theme-note { font-weight: 700; color: var(--bleu); font-variant-numeric: tabular-nums; }
+    .satis-detail { font-size: 0.76rem; color: var(--texte-doux); margin: 0 0 0.55rem calc(30% + 0.6rem); }
+    .satis-verbatim { border-left: 3px solid var(--gris-bordure); padding: 0.15rem 0 0.15rem 0.75rem; margin: 0.7rem 0; }
+    .satis-verbatim-txt { margin: 0; font-size: 0.88rem; white-space: pre-wrap; }
+    .satis-verbatim-meta { font-size: 0.75rem; color: var(--texte-doux); margin-top: 0.2rem; }
+
     /* Alignement DSFR des champs définis localement ci-dessus */
     .cadre-tel-input, .cadre-service-select select, .dossier-search,
     .mail-form input, .mail-form textarea, .fiche-grid input, .fiche-grid select,
@@ -497,7 +505,7 @@
       .app-header, .cadre-info, .cadre-service-select, .service-pickers, .main-tabs, .group-subtabs,
       .planning-controls, .code-palette, .app-footer,
       .planning-alertes, th.student-col .badge.warn, th.compteurs-col, td.compteurs-col, #tab-dashboard, #tab-declarations,
-      #tab-dossier, #tab-inscription, #tab-evaluation, #tab-stats, #tab-codes, #tab-mailbienvenue, .section-note { display: none !important; }
+      #tab-dossier, #tab-inscription, #tab-evaluation, #tab-stats, #tab-satisfaction, #tab-codes, #tab-mailbienvenue, .section-note { display: none !important; }
       #print-header { display: block; margin-bottom: 1rem; }
       #print-footer {
         display: block; margin-top: 16px; padding-top: 6px; border-top: 1px solid #ccc;
@@ -660,6 +668,11 @@
         <div id="tab-stats" hidden>
           <p class="section-note">Statistiques d'encadrement sur la période choisie, pour votre rapport d'activité. Ajustez les dates puis imprimez le rapport.</p>
           <div id="stats-content"></div>
+        </div>
+
+        <div id="tab-satisfaction" hidden>
+          <p class="section-note">Dépouillement <strong>anonyme</strong> des questionnaires de fin de stage retournés par les étudiants du service, sur la période choisie.</p>
+          <div id="satisfaction-content"></div>
         </div>
 
         <div id="tab-codes" hidden>
@@ -913,6 +926,6 @@
   <script src="config.js?v=21"></script>
   <script src="layout.js?v=26"></script>
   <script src="etablissement.js?v=29"></script>
-  <script src="espace-cadre.js?v=43"></script>
+  <script src="espace-cadre.js?v=44"></script>
 </body>
 </html>

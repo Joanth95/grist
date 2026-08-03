@@ -1,7 +1,7 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 /* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
-const APP_VERSION = "v42"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v43"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -13,6 +13,7 @@ const TABS = [
   { id: "planning", label: "Planning de service" },
   { id: "evaluation", label: "Envoi des évaluations" },
   { id: "stats", label: "Statistiques" },
+  { id: "satisfaction", label: "Questionnaires de satisfaction" },
   { id: "codes", label: "Codes horaires" },
   { id: "mailbienvenue", label: "Mail de bienvenue" },
 ];
@@ -21,7 +22,7 @@ const TABS = [
 const TAB_GROUPS = [
   { id: "dashboard", label: "Tableau de bord", tabs: ["dashboard"] },
   { id: "etudiants", label: "Étudiants", tabs: ["dossier", "inscription", "declarations", "evaluation"] },
-  { id: "service", label: "Gestion de service", tabs: ["planning", "stats"] },
+  { id: "service", label: "Gestion de service", tabs: ["planning", "stats", "satisfaction"] },
   { id: "parametres", label: "Paramètres", tabs: ["codes", "mailbienvenue"] },
 ];
 
@@ -568,6 +569,7 @@ function renderActiveTab() {
   $("tab-planning").hidden = state.activeTab !== "planning";
   $("tab-evaluation").hidden = state.activeTab !== "evaluation";
   $("tab-stats").hidden = state.activeTab !== "stats";
+  $("tab-satisfaction").hidden = state.activeTab !== "satisfaction";
   $("tab-codes").hidden = state.activeTab !== "codes";
   $("tab-mailbienvenue").hidden = state.activeTab !== "mailbienvenue";
   if (state.activeTab === "dashboard") renderDashboardTab();
@@ -577,6 +579,7 @@ function renderActiveTab() {
   if (state.activeTab === "planning") renderPlanningTab();
   if (state.activeTab === "evaluation") renderEvaluationTab();
   if (state.activeTab === "stats") renderStatsTab();
+  if (state.activeTab === "satisfaction") renderSatisfactionTab();
   if (state.activeTab === "codes") renderCodesTab();
   if (state.activeTab === "mailbienvenue") renderMailBienvenueTab();
 }
@@ -853,12 +856,10 @@ function statsCompute() {
   };
 }
 
-function renderStatsTab() {
-  const container = $("stats-content");
-  container.innerHTML = "";
+/** Barre de période (dates + raccourcis + impression), partagée par les deux
+ *  pages de statistiques ; `redraw` redessine la page appelante. */
+function periodControls(redraw, printLabel, onPrint) {
   const { start, end } = statsRange();
-
-  // Contrôles : dates + raccourcis de période.
   const controls = el("div", "stats-controls");
   const mkDate = (labelTxt, value, onChange) => {
     const label = el("label", "", labelTxt);
@@ -869,14 +870,14 @@ function renderStatsTab() {
     label.appendChild(input);
     return label;
   };
-  controls.appendChild(mkDate("Du", start, (v) => { state.statsStart = v; renderStatsTab(); }));
-  controls.appendChild(mkDate("Au", end, (v) => { state.statsEnd = v; renderStatsTab(); }));
+  controls.appendChild(mkDate("Du", start, (v) => { state.statsStart = v; redraw(); }));
+  controls.appendChild(mkDate("Au", end, (v) => { state.statsEnd = v; redraw(); }));
 
   const presets = el("div", "stats-presets");
   const mkPreset = (labelTxt, range) => {
     const btn = el("button", "sub-tab", labelTxt);
     btn.type = "button";
-    btn.addEventListener("click", () => { state.statsStart = range.start; state.statsEnd = range.end; renderStatsTab(); });
+    btn.addEventListener("click", () => { state.statsStart = range.start; state.statsEnd = range.end; redraw(); });
     return btn;
   };
   presets.appendChild(mkPreset("Année scolaire", academicYearRange()));
@@ -885,11 +886,17 @@ function renderStatsTab() {
   presets.appendChild(mkPreset("12 derniers mois", { start: addDaysIso(isoDate(new Date()), -365), end: isoDate(new Date()) }));
   controls.appendChild(presets);
 
-  const printBtn = el("button", "btn btn-primary", "🖨 Imprimer le rapport");
+  const printBtn = el("button", "btn btn-primary", printLabel);
   printBtn.type = "button";
-  printBtn.addEventListener("click", printStats);
+  printBtn.addEventListener("click", onPrint);
   controls.appendChild(printBtn);
-  container.appendChild(controls);
+  return controls;
+}
+
+function renderStatsTab() {
+  const container = $("stats-content");
+  container.innerHTML = "";
+  container.appendChild(periodControls(renderStatsTab, "🖨 Imprimer le rapport", printStats));
 
   const s = statsCompute();
 
@@ -995,6 +1002,277 @@ function buildStatsReportHtml(s, service) {
     + distTable("Répartition par centre de formation", s.byCentre)
     + distTable("Répartition par formation", s.byFormation)
     + `<footer>Rapport généré le ${genDate}${moi ? " par " + escapeHtml(moi) : ""} · Espace cadre</footer>`
+    + `</body></html>`;
+}
+
+/* ================================================================== */
+/* Onglet Questionnaires de satisfaction (dépouillement anonyme)       */
+/* ================================================================== */
+
+// Questions du questionnaire de fin de stage, regroupées par thème. Les clés
+// correspondent aux colonnes renvoyées par le worker (EVAL_COLONNES).
+// echelle:false = réponse sans « bon » ni « mauvais » sens (on n'en fait pas
+// de moyenne, seulement une répartition).
+const SATISFACTION_THEMES = [
+  { titre: "Accueil", questions: [
+    { cle: "accueil_premier_jour", label: "Accueil le premier jour" },
+    { cle: "presentation_equipe_locaux", label: "Présentation de l'équipe et des locaux" },
+    { cle: "clarte_infos_debut_stage", label: "Clarté des informations de début de stage" },
+  ] },
+  { titre: "Encadrement", questions: [
+    { cle: "disponibilite_encadrement", label: "Disponibilité de l'encadrement" },
+    { cle: "qualite_transmissions_explications", label: "Qualité des transmissions et explications" },
+    { cle: "respect_rythme_progression", label: "Respect du rythme de progression" },
+    { cle: "frequence_bilans_retours", label: "Fréquence des bilans et retours" },
+    { cle: "securite_pour_questions", label: "Sentiment de sécurité pour poser des questions" },
+  ] },
+  { titre: "Apprentissages", questions: [
+    { cle: "diversite_situations", label: "Diversité des situations rencontrées" },
+    { cle: "adequation_activites_objectifs", label: "Adéquation des activités aux objectifs" },
+    { cle: "acces_protocoles_ressources", label: "Accès aux protocoles et ressources" },
+  ] },
+  { titre: "Organisation et intégration", questions: [
+    { cle: "organisation_generale_service", label: "Organisation générale du service" },
+    { cle: "ambiance_esprit_equipe", label: "Ambiance et esprit d'équipe" },
+    { cle: "charge_travail_percue", label: "Charge de travail perçue", echelle: false },
+    { cle: "sentiment_integration", label: "Sentiment d'intégration" },
+  ] },
+];
+
+const SATISFACTION_VERBATIMS = [
+  { cle: "points_forts", label: "Points forts du stage" },
+  { cle: "axes_amelioration", label: "Axes d'amélioration" },
+  { cle: "suggestions_equipe", label: "Suggestions à l'équipe" },
+];
+
+/** Minuscules sans accent, pour comparer des libellés de réponse. */
+function sansAccents(txt) {
+  return String(txt || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+}
+
+// Conversion d'une réponse en note sur 5. Le libellé exact des échelles est
+// défini dans le formulaire Grist : on reconnaît les formulations usuelles,
+// du plus spécifique au plus général (« très satisfait » avant « satisfait »).
+// Une réponse non reconnue est ignorée dans les moyennes, mais reste comptée
+// dans la répartition : la page fonctionne quel que soit le libellé choisi.
+const ECHELLE_REPONSES = [
+  [/pas du tout|jamais|tres insatisfait|tres insuffisant|tres mauvais/, 1],
+  [/tout a fait|toujours|tres satisfait|tres bien|excellent/, 5],
+  [/plutot pas|plutot non|peu satisfait|rarement|insatisfait|insuffisant|mauvais/, 2],
+  [/moyennement|parfois|neutre|moyen|sans avis|ni satisfait/, 3],
+  [/plutot|souvent|satisfait|bien|oui|adapte|suffisant/, 4],
+];
+
+function scoreReponse(txt) {
+  const t = sansAccents(txt);
+  if (!t) return null;
+  const num = t.match(/^([1-5])\s*(\/\s*5)?$/);
+  if (num) return Number(num[1]);
+  for (const [re, score] of ECHELLE_REPONSES) if (re.test(t)) return score;
+  return null;
+}
+
+/** Une recommandation est positive si la réponse commence par « oui »/« tout à fait ». */
+function estRecommandation(txt) {
+  const t = sansAccents(txt);
+  return !!t && /^(oui|tout a fait|plutot oui|certainement|sans hesiter)/.test(t);
+}
+
+/** Réponses au questionnaire rattachées aux stages du service sur la période. */
+function satisfactionCompute() {
+  const { start, end } = statsRange();
+  const periodes = periodesDuService().filter((p) =>
+    (!p.Au || p.Au >= start) && (!p.Du || p.Du <= end));
+  const periodesById = new Map(periodes.map((p) => [p.id, p]));
+  const reponses = (state.data.evaluations || []).filter((e) => periodesById.has(e.Periode));
+
+  const notes = reponses.map((e) => e.Note_globale).filter((n) => Number.isFinite(n) && n > 0);
+  const recos = reponses.map((e) => e.reponses.recommandation_stage).filter(Boolean);
+  return {
+    start, end, reponses,
+    periodesById,
+    nbReponses: reponses.length,
+    envoyees: periodes.filter((p) => p.Evaluation_envoyee).length,
+    noteMoyenne: notes.length ? notes.reduce((a, b) => a + b, 0) / notes.length : null,
+    nbNotes: notes.length,
+    nbRecos: recos.length,
+    tauxReco: recos.length
+      ? Math.round((recos.filter(estRecommandation).length / recos.length) * 100) : null,
+  };
+}
+
+/** Répartition + moyenne d'une question ; renvoie null si personne n'a répondu. */
+function satisfactionQuestion(reponses, q) {
+  const valeurs = reponses.map((e) => e.reponses[q.cle]).filter((v) => v && v.trim());
+  if (!valeurs.length) return null;
+  const scores = q.echelle === false ? [] : valeurs.map(scoreReponse).filter((s) => s !== null);
+  return {
+    ...q,
+    total: valeurs.length,
+    moyenne: scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null,
+    distribution: countBy(valeurs, (v) => v.trim()),
+  };
+}
+
+/** Moyenne d'un thème : moyenne des questions notées de ce thème. */
+function satisfactionTheme(reponses, theme) {
+  const questions = theme.questions.map((q) => satisfactionQuestion(reponses, q)).filter(Boolean);
+  const notees = questions.filter((q) => q.moyenne !== null);
+  return {
+    titre: theme.titre,
+    questions,
+    moyenne: notees.length ? notees.reduce((a, q) => a + q.moyenne, 0) / notees.length : null,
+  };
+}
+
+const formatNote = (n) => (n === null || n === undefined ? "—" : `${n.toFixed(1)}/5`);
+
+function renderSatisfactionTab() {
+  const container = $("satisfaction-content");
+  container.innerHTML = "";
+  container.appendChild(periodControls(renderSatisfactionTab, "🖨 Imprimer la synthèse", printSatisfaction));
+
+  const s = satisfactionCompute();
+
+  const grid = el("div", "kpi-grid");
+  grid.appendChild(statCard(s.nbReponses, "Réponses reçues"));
+  const taux = s.envoyees ? Math.round((s.nbReponses / s.envoyees) * 100) : null;
+  grid.appendChild(statCard(taux === null ? "—" : `${taux}%`, "Taux de réponse", `${s.nbReponses}/${s.envoyees} envoyées`));
+  grid.appendChild(statCard(formatNote(s.noteMoyenne), "Note globale moyenne", s.nbNotes ? `${s.nbNotes} note(s)` : ""));
+  grid.appendChild(statCard(s.tauxReco === null ? "—" : `${s.tauxReco}%`, "Recommanderaient le stage",
+    s.nbRecos ? `${s.nbRecos} réponse(s)` : ""));
+  container.appendChild(grid);
+
+  if (!s.nbReponses) {
+    container.appendChild(el("p", "empty",
+      "Aucun questionnaire de satisfaction reçu pour les stages de ce service sur la période choisie."));
+    return;
+  }
+
+  for (const theme of SATISFACTION_THEMES) {
+    const t = satisfactionTheme(s.reponses, theme);
+    if (!t.questions.length) continue;
+    container.appendChild(renderSatisfactionTheme(t));
+  }
+
+  for (const v of SATISFACTION_VERBATIMS) {
+    const textes = s.reponses
+      .map((e) => ({ txt: (e.reponses[v.cle] || "").trim(), date: e.Date_soumission, periode: s.periodesById.get(e.Periode) }))
+      .filter((x) => x.txt);
+    if (textes.length) container.appendChild(renderVerbatims(v.label, textes));
+  }
+}
+
+/** Bloc d'un thème : moyenne du thème puis une ligne par question. */
+function renderSatisfactionTheme(t) {
+  const wrap = el("div", "stat-dist");
+  const head = el("div", "satis-theme-head");
+  head.appendChild(el("div", "dual-list-title", t.titre));
+  head.appendChild(el("div", "satis-theme-note", formatNote(t.moyenne)));
+  wrap.appendChild(head);
+
+  for (const q of t.questions) {
+    const row = el("div", "dist-row");
+    row.appendChild(el("div", "dist-label", q.label));
+    const track = el("div", "dist-track");
+    if (q.moyenne !== null) {
+      const bar = el("div", "dist-bar");
+      bar.style.width = `${Math.round((q.moyenne / 5) * 100)}%`;
+      track.appendChild(bar);
+    }
+    row.appendChild(track);
+    row.appendChild(el("div", "dist-val", q.moyenne !== null ? formatNote(q.moyenne) : `${q.total} rép.`));
+    wrap.appendChild(row);
+    // Détail des réponses : indispensable quand l'échelle n'est pas notée
+    // (charge de travail) et utile pour lire une moyenne.
+    wrap.appendChild(el("div", "satis-detail",
+      q.distribution.map((d) => `${d.label} : ${d.value}`).join(" · ")));
+  }
+  return wrap;
+}
+
+/** Liste des réponses libres (anonymes) d'une question ouverte. */
+function renderVerbatims(titre, textes) {
+  const wrap = el("div", "stat-dist");
+  wrap.appendChild(el("div", "dual-list-title", `${titre} (${textes.length})`));
+  for (const t of textes) {
+    const item = el("div", "satis-verbatim");
+    item.appendChild(el("p", "satis-verbatim-txt", t.txt));
+    const meta = [];
+    if (t.periode && t.periode.Du) meta.push(`stage du ${frDate(t.periode.Du)}`);
+    if (t.date) meta.push(`répondu le ${frDate(t.date)}`);
+    if (meta.length) item.appendChild(el("div", "satis-verbatim-meta", meta.join(" · ")));
+    wrap.appendChild(item);
+  }
+  return wrap;
+}
+
+/** Ouvre la synthèse de satisfaction dans une nouvelle fenêtre et l'imprime. */
+function printSatisfaction() {
+  const s = satisfactionCompute();
+  const service = state.data.services.find((x) => x.id === state.selectedServiceId);
+  const win = window.open("", "_blank");
+  if (!win) {
+    alert("Autorisez les fenêtres pop-up pour imprimer la synthèse.");
+    return;
+  }
+  win.document.open();
+  win.document.write(buildSatisfactionReportHtml(s, service));
+  win.document.close();
+}
+
+function buildSatisfactionReportHtml(s, service) {
+  const serviceName = service ? service.Nom : "";
+  const moi = (state.data.moi && state.data.moi.nom) || "";
+  const taux = s.envoyees ? Math.round((s.nbReponses / s.envoyees) * 100) : null;
+  const genDate = new Date().toLocaleDateString("fr-FR");
+
+  const themesHtml = SATISFACTION_THEMES.map((theme) => {
+    const t = satisfactionTheme(s.reponses, theme);
+    if (!t.questions.length) return "";
+    const rows = t.questions.map((q) => {
+      const detail = q.distribution.map((d) => `${escapeHtml(d.label)} : ${d.value}`).join(" · ");
+      return `<tr><td>${escapeHtml(q.label)}<div class="d">${detail}</div></td>`
+        + `<td style="text-align:right">${q.moyenne !== null ? formatNote(q.moyenne) : "—"}</td>`
+        + `<td style="text-align:right">${q.total}</td></tr>`;
+    }).join("");
+    return `<h3>${escapeHtml(t.titre)} — ${formatNote(t.moyenne)}</h3>`
+      + `<table class="r"><thead><tr><th>Question</th><th>Moyenne</th><th>Réponses</th></tr></thead>`
+      + `<tbody>${rows}</tbody></table>`;
+  }).join("");
+
+  const verbatimsHtml = SATISFACTION_VERBATIMS.map((v) => {
+    const textes = s.reponses.map((e) => (e.reponses[v.cle] || "").trim()).filter(Boolean);
+    if (!textes.length) return "";
+    return `<h3>${escapeHtml(v.label)}</h3><ul>`
+      + textes.map((t) => `<li>${escapeHtml(t)}</li>`).join("") + `</ul>`;
+  }).join("");
+
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">`
+    + `<title>Satisfaction des étudiants — ${escapeHtml(serviceName)}</title><style>`
+    + `body{font-family:Marianne,Arial,sans-serif;color:#161616;margin:2rem;}`
+    + `h1{font-size:1.4rem;margin:0 0 .2rem;}h2{font-size:1rem;color:#555;font-weight:400;margin:0 0 1.2rem;}`
+    + `h3{font-size:1rem;margin:1.4rem 0 .4rem;border-bottom:2px solid #000091;padding-bottom:.2rem;}`
+    + `.kpis{display:flex;flex-wrap:wrap;gap:.8rem;margin:1rem 0;}`
+    + `.kpi{border:1px solid #ddd;border-radius:6px;padding:.6rem .9rem;min-width:120px;}`
+    + `.kpi .v{font-size:1.5rem;font-weight:700;color:#000091;}.kpi .l{font-size:.8rem;color:#555;}`
+    + `table.r{border-collapse:collapse;width:100%;max-width:620px;font-size:.9rem;}`
+    + `table.r th,table.r td{border:1px solid #ddd;padding:.35rem .6rem;}table.r th{background:#f5f5fe;text-align:left;}`
+    + `td .d{font-size:.75rem;color:#555;margin-top:.15rem;}`
+    + `ul{font-size:.9rem;}li{margin-bottom:.3rem;}`
+    + `footer{margin-top:2rem;padding-top:.5rem;border-top:1px solid #ccc;font-size:.75rem;color:#555;}`
+    + `</style></head><body onload="setTimeout(function(){window.print();},250);">`
+    + `<h1>Satisfaction des étudiants — questionnaires de fin de stage</h1>`
+    + `<h2>${escapeHtml(serviceName)} · du ${frDate(s.start)} au ${frDate(s.end)}</h2>`
+    + `<div class="kpis">`
+    + `<div class="kpi"><div class="v">${s.nbReponses}</div><div class="l">Réponses reçues</div></div>`
+    + `<div class="kpi"><div class="v">${taux === null ? "—" : taux + "%"}</div><div class="l">Taux de réponse (${s.nbReponses}/${s.envoyees})</div></div>`
+    + `<div class="kpi"><div class="v">${formatNote(s.noteMoyenne)}</div><div class="l">Note globale moyenne</div></div>`
+    + `<div class="kpi"><div class="v">${s.tauxReco === null ? "—" : s.tauxReco + "%"}</div><div class="l">Recommanderaient le stage</div></div>`
+    + `</div>`
+    + (s.nbReponses ? themesHtml + verbatimsHtml
+      : `<p>Aucun questionnaire reçu sur la période choisie.</p>`)
+    + `<footer>Synthèse anonyme générée le ${genDate}${moi ? " par " + escapeHtml(moi) : ""} · Espace cadre</footer>`
     + `</body></html>`;
 }
 

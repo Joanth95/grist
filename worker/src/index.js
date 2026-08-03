@@ -144,6 +144,31 @@ const T_POLE = "Pole";
 
 const DAY_COLUMNS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
+// Colonnes du questionnaire de satisfaction (EVALUATION_STAGE_ETUDIANT)
+// remontées à l'espace cadre pour le dépouillement. Les libellés affichés sont
+// côté front (SATISFACTION_THEMES dans espace-cadre.js) ; ici on ne fait que
+// recopier les valeurs telles quelles.
+const EVAL_COLONNES = [
+  "accueil_premier_jour", "presentation_equipe_locaux", "clarte_infos_debut_stage",
+  "disponibilite_encadrement", "qualite_transmissions_explications", "respect_rythme_progression",
+  "frequence_bilans_retours", "securite_pour_questions",
+  "diversite_situations", "adequation_activites_objectifs", "acces_protocoles_ressources",
+  "organisation_generale_service", "ambiance_esprit_equipe", "charge_travail_percue",
+  "sentiment_integration",
+  "recommandation_stage", "points_forts", "axes_amelioration", "suggestions_equipe",
+];
+
+/** Lit un champ d'évaluation sans tenir compte de la casse de la colonne Grist
+ *  (Note_globale, note_globale, NOTE_GLOBALE… selon la création de la table). */
+function champEvaluation(fields, cle) {
+  if (fields[cle] !== undefined) return fields[cle];
+  const cible = cle.toLowerCase();
+  for (const k of Object.keys(fields)) {
+    if (k.toLowerCase() === cible) return fields[k];
+  }
+  return null;
+}
+
 const CIVILITES = ["Madame", "Monsieur"];
 const FORMATIONS = ["AIDE SOIGNANT", "INFIRMIER", "AUTRE"];
 const NIVEAUX = ["ESI L1", "ESI L2", "ESI L3", "M1", "M2", "Aide-Soignant"];
@@ -1481,10 +1506,13 @@ async function buildCadrePayload(env, cadre) {
     periodesAll.map((p) => [p.fields.UUID, p.id]).filter(([uuid]) => uuid)
   );
   const periodesAvecReponse = new Set();
+  const evaluationsRattachees = [];
   for (const e of evaluations) {
     const periodeId = (e.fields.Cle_lien && periodeIdByUuid.get(e.fields.Cle_lien))
       || e.fields.Periode_de_stage || null;
-    if (periodeId) periodesAvecReponse.add(periodeId);
+    if (!periodeId) continue;
+    periodesAvecReponse.add(periodeId);
+    evaluationsRattachees.push({ periodeId, fields: e.fields, id: e.id });
   }
 
   const studentIds = [...new Set(periodes.map((p) => p.fields.Etudiant).filter(Boolean))];
@@ -1621,6 +1649,30 @@ async function buildCadrePayload(env, cadre) {
       Commentaire: r.fields.Commentaire || "",
       Cree_par: r.fields.Cree_par || "",
     })),
+    // Réponses au questionnaire de satisfaction, limitées aux stages des
+    // services du cadre. Volontairement sans identité ni référence exploitable
+    // vers l'étudiant : le dépouillement se fait de façon anonyme, seul l'id de
+    // période sert à filtrer sur la période choisie côté front.
+    evaluations: evaluationsRattachees
+      .filter((e) => periodeIdSet.has(e.periodeId))
+      .map((e) => {
+        const reponses = {};
+        for (const col of EVAL_COLONNES) {
+          const v = champEvaluation(e.fields, col);
+          reponses[col] = v == null ? "" : String(v).trim();
+        }
+        const note = Number(champEvaluation(e.fields, "note_globale"));
+        const soumission = champEvaluation(e.fields, "date_soumission");
+        return {
+          id: e.id,
+          Periode: e.periodeId,
+          Date_soumission: typeof soumission === "number"
+            ? epochToIso(soumission)
+            : (soumission || null),
+          Note_globale: Number.isFinite(note) && note > 0 ? note : null,
+          reponses,
+        };
+      }),
   };
 }
 
