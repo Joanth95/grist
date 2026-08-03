@@ -1,7 +1,7 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 /* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
-const APP_VERSION = "v43"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v44"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -1052,15 +1052,17 @@ function sansAccents(txt) {
 
 // Conversion d'une réponse en note sur 5. Le libellé exact des échelles est
 // défini dans le formulaire Grist : on reconnaît les formulations usuelles,
-// du plus spécifique au plus général (« très satisfait » avant « satisfait »).
-// Une réponse non reconnue est ignorée dans les moyennes, mais reste comptée
-// dans la répartition : la page fonctionne quel que soit le libellé choisi.
+// du plus spécifique au plus général (« très satisfaisant » avant
+// « satisfaisant »). « satisfai » couvre satisfait / satisfaite /
+// satisfaisant. Une réponse non reconnue est ignorée dans les moyennes, mais
+// reste comptée dans la répartition : la page fonctionne quel que soit le
+// libellé choisi.
 const ECHELLE_REPONSES = [
-  [/pas du tout|jamais|tres insatisfait|tres insuffisant|tres mauvais/, 1],
-  [/tout a fait|toujours|tres satisfait|tres bien|excellent/, 5],
-  [/plutot pas|plutot non|peu satisfait|rarement|insatisfait|insuffisant|mauvais/, 2],
-  [/moyennement|parfois|neutre|moyen|sans avis|ni satisfait/, 3],
-  [/plutot|souvent|satisfait|bien|oui|adapte|suffisant/, 4],
+  [/pas du tout|pas satisfai|non satisfai|^non\b|jamais|tres insatisfai|tres insuffisant|tres mauvais/, 1],
+  [/tout a fait|toujours|tres satisfai|tres bien|excellent/, 5],
+  [/plutot pas|plutot non|peu satisfai|rarement|insatisfai|insuffisant|mauvais/, 2],
+  [/moyennement|parfois|neutre|moyen|sans avis|ni satisfai|correct/, 3],
+  [/plutot|souvent|satisfai|bien|oui|adapte|suffisant/, 4],
 ];
 
 function scoreReponse(txt) {
