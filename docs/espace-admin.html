@@ -130,6 +130,26 @@
     .etu-section table.admin{font-size:.85rem}
     .etu-section table.admin th,.etu-section table.admin td{padding:.4rem .5rem}
 
+    /* Identité éditable : même grille que la lecture seule (.etu-identite),
+       mais chaque case devient un champ de formulaire. */
+    .etu-identite-actions{margin:0 0 1.1rem}
+    .etu-identite-edition div{display:flex;flex-direction:column;gap:.2rem}
+    .etu-identite-edition label{font-size:.68rem;font-weight:700;text-transform:uppercase;
+      letter-spacing:.03em;color:var(--texte-doux)}
+    .etu-identite-edition input,.etu-identite-edition select{margin:0}
+
+    /* Bilan final de stage : bouton(s) compacts dans la cellule du tableau */
+    .bilan-cell{display:flex;gap:.4rem;flex-wrap:wrap}
+    .bilan-cell label.btn{cursor:pointer}
+
+    /* Sélection de dossiers pour la fusion */
+    table.admin td.select-col,table.admin th.select-col{width:1.6rem;text-align:center}
+    .fusion-liste{list-style:none;margin:.5rem 0;padding:0}
+    .fusion-liste li{display:flex;align-items:center;gap:.6rem;padding:.4rem 0;
+      border-bottom:1px solid var(--gris-bordure)}
+    .fusion-liste li:last-child{border-bottom:none}
+    .fusion-liste .sous{color:var(--texte-doux);font-size:.85em}
+
     /* Onglet Établissement : formulaire de paramètres, pas de tableau */
     .etab-form{max-width:38rem}
     .etab-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(14rem,1fr));gap:0 1rem}
@@ -280,7 +300,11 @@
           <input type="search" id="search-etu"
                  placeholder="Rechercher un étudiant (nom, prénom, code anonymat, formation, centre)…"
                  autocomplete="off" spellcheck="false">
+          <div class="spacer"></div>
+          <button type="button" class="btn btn-secondary" id="fusion-btn" hidden>Fusionner…</button>
         </div>
+        <p class="section-note" id="fusion-hint">Cochez deux dossiers ou plus pour en fusionner les
+          doublons (même personne créée plusieurs fois) en un seul.</p>
 
         <div id="etudiants-wrap" class="admin-table-wrap"></div>
       </section>
@@ -549,7 +573,7 @@
     </form>
   </dialog>
 
-  <!-- Dossier complet d'un étudiant : lecture seule -->
+  <!-- Dossier complet d'un étudiant : identité modifiable, reste en lecture -->
   <dialog id="etudiant-dialog">
     <form method="dialog">
       <h2 id="etudiant-dialog-title">Dossier étudiant</h2>
@@ -560,9 +584,26 @@
     </form>
   </dialog>
 
+  <!-- Fusion de dossiers en doublon : choix du dossier à conserver -->
+  <dialog id="fusion-dialog">
+    <form id="fusion-form" method="dialog">
+      <h2>Fusionner des dossiers</h2>
+      <p class="save-hint">Choisissez le dossier à <strong>conserver</strong> : les stages et
+        déclarations de sortie des autres y seront rattachés, puis les autres dossiers seront
+        supprimés. Les informations manquantes du dossier conservé (formation, centre, e-mail,
+        téléphone) sont complétées depuis les dossiers fusionnés si besoin.</p>
+      <ul class="fusion-liste" id="fusion-liste"></ul>
+      <p id="fusion-error" class="error" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="fusion-cancel-btn">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="fusion-save-btn">Fusionner</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="config.js?v=21"></script>
   <script src="layout.js?v=26"></script>
   <script src="etablissement.js?v=29"></script>
-  <script src="espace-admin.js?v=10"></script>
+  <script src="espace-admin.js?v=11"></script>
 </body>
 </html>

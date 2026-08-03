@@ -10,7 +10,7 @@
    case UTILISATEURS.Administrateur est cochée passent la porte. Le contrôle
    qui compte est côté Worker : ici, on n'affiche que ce qui est autorisé. */
 
-const APP_VERSION = "v10"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-admin.html)
+const APP_VERSION = "v11"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-admin.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 
@@ -37,8 +37,9 @@ const state = {
   // Onglet « Étudiants » : liste résumée chargée à la première ouverture ; le
   // dossier complet d'un étudiant précis est chargé à la demande (pas gardé
   // en mémoire, pour toujours voir le dernier état).
-  etu: null, // { formations, etudiants }
+  etu: null, // { formations, civilites, etudiants }
   rechercheEtu: "",
+  etuSelection: new Set(), // ids cochés dans la liste, pour la fusion
   // Onglet « Établissement » : paramètres généraux, chargés à la première ouverture.
   etab: null,
 };
@@ -1478,15 +1479,29 @@ function etudiantsAffiches() {
       || (a.prenom || "").localeCompare(b.prenom || "", "fr"));
 }
 
+/** Bouton de fusion : visible dès que 2 dossiers ou plus sont cochés. */
+function majBoutonFusion() {
+  const btn = $("fusion-btn");
+  const n = state.etuSelection.size;
+  btn.hidden = n < 2;
+  btn.textContent = n >= 2 ? `Fusionner (${n})…` : "Fusionner…";
+}
+
 function rendreEtudiants() {
   const wrap = $("etudiants-wrap");
   wrap.textContent = "";
 
   const liste = etudiantsAffiches();
+  // La case cochée d'un dossier qui a disparu de la vue (recherche, ou dossier
+  // supprimé par une fusion précédente) ne doit pas rester sélectionnée.
+  const idsVisibles = new Set(liste.map((e) => e.id));
+  for (const id of [...state.etuSelection]) if (!idsVisibles.has(id)) state.etuSelection.delete(id);
+
   if (!liste.length) {
     wrap.appendChild(messageVide(state.rechercheEtu
       ? "Aucun étudiant ne correspond à cette recherche."
       : "Aucun dossier étudiant pour l'instant."));
+    majBoutonFusion();
     return;
   }
 
@@ -1495,6 +1510,7 @@ function rendreEtudiants() {
 
   const thead = document.createElement("thead");
   const trh = document.createElement("tr");
+  trh.appendChild(document.createElement("th")).className = "select-col";
   for (const titre of ["Étudiant", "Formation", "Service actuel", "Stages", ""]) {
     const th = document.createElement("th");
     th.textContent = titre;
@@ -1506,6 +1522,20 @@ function rendreEtudiants() {
   const tbody = document.createElement("tbody");
   for (const e of liste) {
     const tr = document.createElement("tr");
+
+    const tdSelect = document.createElement("td");
+    tdSelect.className = "select-col";
+    const caseFusion = document.createElement("input");
+    caseFusion.type = "checkbox";
+    caseFusion.checked = state.etuSelection.has(e.id);
+    caseFusion.setAttribute("aria-label", `Sélectionner ${[e.prenom, e.nom].filter(Boolean).join(" ")} pour une fusion`);
+    caseFusion.addEventListener("change", () => {
+      if (caseFusion.checked) state.etuSelection.add(e.id);
+      else state.etuSelection.delete(e.id);
+      majBoutonFusion();
+    });
+    tdSelect.appendChild(caseFusion);
+    tr.appendChild(tdSelect);
 
     const nom = document.createElement("div");
     nom.className = "cadre-nom";
@@ -1539,7 +1569,84 @@ function rendreEtudiants() {
   }
   table.appendChild(tbody);
   wrap.appendChild(table);
+  majBoutonFusion();
 }
+
+/* ------------------------------------------------------------------ */
+/* Fusion de dossiers en doublon                                       */
+/* ------------------------------------------------------------------ */
+
+const dlgFusion = $("fusion-dialog");
+
+function ouvrirFusionDialog() {
+  const etudiants = [...state.etuSelection]
+    .map((id) => (state.etu.etudiants || []).find((e) => e.id === id))
+    .filter(Boolean);
+  if (etudiants.length < 2) return;
+
+  const liste = $("fusion-liste");
+  liste.textContent = "";
+  // Présélectionne le dossier qui a le plus de stages : c'est en général celui
+  // qui doit rester, mais l'admin peut choisir un autre bouton radio.
+  etudiants
+    .slice()
+    .sort((a, b) => b.nbPeriodes - a.nbPeriodes)
+    .forEach((e, i) => {
+      const li = document.createElement("li");
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "fusion-garder";
+      radio.value = String(e.id);
+      radio.checked = i === 0;
+      li.appendChild(radio);
+
+      const texte = document.createElement("span");
+      const nom = document.createElement("div");
+      nom.textContent = [e.prenom, e.nom].filter(Boolean).join(" ") || "(sans nom)";
+      const sous = document.createElement("div");
+      sous.className = "sous";
+      sous.textContent = [e.anonymat, e.formation, `${e.nbPeriodes} stage(s)`].filter(Boolean).join(" · ");
+      texte.appendChild(nom);
+      texte.appendChild(sous);
+      li.appendChild(texte);
+
+      liste.appendChild(li);
+    });
+
+  $("fusion-error").hidden = true;
+  dlgFusion.showModal();
+}
+
+$("fusion-btn").addEventListener("click", ouvrirFusionDialog);
+$("fusion-cancel-btn").addEventListener("click", () => dlgFusion.close());
+
+$("fusion-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = $("fusion-error");
+  errEl.hidden = true;
+  const choix = $("fusion-form").querySelector("input[name='fusion-garder']:checked");
+  if (!choix) {
+    errEl.textContent = "Choisissez le dossier à conserver.";
+    errEl.hidden = false;
+    return;
+  }
+  const garderId = Number(choix.value);
+  const fusionnerIds = [...state.etuSelection].filter((id) => id !== garderId);
+  const btn = $("fusion-save-btn");
+  btn.disabled = true;
+  try {
+    await api("POST", "/api/admin/etudiants/fusion", { garderId, fusionnerIds });
+    dlgFusion.close();
+    state.etuSelection.clear();
+    await chargerEtudiants(state.onglet);
+    toast("Dossiers fusionnés.");
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 $("search-etu").addEventListener("input", (e) => {
   state.rechercheEtu = e.target.value;
@@ -1556,7 +1663,7 @@ async function ouvrirFicheEtudiant(id) {
   try {
     const fiche = await api("GET", `/api/admin/etudiants/${id}`);
     rendreFicheEtudiant(fiche);
-    dlgEtu.showModal();
+    if (!dlgEtu.open) dlgEtu.showModal();
   } catch (err) {
     toast(err.message, true);
   }
@@ -1569,6 +1676,209 @@ function ligneIdentite(label, valeur) {
   span.appendChild(b);
   span.appendChild(document.createTextNode(valeur || "—"));
   return span;
+}
+
+/** Bloc identité de la fiche étudiant : vue lecture seule avec un bouton
+ *  « Modifier », qui bascule le même bloc vers un petit formulaire. */
+function afficherIdentite(zone, et) {
+  zone.textContent = "";
+
+  const identite = document.createElement("div");
+  identite.className = "etu-identite";
+  identite.appendChild(ligneIdentite("Code anonymat", et.anonymat));
+  identite.appendChild(ligneIdentite("Civilité", et.civilite));
+  identite.appendChild(ligneIdentite("Formation", et.formation));
+  identite.appendChild(ligneIdentite("Centre de formation", et.centre));
+  identite.appendChild(ligneIdentite("Date de naissance", dateFr(et.ddn)));
+  identite.appendChild(ligneIdentite("E-mail", et.email));
+  identite.appendChild(ligneIdentite("Téléphone", et.telephone));
+  zone.appendChild(identite);
+
+  const actions = document.createElement("div");
+  actions.className = "etu-identite-actions";
+  actions.appendChild(bouton("Modifier les informations", () => afficherIdentiteEdition(zone, et), "btn btn-ghost btn-small"));
+  zone.appendChild(actions);
+}
+
+/** Champ étiqueté (label + input/select) pour le formulaire d'identité. */
+function champIdentite(form, label, input) {
+  const div = document.createElement("div");
+  const b = document.createElement("label");
+  b.textContent = label;
+  div.appendChild(b);
+  div.appendChild(input);
+  form.appendChild(div);
+  return input;
+}
+
+function selectOptions(select, valeurs, valeurActuelle) {
+  for (const v of ["", ...valeurs]) {
+    const opt = document.createElement("option");
+    opt.value = v;
+    opt.textContent = v || "—";
+    select.appendChild(opt);
+  }
+  select.value = valeurActuelle || "";
+}
+
+function afficherIdentiteEdition(zone, et) {
+  zone.textContent = "";
+
+  const form = document.createElement("div");
+  form.className = "etu-identite etu-identite-edition";
+
+  const iCivilite = document.createElement("select");
+  selectOptions(iCivilite, state.etu.civilites || [], et.civilite);
+  champIdentite(form, "Civilité", iCivilite);
+
+  const iNom = document.createElement("input");
+  iNom.type = "text";
+  iNom.maxLength = 80;
+  iNom.value = et.nom || "";
+  champIdentite(form, "Nom", iNom);
+
+  const iPrenom = document.createElement("input");
+  iPrenom.type = "text";
+  iPrenom.maxLength = 80;
+  iPrenom.value = et.prenom || "";
+  champIdentite(form, "Prénom", iPrenom);
+
+  const iDdn = document.createElement("input");
+  iDdn.type = "date";
+  iDdn.value = et.ddn || "";
+  champIdentite(form, "Date de naissance", iDdn);
+
+  const iFormation = document.createElement("select");
+  selectOptions(iFormation, state.etu.formations || [], et.formation);
+  champIdentite(form, "Formation", iFormation);
+
+  const iCentre = document.createElement("input");
+  iCentre.type = "text";
+  iCentre.maxLength = 120;
+  iCentre.value = et.centre || "";
+  champIdentite(form, "Centre de formation", iCentre);
+
+  const iEmail = document.createElement("input");
+  iEmail.type = "email";
+  iEmail.maxLength = 120;
+  iEmail.value = et.email || "";
+  champIdentite(form, "E-mail", iEmail);
+
+  const iTel = document.createElement("input");
+  iTel.type = "tel";
+  iTel.maxLength = 20;
+  iTel.value = et.telephone || "";
+  champIdentite(form, "Téléphone", iTel);
+
+  zone.appendChild(form);
+
+  const avertissement = document.createElement("p");
+  avertissement.className = "save-hint";
+  avertissement.textContent = "Changer le nom, le prénom ou la date de naissance recalcule le "
+    + "code de connexion de l'étudiant (code anonymat) : il faudra le lui communiquer à nouveau.";
+  zone.appendChild(avertissement);
+
+  const errEl = document.createElement("p");
+  errEl.className = "error";
+  errEl.hidden = true;
+  zone.appendChild(errEl);
+
+  const actions = document.createElement("div");
+  actions.className = "dialog-actions";
+  const btnAnnuler = bouton("Annuler", () => afficherIdentite(zone, et), "btn btn-ghost");
+  const btnSave = bouton("Enregistrer", async () => {
+    errEl.hidden = true;
+    btnSave.disabled = true;
+    try {
+      const corps = {
+        Civilite: iCivilite.value,
+        NOM: iNom.value.trim(),
+        PRENOM: iPrenom.value.trim(),
+        DDN: iDdn.value,
+        FORMATION: iFormation.value,
+        Centre_de_formation: iCentre.value.trim(),
+        Adresse_mail: iEmail.value.trim(),
+        Numero_de_telephone: iTel.value.trim(),
+      };
+      await api("PATCH", `/api/admin/etudiants/${et.id}`, corps);
+      await ouvrirFicheEtudiant(et.id);
+      chargerEtudiants(state.onglet);
+      toast("Dossier étudiant mis à jour.");
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.hidden = false;
+      btnSave.disabled = false;
+    }
+  }, "btn btn-primary");
+  actions.appendChild(btnAnnuler);
+  actions.appendChild(btnSave);
+  zone.appendChild(actions);
+}
+
+/** Téléchargement du bilan d'un stage : requiert le jeton de session (pas une
+ *  simple URL publique), donc un fetch manuel plutôt qu'un lien <a href>. */
+async function telechargerBilan(etudiantId, periodeId) {
+  try {
+    const res = await fetch(`${API}/api/admin/etudiants/${etudiantId}/periodes/${periodeId}/bilan`, {
+      headers: state.session ? { "X-Cadre-Session": state.session } : {},
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Erreur ${res.status}`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+/** Cellule « Bilan final » d'une ligne de stage : téléverser si absent,
+ *  télécharger/retirer si présent. */
+function celluleBilan(etudiantId, periodeId, present) {
+  const wrap = document.createElement("div");
+  wrap.className = "bilan-cell";
+
+  if (present) {
+    wrap.appendChild(bouton("Télécharger", () => telechargerBilan(etudiantId, periodeId), "btn btn-ghost btn-small"));
+    wrap.appendChild(bouton("Retirer", async () => {
+      if (!confirm("Retirer le bilan final de ce stage ?")) return;
+      try {
+        await api("DELETE", `/api/admin/etudiants/${etudiantId}/periodes/${periodeId}/bilan`);
+        await ouvrirFicheEtudiant(etudiantId);
+        toast("Bilan retiré.");
+      } catch (err) {
+        toast(err.message, true);
+      }
+    }, "btn btn-ghost btn-small"));
+  } else {
+    const label = document.createElement("label");
+    label.className = "btn btn-ghost btn-small";
+    label.textContent = "Téléverser…";
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/pdf,image/png,image/jpeg";
+    input.hidden = true;
+    input.addEventListener("change", async () => {
+      const fichier = input.files && input.files[0];
+      input.value = "";
+      if (!fichier) return;
+      try {
+        const form = new FormData();
+        form.append("bilan", fichier);
+        await api("POST", `/api/admin/etudiants/${etudiantId}/periodes/${periodeId}/bilan`, form);
+        await ouvrirFicheEtudiant(etudiantId);
+        toast("Bilan enregistré.");
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+    label.appendChild(input);
+    wrap.appendChild(label);
+  }
+  return wrap;
 }
 
 /** Section de la fiche : titre + contenu (tableau ou message si vide). */
@@ -1600,10 +1910,10 @@ function tableEtu(entetes, lignes) {
   return table;
 }
 
-function sectionPeriodes(periodes) {
+function sectionPeriodes(periodes, etudiantId) {
   const contenu = !periodes.length
     ? messageVide("Aucun stage enregistré.")
-    : tableEtu(["Service", "Dates", "Heures", "Tuteur / référent", "Évaluation"], periodes.map((p) => {
+    : tableEtu(["Service", "Dates", "Heures", "Tuteur / référent", "Évaluation", "Bilan final"], periodes.map((p) => {
         const tr = document.createElement("tr");
 
         const service = document.createElement("div");
@@ -1638,6 +1948,8 @@ function sectionPeriodes(periodes) {
           : p.Evaluation_envoyee ? "Envoyée, sans réponse"
           : "Pas encore envoyée";
         tr.appendChild(cellule(evalTexte));
+
+        tr.appendChild(cellule(celluleBilan(etudiantId, p.id, p.Bilan_final)));
 
         return tr;
       }));
@@ -1697,17 +2009,11 @@ function rendreFicheEtudiant(fiche) {
   const wrap = $("etu-detail");
   wrap.textContent = "";
 
-  const identite = document.createElement("div");
-  identite.className = "etu-identite";
-  identite.appendChild(ligneIdentite("Code anonymat", et.anonymat));
-  identite.appendChild(ligneIdentite("Formation", et.formation));
-  identite.appendChild(ligneIdentite("Centre de formation", et.centre));
-  identite.appendChild(ligneIdentite("Date de naissance", dateFr(et.ddn)));
-  identite.appendChild(ligneIdentite("E-mail", et.email));
-  identite.appendChild(ligneIdentite("Téléphone", et.telephone));
-  wrap.appendChild(identite);
+  const identiteZone = document.createElement("div");
+  wrap.appendChild(identiteZone);
+  afficherIdentite(identiteZone, et);
 
-  wrap.appendChild(sectionPeriodes(fiche.periodes));
+  wrap.appendChild(sectionPeriodes(fiche.periodes, et.id));
   wrap.appendChild(sectionSorties(fiche.sorties));
   wrap.appendChild(sectionRdvs(fiche.rdvs));
   wrap.appendChild(sectionJournal(fiche.journal));

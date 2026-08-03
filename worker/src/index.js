@@ -88,6 +88,18 @@
  *                                                                 (table ETABLISSEMENT, 1 seule ligne)
  *   POST   /api/admin/etablissement/logo  (multipart, champ "logo") -> change le logo
  *   DELETE /api/admin/etablissement/logo                       -> retire le logo
+ *   GET    /api/admin/etudiants[?vue=1&onglet=…]                -> un dossier par étudiant, résumé
+ *   GET    /api/admin/etudiants/:id                             -> dossier complet (identité, stages,
+ *                                                                  sorties, rdv, journal)
+ *   PATCH  /api/admin/etudiants/:id  { NOM?, PRENOM?, DDN?, ... } -> modifie l'identité d'un étudiant
+ *                                                                  (recalcule le code anonymat si
+ *                                                                  nom/prénom/DDN changent)
+ *   POST   /api/admin/etudiants/fusion  { garderId, fusionnerIds: [ids] } -> fusionne des dossiers
+ *                                                                  en doublon dans le dossier conservé
+ *   POST   /api/admin/etudiants/:id/periodes/:periodeId/bilan  (multipart, champ "bilan")
+ *                                                              -> dépose le bilan final de ce stage
+ *   GET    /api/admin/etudiants/:id/periodes/:periodeId/bilan  -> télécharge le bilan
+ *   DELETE /api/admin/etudiants/:id/periodes/:periodeId/bilan  -> retire le bilan
  *
  * La table Pole n'a pas de schéma imposé (elle vient du document d'origine) :
  * ses colonnes — nom du pôle, cadre(s) supérieur(s), et la référence qui relie
@@ -109,7 +121,7 @@ const T_UTILISATEURS = "UTILISATEURS";
 const T_FERIES = "JOURS_FERIES";
 const T_EVALUATIONS = "EVALUATION_STAGE_ETUDIANT";
 const T_RDV = "RDV_FORMATEUR";
-const T_JOURNAL = "JOURNAL_ACTIVITE";
+const T_JOURNAL = "JOURNAL_ACTIVITE_V2";
 const T_ETABLISSEMENT = "ETABLISSEMENT";
 const T_POLE = "Pole";
 
@@ -564,6 +576,30 @@ async function route(request, env, ctx) {
       logActivite(env, ctx, { ...whoA, action: "Consultation d'un dossier étudiant (admin)",
         etudiantId: Number(aem[1]) });
       return json(fiche);
+    }
+    if (request.method === "PATCH" && aem) {
+      return withLog(env, ctx, whoA, "Modification d'un dossier étudiant (admin)", "",
+        (info) => modifierEtudiantAdmin(request, env, Number(aem[1]), info));
+    }
+    if (request.method === "POST" && path === "/api/admin/etudiants/fusion") {
+      return withLog(env, ctx, whoA, "Fusion de dossiers étudiants", "",
+        (info) => fusionnerEtudiantsAdmin(request, env, info));
+    }
+    const abm = path.match(/^\/api\/admin\/etudiants\/(\d+)\/periodes\/(\d+)\/bilan$/);
+    if (abm) {
+      const etuId = Number(abm[1]);
+      const periodeId = Number(abm[2]);
+      if (request.method === "POST") {
+        return withLog(env, ctx, whoA, "Dépôt du bilan final de stage", "",
+          (info) => televerserBilanPeriode(request, env, etuId, periodeId, info));
+      }
+      if (request.method === "DELETE") {
+        return withLog(env, ctx, whoA, "Suppression du bilan final de stage", "",
+          (info) => supprimerBilanPeriode(env, etuId, periodeId, info));
+      }
+      if (request.method === "GET") {
+        return telechargerBilanPeriode(env, etuId, periodeId);
+      }
     }
     if (request.method === "POST" && path === "/api/admin/services") {
       return withLog(env, ctx, whoA, "Création d'un service", "",
@@ -1260,6 +1296,28 @@ async function modifierEtablissementAdmin(request, env, info) {
   return json(await listerEtablissementAdmin(env));
 }
 
+/** Envoie un fichier en pièce jointe Grist (stockage partagé par toutes les
+ *  colonnes Attachments du document) et renvoie son id, à poser sur la
+ *  cellule concernée (ex. `["L", attId]`). */
+async function envoyerPieceJointeGrist(env, file, nomParDefaut) {
+  const up = new FormData();
+  up.append("upload", file, file.name || nomParDefaut || "fichier");
+  const base = (env.GRIST_BASE_URL || "https://grist.numerique.gouv.fr/api").replace(/\/$/, "");
+  const res = await fetch(`${base}/docs/${env.GRIST_DOC_ID}/attachments`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.GRIST_API_KEY}` },
+    body: up,
+  });
+  if (!res.ok) {
+    console.error(`Grist attachments POST -> ${res.status}: ${await res.text()}`);
+    throw httpError(502, "Erreur lors de l'envoi du fichier à Grist");
+  }
+  const attachs = await res.json().catch(() => null);
+  const attId = Array.isArray(attachs) ? attachs[0] : null;
+  if (!attId) throw httpError(502, "Réponse inattendue de Grist après l'envoi du fichier");
+  return attId;
+}
+
 /** L'administrateur envoie un nouveau logo (multipart/form-data, champ
  *  "logo") : la pièce jointe part chez Grist, puis la ligne ETABLISSEMENT est
  *  mise à jour pour pointer dessus. L'ancienne pièce jointe reste dans le
@@ -1271,21 +1329,7 @@ async function televerserLogoEtablissement(request, env, info) {
   if (!file.type || !file.type.startsWith("image/")) throw httpError(400, "Le logo doit être une image");
   if (file.size > 3 * 1024 * 1024) throw httpError(400, "Image trop lourde (3 Mo maximum)");
 
-  const up = new FormData();
-  up.append("upload", file, file.name || "logo");
-  const base = (env.GRIST_BASE_URL || "https://grist.numerique.gouv.fr/api").replace(/\/$/, "");
-  const res = await fetch(`${base}/docs/${env.GRIST_DOC_ID}/attachments`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env.GRIST_API_KEY}` },
-    body: up,
-  });
-  if (!res.ok) {
-    console.error(`Grist attachments POST -> ${res.status}: ${await res.text()}`);
-    throw httpError(502, "Erreur lors de l'envoi du logo à Grist");
-  }
-  const attachs = await res.json().catch(() => null);
-  const attId = Array.isArray(attachs) ? attachs[0] : null;
-  if (!attId) throw httpError(502, "Réponse inattendue de Grist après l'envoi du logo");
+  const attId = await envoyerPieceJointeGrist(env, file, "logo");
 
   const ligne = await ligneEtablissement(env);
   const fields = { Logo: ["L", attId] };
@@ -2439,6 +2483,12 @@ async function listerOrganisationAdmin(env) {
 /* Espace administrateur : dossiers des étudiants                      */
 /* ------------------------------------------------------------------ */
 
+/** Colonne facultative (absente du document Grist d'origine), créée à la
+ *  volée dès qu'un admin dépose un premier bilan de stage. */
+const COLONNES_PERIODE_BILAN = [
+  { id: "Bilan_final", label: "Bilan final de stage", type: "Attachments" },
+];
+
 /** Nom d'un service pour l'affichage (« Nom (Site) »), ou "" si absent. */
 function nomServiceAvecSite(service, sitesById) {
   if (!service) return "";
@@ -2473,6 +2523,7 @@ async function listerEtudiantsAdmin(env) {
 
   return {
     formations: FORMATIONS,
+    civilites: CIVILITES,
     etudiants: students.map((e) => {
       const periodes = (periodesParEtudiant.get(e.id) || [])
         .slice()
@@ -2550,6 +2601,7 @@ async function ficheEtudiantAdmin(env, etudiantId) {
       id: student.id,
       nom: student.fields.NOM || "",
       prenom: student.fields.PRENOM || "",
+      civilite: student.fields.Civilite || "",
       anonymat: student.fields.Anonymat || "",
       formation: student.fields.FORMATION || "",
       centre: student.fields.Centre_de_formation || "",
@@ -2580,6 +2632,7 @@ async function ficheEtudiantAdmin(env, etudiantId) {
           Lien_evaluation: p.fields.Lien_evaluation || "",
           Evaluation_envoyee: !!p.fields.Evaluation_envoyee,
           Evaluation_repondue: periodesAvecReponse.has(p.id),
+          Bilan_final: !!premierePieceJointe(p.fields.Bilan_final),
           cadre: cadreInfo(svc, usersById),
         };
       }),
@@ -2629,6 +2682,200 @@ async function ficheEtudiantAdmin(env, etudiantId) {
         Site: j.fields.Site || "",
       })),
   };
+}
+
+/**
+ * L'administrateur modifie l'identité d'un étudiant (formulaire de la fiche).
+ * Nom/prénom/date de naissance servent au calcul du code anonymat — le
+ * véritable code de connexion de l'étudiant — donc un changement de l'un de
+ * ces trois champs le recalcule (même formule qu'à l'inscription), avec un
+ * contrôle anti-collision, puis le reporte sur Code_anonymat de chacun de ses
+ * stages (dénormalisé, lu par la connexion étudiant).
+ */
+async function modifierEtudiantAdmin(request, env, etudiantId, info) {
+  const rows = await gristFilter(env, T_ETUDIANTS, { id: [etudiantId] });
+  if (!rows.length) throw httpError(404, "Dossier étudiant introuvable");
+  const etu = rows[0];
+
+  const body = await request.json().catch(() => ({}));
+  const identiteChangee = body.NOM !== undefined || body.PRENOM !== undefined || body.DDN !== undefined;
+  const nom = body.NOM !== undefined ? cleanText(body.NOM, 80) : (etu.fields.NOM || "");
+  const prenom = body.PRENOM !== undefined ? cleanText(body.PRENOM, 80) : (etu.fields.PRENOM || "");
+  const ddnEpoch = body.DDN !== undefined ? exigerDate(body.DDN, "Date de naissance") : etu.fields.DDN;
+
+  const fields = {};
+  if (identiteChangee) {
+    if (!nom || !prenom) throw httpError(400, "Nom et prénom obligatoires");
+    fields.NOM = nom;
+    fields.PRENOM = prenom;
+    fields.DDN = ddnEpoch;
+  }
+  if (body.Civilite !== undefined) fields.Civilite = CIVILITES.includes(body.Civilite) ? body.Civilite : "";
+  if (body.FORMATION !== undefined) {
+    if (body.FORMATION && !FORMATIONS.includes(body.FORMATION)) throw httpError(400, "Formation invalide");
+    fields.FORMATION = body.FORMATION || "";
+  }
+  if (body.Centre_de_formation !== undefined) fields.Centre_de_formation = cleanText(body.Centre_de_formation, 120);
+  if (body.Adresse_mail !== undefined) {
+    const email = cleanText(body.Adresse_mail, 120);
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw httpError(400, "Adresse mail invalide");
+    fields.Adresse_mail = email;
+  }
+  if (body.Numero_de_telephone !== undefined) fields.Numero_de_telephone = cleanText(body.Numero_de_telephone, 20);
+  if (!Object.keys(fields).length) throw httpError(400, "Aucune modification fournie");
+
+  if (identiteChangee) {
+    const iso = epochToIso(ddnEpoch);
+    const [y, mo, d] = (iso || "").split("-");
+    const nouveauCode = y && mo && d ? (prenom[0] + d + mo + y.slice(2) + nom[0]).toUpperCase() : "";
+    if (nouveauCode && nouveauCode !== (etu.fields.Anonymat || "")) {
+      const collisions = await gristFilter(env, T_ETUDIANTS, { Anonymat: [nouveauCode] });
+      if (collisions.some((c) => c.id !== etudiantId)) {
+        throw httpError(409, "Un autre dossier utilise déjà ce code (mêmes initiales et même date de naissance).");
+      }
+      fields.Anonymat = nouveauCode;
+    }
+  }
+
+  await gristUpdate(env, T_ETUDIANTS, etudiantId, fields);
+
+  if (fields.Anonymat) {
+    const periodes = await gristFilter(env, T_PERIODES, { Etudiant: [etudiantId] });
+    await Promise.all(periodes.map((p) =>
+      gristUpdate(env, T_PERIODES, p.id, { Code_anonymat: fields.Anonymat })));
+  }
+
+  if (info) {
+    info.etudiantId = etudiantId;
+    info.detail = Object.keys(fields).join(", ") + (fields.Anonymat ? " (code recalculé)" : "");
+  }
+  return json((await ficheEtudiantAdmin(env, etudiantId)).etudiant);
+}
+
+/**
+ * Fusionne un ou plusieurs dossiers étudiant en doublon (même personne créée
+ * plusieurs fois) dans un seul dossier conservé : ses stages (PERIODES_DE_STAGE)
+ * et ses déclarations de sortie (Sortie_de_stage) sont rattachés au dossier
+ * conservé, les champs d'identité vides du dossier conservé sont complétés
+ * depuis les doublons, puis les doublons sont supprimés. Le reste de
+ * l'historique (planning, rendez-vous, évaluations) suit automatiquement : il
+ * est rattaché aux périodes de stage, pas directement à l'étudiant.
+ */
+async function fusionnerEtudiantsAdmin(request, env, info) {
+  const body = await request.json().catch(() => ({}));
+  const garderId = Number(body.garderId) || 0;
+  const fusionnerIds = idsValides(body.fusionnerIds).filter((id) => id !== garderId);
+  if (!garderId) throw httpError(400, "Dossier à conserver manquant");
+  if (!fusionnerIds.length) throw httpError(400, "Aucun dossier à fusionner");
+
+  const rows = await gristFilter(env, T_ETUDIANTS, { id: [garderId, ...fusionnerIds] });
+  const parId = new Map(rows.map((r) => [r.id, r]));
+  const cible = parId.get(garderId);
+  if (!cible) throw httpError(404, "Dossier à conserver introuvable");
+  for (const id of fusionnerIds) {
+    if (!parId.get(id)) throw httpError(404, `Dossier ${id} introuvable`);
+  }
+
+  // Complète l'identité du dossier conservé avec les champs qu'il n'a pas,
+  // à partir des doublons (le premier doublon qui a la donnée gagne).
+  const champsIdentite = ["Civilite", "FORMATION", "Centre_de_formation", "Adresse_mail", "Numero_de_telephone"];
+  const fieldsAjout = {};
+  for (const champ of champsIdentite) {
+    if (cible.fields[champ]) continue;
+    for (const id of fusionnerIds) {
+      const v = parId.get(id).fields[champ];
+      if (v) { fieldsAjout[champ] = v; break; }
+    }
+  }
+  if (Object.keys(fieldsAjout).length) await gristUpdate(env, T_ETUDIANTS, garderId, fieldsAjout);
+
+  const [periodes, sorties] = await Promise.all([
+    gristFilter(env, T_PERIODES, { Etudiant: fusionnerIds }),
+    gristFilter(env, T_SORTIES, { Anonymat: fusionnerIds }),
+  ]);
+  const codeCible = cible.fields.Anonymat || "";
+  await Promise.all([
+    ...periodes.map((p) => gristUpdate(env, T_PERIODES, p.id,
+      { Etudiant: garderId, ...(codeCible ? { Code_anonymat: codeCible } : {}) })),
+    ...sorties.map((s) => gristUpdate(env, T_SORTIES, s.id, { Anonymat: garderId })),
+  ]);
+
+  // Les doublons disparaissent : leur historique vit désormais sous le
+  // dossier conservé, les garder ne ferait que semer la confusion.
+  await grist(env, "POST", `/tables/${T_ETUDIANTS}/data/delete`, fusionnerIds);
+
+  if (info) {
+    info.etudiantId = garderId;
+    info.detail = `${fusionnerIds.length} dossier(s) fusionné(s) dans « ${nomCompletEtudiant(cible)} » — `
+      + `${periodes.length} stage(s), ${sorties.length} sortie(s) rattachés`;
+  }
+  return json({ ok: true, etudiantId: garderId, periodesDeplacees: periodes.length, sortiesDeplacees: sorties.length });
+}
+
+/** Vérifie qu'une période de stage appartient bien à cet étudiant (pas à un
+ *  autre dossier) avant d'en toucher le bilan final. */
+async function periodeDeLEtudiant(env, etudiantId, periodeId) {
+  const rows = await gristFilter(env, T_PERIODES, { id: [periodeId] });
+  const periode = rows[0];
+  if (!periode || periode.fields.Etudiant !== etudiantId) {
+    throw httpError(404, "Période de stage introuvable pour ce dossier étudiant");
+  }
+  return periode;
+}
+
+const TYPES_BILAN_AUTORISES = ["application/pdf", "image/png", "image/jpeg"];
+
+/** L'administrateur dépose le bilan final d'un stage (multipart/form-data,
+ *  champ "bilan") : PDF ou image, sur la colonne Attachments PERIODES_DE_STAGE.
+ *  Bilan_final, créée à la volée au premier dépôt. */
+async function televerserBilanPeriode(request, env, etudiantId, periodeId, info) {
+  const periode = await periodeDeLEtudiant(env, etudiantId, periodeId);
+  const form = await request.formData().catch(() => null);
+  const file = form ? form.get("bilan") : null;
+  if (!file || typeof file === "string") throw httpError(400, "Fichier manquant");
+  if (file.size > 10 * 1024 * 1024) throw httpError(400, "Fichier trop lourd (10 Mo maximum)");
+  if (file.type && !TYPES_BILAN_AUTORISES.includes(file.type)) {
+    throw httpError(400, "Le bilan doit être un PDF ou une image (JPEG/PNG)");
+  }
+
+  await ensureColumns(env, T_PERIODES, COLONNES_PERIODE_BILAN);
+  const attId = await envoyerPieceJointeGrist(env, file, "bilan-de-stage");
+  await gristUpdate(env, T_PERIODES, periodeId, { Bilan_final: ["L", attId] });
+
+  if (info) {
+    info.etudiantId = etudiantId;
+    info.detail = `${file.name || "bilan"} — stage du ${jDateEpoch(periode.fields.Du)}`;
+  }
+  return json({ ok: true });
+}
+
+/** Retire le bilan d'un stage (la pièce jointe reste dans le document Grist,
+ *  seule la référence sur la période est effacée — même logique que le logo). */
+async function supprimerBilanPeriode(env, etudiantId, periodeId, info) {
+  const periode = await periodeDeLEtudiant(env, etudiantId, periodeId);
+  if (periode.fields.Bilan_final) await gristUpdate(env, T_PERIODES, periodeId, { Bilan_final: ["L"] });
+  if (info) {
+    info.etudiantId = etudiantId;
+    info.detail = `stage du ${jDateEpoch(periode.fields.Du)}`;
+  }
+  return json({ ok: true });
+}
+
+/** Proxifie le téléchargement du bilan d'un stage (la clé API Grist reste
+ *  côté Worker, jamais exposée au navigateur). */
+async function telechargerBilanPeriode(env, etudiantId, periodeId) {
+  const periode = await periodeDeLEtudiant(env, etudiantId, periodeId);
+  const attId = premierePieceJointe(periode.fields.Bilan_final);
+  if (!attId) throw httpError(404, "Aucun bilan pour ce stage");
+
+  const base = (env.GRIST_BASE_URL || "https://grist.numerique.gouv.fr/api").replace(/\/$/, "");
+  const res = await fetch(`${base}/docs/${env.GRIST_DOC_ID}/attachments/${attId}/download`, {
+    headers: { Authorization: `Bearer ${env.GRIST_API_KEY}` },
+  });
+  if (!res.ok) throw httpError(404, "Bilan introuvable");
+  return new Response(res.body, {
+    headers: { "Content-Type": res.headers.get("Content-Type") || "application/octet-stream" },
+  });
 }
 
 /** L'administrateur crée un pôle. */
