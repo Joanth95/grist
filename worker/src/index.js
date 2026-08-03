@@ -61,6 +61,13 @@
  *                                                                de l'un de ses services
  *   GET    /api/cadre/periodes/:id/bilan                       -> télécharge le bilan
  *   DELETE /api/cadre/periodes/:id/bilan                       -> retire le bilan
+ *   GET    /api/cadre/periodes/:id/commentaires                -> commentaires et pièces jointes
+ *                                                                du stage (table BDD_COM)
+ *   POST   /api/cadre/periodes/:id/commentaires  (multipart : "commentaire", "fichier")
+ *                                                              -> ajoute un commentaire, avec
+ *                                                                 pièce jointe facultative
+ *   GET    /api/cadre/commentaires/:id/fichier                 -> télécharge sa pièce jointe
+ *   DELETE /api/cadre/commentaires/:id                         -> supprime un commentaire
  *   POST   /api/cadre/rdv  { periodeId, Date_rdv, ... }        -> ajoute un rendez-vous formateur/tuteur
  *   DELETE /api/cadre/rdv/:id                                  -> supprime un rendez-vous formateur
  *
@@ -494,6 +501,26 @@ async function route(request, env, ctx) {
       if (request.method === "GET") {
         return telechargerBilan(env, await ensurePeriodeInScope(env, cadre, periodeId));
       }
+    }
+    const ccm = path.match(/^\/api\/cadre\/periodes\/(\d+)\/commentaires$/);
+    if (ccm) {
+      const periodeId = Number(ccm[1]);
+      if (request.method === "GET") {
+        return listerCommentaires(env, await ensurePeriodeInScope(env, cadre, periodeId));
+      }
+      if (request.method === "POST") {
+        return withLog(env, ctx, who, "Ajout d'un commentaire de stage", "",
+          async (info) => ajouterCommentaire(request, env, await ensurePeriodeInScope(env, cadre, periodeId), info));
+      }
+    }
+    const cfm = path.match(/^\/api\/cadre\/commentaires\/(\d+)\/fichier$/);
+    if (request.method === "GET" && cfm) {
+      return telechargerFichierCommentaire(env, await commentaireDuCadre(env, cadre, Number(cfm[1])));
+    }
+    const cdm = path.match(/^\/api\/cadre\/commentaires\/(\d+)$/);
+    if (request.method === "DELETE" && cdm) {
+      return withLog(env, ctx, who, "Suppression d'un commentaire de stage", "",
+        async (info) => supprimerCommentaire(env, await commentaireDuCadre(env, cadre, Number(cdm[1])), info));
     }
     if (request.method === "POST" && path === "/api/cadre/rdv") {
       return withLog(env, ctx, who, "Ajout d'un RDV formateur", "",
@@ -2938,6 +2965,88 @@ async function telechargerBilan(env, periode) {
   return new Response(res.body, {
     headers: { "Content-Type": res.headers.get("Content-Type") || "application/octet-stream" },
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Commentaires et pièces jointes d'un stage (table BDD_COM)           */
+/* ------------------------------------------------------------------ */
+
+/** Tous les commentaires/pièces jointes d'une période, du plus récent au plus
+ *  ancien. Le bilan final en fait partie (voir MOTIF_BILAN). */
+async function listerCommentaires(env, periode) {
+  const rows = await gristFilter(env, T_COMMENTAIRES, { Periode_de_stage: [periode.id] });
+  return json({
+    commentaires: rows
+      .slice()
+      .sort((a, b) => (b.fields.Cree_le || 0) - (a.fields.Cree_le || 0))
+      .map((r) => ({
+        id: r.id,
+        commentaire: r.fields.Commentaire || "",
+        fichier: !!premierePieceJointe(r.fields.Piece_jointe),
+        creeLe: r.fields.Cree_le || null,
+        creePar: r.fields.Cree_par || "",
+        estBilan: MOTIF_BILAN.test(r.fields.Commentaire || ""),
+      })),
+  });
+}
+
+/** Ajoute un commentaire sur un stage, avec pièce jointe facultative
+ *  (multipart/form-data : champ texte "commentaire", champ fichier "fichier"). */
+async function ajouterCommentaire(request, env, periode, info) {
+  const form = await request.formData().catch(() => null);
+  if (!form) throw httpError(400, "Requête invalide");
+  const texte = cleanText(form.get("commentaire"), 500);
+  const file = form.get("fichier");
+  const aFichier = file && typeof file !== "string";
+  if (!texte && !aFichier) throw httpError(400, "Ajoutez un commentaire ou un fichier");
+
+  const fields = { Periode_de_stage: periode.id, Commentaire: texte };
+  if (aFichier) {
+    if (file.size > 10 * 1024 * 1024) throw httpError(400, "Fichier trop lourd (10 Mo maximum)");
+    if (file.type && !TYPES_BILAN_AUTORISES.includes(file.type)) {
+      throw httpError(400, "Le fichier doit être un PDF ou une image (JPEG/PNG)");
+    }
+    fields.Piece_jointe = ["L", await envoyerPieceJointeGrist(env, file, "document")];
+  }
+  await grist(env, "POST", `/tables/${T_COMMENTAIRES}/records`, { records: [{ fields }] });
+
+  if (info) {
+    info.etudiantId = periode.fields.Etudiant;
+    info.serviceId = periode.fields.Service;
+    info.detail = (texte || (aFichier ? file.name : "")) + ` — stage du ${jDateEpoch(periode.fields.Du)}`;
+  }
+  return json({ ok: true });
+}
+
+/** Vérifie qu'un commentaire relève bien d'une période accessible au cadre,
+ *  et renvoie la ligne BDD_COM correspondante. */
+async function commentaireDuCadre(env, cadre, commentaireId) {
+  const rows = await gristFilter(env, T_COMMENTAIRES, { id: [commentaireId] });
+  if (!rows.length) throw httpError(404, "Commentaire introuvable");
+  await ensurePeriodeInScope(env, cadre, rows[0].fields.Periode_de_stage);
+  return rows[0];
+}
+
+/** Proxifie le téléchargement de la pièce jointe d'un commentaire. */
+async function telechargerFichierCommentaire(env, commentaire) {
+  const attId = premierePieceJointe(commentaire.fields.Piece_jointe);
+  if (!attId) throw httpError(404, "Ce commentaire n'a pas de pièce jointe");
+
+  const base = (env.GRIST_BASE_URL || "https://grist.numerique.gouv.fr/api").replace(/\/$/, "");
+  const res = await fetch(`${base}/docs/${env.GRIST_DOC_ID}/attachments/${attId}/download`, {
+    headers: { Authorization: `Bearer ${env.GRIST_API_KEY}` },
+  });
+  if (!res.ok) throw httpError(404, "Fichier introuvable");
+  return new Response(res.body, {
+    headers: { "Content-Type": res.headers.get("Content-Type") || "application/octet-stream" },
+  });
+}
+
+/** Supprime un commentaire (la pièce jointe reste dans le document Grist). */
+async function supprimerCommentaire(env, commentaire, info) {
+  await grist(env, "POST", `/tables/${T_COMMENTAIRES}/data/delete`, [commentaire.id]);
+  if (info) info.detail = commentaire.fields.Commentaire || "(sans texte)";
+  return json({ ok: true });
 }
 
 /** L'administrateur crée un pôle. */

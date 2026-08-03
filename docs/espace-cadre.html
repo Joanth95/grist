@@ -171,6 +171,24 @@
     .stage-dates { color: var(--texte-doux); font-size: 0.9rem; }
     .bilan-section { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.6rem; }
     .bilan-section label.btn { cursor: pointer; }
+
+    /* Liste des dossiers : chaque carte ouvre le dossier en pleine page */
+    .etu-card-lien { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+    .etu-card-lien:hover, .etu-card-lien:focus-visible { border-color: var(--bleu); box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    .etu-ouvrir { margin-top: 0.5rem; font-size: 0.85rem; font-weight: 600; color: var(--bleu); }
+
+    /* Dossier en pleine page : en-tête d'identité au-dessus des onglets */
+    .dossier-entete { margin: 0.8rem 0 0.6rem; padding-bottom: 0.6rem; border-bottom: 1px solid var(--gris-bordure); }
+    .section-titre { margin: 1.2rem 0 0.4rem; font-size: 1rem; }
+
+    /* Commentaires et documents d'un stage */
+    .commentaires-section { margin-top: 0.8rem; }
+    .commentaire-item { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.5rem 0;
+      border-bottom: 1px solid var(--gris-bordure); }
+    .commentaire-item > div:first-child { flex: 1; }
+    .commentaire-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .commentaire-form { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-top: 0.6rem; }
+    .commentaire-form input[type="text"] { flex: 1; min-width: 12rem; }
     .badge.info { background: #e8edff; border-color: #c3cffa; color: var(--bleu); }
     .badge.neutral { background: var(--gris-fond); border-color: var(--gris-bordure); color: var(--texte-doux); }
     @media (prefers-color-scheme: dark) {
@@ -780,6 +798,6 @@
   <script src="config.js?v=21"></script>
   <script src="layout.js?v=26"></script>
   <script src="etablissement.js?v=29"></script>
-  <script src="espace-cadre.js?v=41"></script>
+  <script src="espace-cadre.js?v=42"></script>
 </body>
 </html>
