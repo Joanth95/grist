@@ -1,7 +1,7 @@
 /* Espace cadre — gestion des étudiants du service : planning, validations, fiches */
 /* © Joan Thuillier — Tous droits réservés. Voir LICENSE à la racine du dépôt. */
 
-const APP_VERSION = "v45"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
+const APP_VERSION = "v46"; // à incrémenter à chaque mise à jour (cf. ?v= dans espace-cadre.html)
 const API = window.CONFIG.API_URL.replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
@@ -1011,8 +1011,10 @@ function buildStatsReportHtml(s, service) {
 
 // Questions du questionnaire de fin de stage, regroupées par thème. Les clés
 // correspondent aux colonnes renvoyées par le worker (EVAL_COLONNES).
-// echelle:false = réponse sans « bon » ni « mauvais » sens (on n'en fait pas
-// de moyenne, seulement une répartition).
+// Toutes utilisent aujourd'hui l'échelle de satisfaction du formulaire ; une
+// question qui passerait à une échelle sans « bon » ni « mauvais » sens (ex.
+// trop lourde / adaptée / trop légère) se déclare echelle:false : plus de
+// moyenne ni de barre, seulement la répartition des réponses.
 const SATISFACTION_THEMES = [
   { titre: "Accueil", questions: [
     { cle: "accueil_premier_jour", label: "Accueil le premier jour" },
@@ -1034,7 +1036,7 @@ const SATISFACTION_THEMES = [
   { titre: "Organisation et intégration", questions: [
     { cle: "organisation_generale_service", label: "Organisation générale du service" },
     { cle: "ambiance_esprit_equipe", label: "Ambiance et esprit d'équipe" },
-    { cle: "charge_travail_percue", label: "Charge de travail perçue", echelle: false },
+    { cle: "charge_travail_percue", label: "Charge de travail perçue" },
     { cle: "sentiment_integration", label: "Sentiment d'intégration" },
   ] },
 ];
