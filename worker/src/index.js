@@ -1390,32 +1390,84 @@ async function modifierEtablissementAdmin(request, env, info) {
   return json(await listerEtablissementAdmin(env));
 }
 
+/** Identifiant complet du document. GRIST_DOC_ID contient l'identifiant court
+ *  de l'URL Grist ; il suffit aux appels JSON, mais la répartition vers le bon
+ *  doc worker exige l'identifiant complet. */
+async function idCompletDocument(env, base) {
+  const res = await fetch(`${base}/docs/${env.GRIST_DOC_ID}`, {
+    headers: { Authorization: `Bearer ${env.GRIST_API_KEY}` },
+  });
+  if (!res.ok) return null;
+  const data = await res.json().catch(() => null);
+  const id = data && data.id;
+  return typeof id === "string" && id ? id : null;
+}
+
+/** Adresse du doc worker qui héberge le document, ou null si l'instance n'en
+ *  expose pas (Grist tenant sur un seul serveur). */
+async function urlDocWorker(env, base, docId) {
+  const res = await fetch(`${base}/worker/${docId}`, {
+    headers: { Authorization: `Bearer ${env.GRIST_API_KEY}` },
+  });
+  if (!res.ok) return null;
+  const data = await res.json().catch(() => null);
+  const url = data && data.docWorkerUrl;
+  return typeof url === "string" && url ? url.replace(/\/$/, "") : null;
+}
+
 /** Envoie un fichier en pièce jointe Grist (stockage partagé par toutes les
  *  colonnes Attachments du document) et renvoie son id, à poser sur la
- *  cellule concernée (ex. `["L", attId]`). */
+ *  cellule concernée (ex. `["L", attId]`).
+ *
+ *  L'hôte principal relaie sans problème les appels JSON, mais répond 500 sur
+ *  un envoi multipart quand l'instance répartit les documents sur plusieurs
+ *  doc workers — c'est le cas de celle de la DINUM, qui réclame alors
+ *  l'identifiant complet du document (« Doc belongs to a different
+ *  DocWorker »). L'interface Grist téléverse elle aussi directement sur le doc
+ *  worker : on fait pareil, en gardant les autres chemins en recours. */
 async function envoyerPieceJointeGrist(env, file, nomParDefaut) {
-  const up = new FormData();
-  up.append("upload", file, file.name || nomParDefaut || "fichier");
   const base = (env.GRIST_BASE_URL || "https://grist.numerique.gouv.fr/api").replace(/\/$/, "");
-  const res = await fetch(`${base}/docs/${env.GRIST_DOC_ID}/attachments`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env.GRIST_API_KEY}` },
-    body: up,
-  });
-  if (!res.ok) {
-    console.error(`Grist attachments POST -> ${res.status}: ${await res.text()}`);
-    // Le statut Grist figure dans le message affiché : sans lui, diagnostiquer
-    // une panne de pièces jointes oblige à rebrancher `wrangler tail`.
-    const cause =
-      res.status >= 500
-        ? "Grist n'a pas pu enregistrer le fichier (panne ou stockage saturé)"
-        : "Grist a refusé le fichier";
-    throw httpError(502, `${cause} — erreur ${res.status}`);
+  const nom = file.name || nomParDefaut || "fichier";
+
+  const ids = [];
+  const idComplet = await idCompletDocument(env, base).catch(() => null);
+  if (idComplet) ids.push(idComplet);
+  if (!ids.includes(env.GRIST_DOC_ID)) ids.push(env.GRIST_DOC_ID);
+
+  const cibles = [];
+  for (const id of ids) {
+    const docWorker = await urlDocWorker(env, base, id).catch(() => null);
+    if (docWorker) cibles.push(`${docWorker}/api/docs/${id}/attachments`);
+    cibles.push(`${base}/docs/${id}/attachments`);
   }
-  const attachs = await res.json().catch(() => null);
-  const attId = Array.isArray(attachs) ? attachs[0] : null;
-  if (!attId) throw httpError(502, "Réponse inattendue de Grist après l'envoi du fichier");
-  return attId;
+
+  let dernierStatut = 0;
+  for (const url of cibles) {
+    // Une FormData par tentative : son corps est consommé par l'envoi.
+    const up = new FormData();
+    up.append("upload", file, nom);
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env.GRIST_API_KEY}` },
+      body: up,
+    });
+    if (res.ok) {
+      const attachs = await res.json().catch(() => null);
+      const attId = Array.isArray(attachs) ? attachs[0] : null;
+      if (!attId) throw httpError(502, "Réponse inattendue de Grist après l'envoi du fichier");
+      return attId;
+    }
+    dernierStatut = res.status;
+    console.error(`Grist attachments POST ${url} -> ${res.status}: ${await res.text()}`);
+  }
+
+  // Le statut Grist figure dans le message affiché : sans lui, diagnostiquer
+  // une panne de pièces jointes oblige à rebrancher `wrangler tail`.
+  const cause =
+    dernierStatut >= 500
+      ? "Grist n'a pas pu enregistrer le fichier (panne ou stockage saturé)"
+      : "Grist a refusé le fichier";
+  throw httpError(502, `${cause} — erreur ${dernierStatut}`);
 }
 
 /** L'administrateur envoie un nouveau logo (multipart/form-data, champ
