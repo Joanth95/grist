@@ -1404,7 +1404,13 @@ async function envoyerPieceJointeGrist(env, file, nomParDefaut) {
   });
   if (!res.ok) {
     console.error(`Grist attachments POST -> ${res.status}: ${await res.text()}`);
-    throw httpError(502, "Erreur lors de l'envoi du fichier à Grist");
+    // Le statut Grist figure dans le message affiché : sans lui, diagnostiquer
+    // une panne de pièces jointes oblige à rebrancher `wrangler tail`.
+    const cause =
+      res.status >= 500
+        ? "Grist n'a pas pu enregistrer le fichier (panne ou stockage saturé)"
+        : "Grist a refusé le fichier";
+    throw httpError(502, `${cause} — erreur ${res.status}`);
   }
   const attachs = await res.json().catch(() => null);
   const attId = Array.isArray(attachs) ? attachs[0] : null;
