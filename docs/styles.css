@@ -533,6 +533,78 @@ input[type="checkbox"], input[type="radio"] {
 .badge.warn { background: #ffe9e9; color: var(--rouge); }
 .badge.pending { background: var(--alerte-bg); color: var(--alerte); }
 
+/* ---------- Mon planning du jour ---------- */
+
+.today-card {
+  background: var(--blanc);
+  border: 1px solid var(--gris-bordure);
+  border-left: 4px solid var(--bleu);
+  padding: 1rem 1.25rem;
+}
+
+.today-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.today-date { font-weight: 700; font-size: 1.05rem; }
+.today-service { color: var(--texte-doux); font-size: 0.9rem; }
+
+.today-journee {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+.today-journee.repos { color: var(--texte-doux); font-size: 0.9rem; }
+
+.today-code {
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: var(--bleu);
+  background: var(--info-bg);
+  border-radius: 0.25rem;
+  padding: 0.2rem 0.6rem;
+}
+.today-libelle { font-weight: 600; }
+.today-horaires {
+  font-size: 0.9rem;
+  color: var(--texte-doux);
+  font-variant-numeric: tabular-nums;
+}
+/* Les marques (heures comptées, férié) se calent à droite quand la place le
+   permet, et repassent à la ligne sinon. */
+.today-marques { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-left: auto; }
+
+.today-bloc,
+.today-bilan {
+  margin-top: 0.85rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--gris-bordure);
+}
+.today-bilan { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+.today-bloc-titre {
+  margin: 0 0 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--texte-doux);
+}
+.today-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.2rem 0;
+}
+.today-item-titre { font-weight: 600; }
+.today-item-meta { font-size: 0.85rem; color: var(--texte-doux); }
+
 /* ---------- Semaines ---------- */
 
 #weeks { display: flex; flex-direction: column; gap: 1rem; }
@@ -588,6 +660,17 @@ input[type="checkbox"], input[type="radio"] {
 
 .day-hours { font-size: 0.72rem; color: var(--texte-doux); font-weight: 600; }
 
+/* Créneau horaire du code, sous le code lui-même */
+.day-time {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.15rem;
+  font-size: 0.7rem;
+  color: var(--texte-doux);
+  font-variant-numeric: tabular-nums;
+}
+
 .day-cell.ferie {
   background: var(--alerte-bg);
   outline: 1px solid #ffd9a0;
@@ -600,7 +683,8 @@ input[type="checkbox"], input[type="radio"] {
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
-.day-cell.ferie .day-hours { color: var(--alerte); }
+.day-cell.ferie .day-hours,
+.day-cell.ferie .day-time { color: var(--alerte); }
 
 .day-cell.recup {
   background: var(--succes-bg);
@@ -681,6 +765,11 @@ input[type="checkbox"], input[type="radio"] {
 @media (max-width: 640px) {
   .rdv-item { align-items: flex-start; flex-direction: column; gap: 0.25rem; }
   .rdv-date { min-width: 0; }
+  /* Sept colonnes sur un écran de téléphone : le créneau passe sur deux
+     lignes plutôt que de déborder de sa case. */
+  .day-time { flex-direction: column; gap: 0; line-height: 1.15; }
+  .day-time-sep { display: none; }
+  .today-marques { margin-left: 0; }
 }
 
 /* ---------- Dialogue ---------- */
@@ -876,7 +965,7 @@ dialog h2 { margin: 0 0 0.5rem; }
   }
   .badge.warn { background: #4a1210; color: #ffb3b0; }
   .day-cell.ferie { background: #3a2a10; outline-color: #6b4a1a; }
-  .ferie-tag, .day-cell.ferie .day-hours { color: #ffb377; }
+  .ferie-tag, .day-cell.ferie .day-hours, .day-cell.ferie .day-time { color: #ffb377; }
   .day-cell.recup { background: #123c22; outline-color: #1d5c35; }
   .recup-tag { color: #7ee2a0; }
   .type-option:has(input:checked) { background: rgba(133, 133, 246, 0.08); }
@@ -893,7 +982,7 @@ dialog h2 { margin: 0 0 0.5rem; }
   .fr-header, .fr-notice, .fr-footer, .app-header, .app-footer,
   .header-actions, .fr-header-tools, #add-sortie-btn, .sortie-delete,
   .periode-tabs, #login-screen, dialog, .periode-eval, .periode-rdv { display: none !important; }
-  .periode-card, .week-card, .sortie-row, .rdv-item { border: 1px solid #999; }
+  .periode-card, .week-card, .sortie-row, .rdv-item, .today-card { border: 1px solid #999; }
   .week-card { break-inside: avoid; }
   .content { max-width: none; margin: 0; }
 }

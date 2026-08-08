@@ -212,9 +212,154 @@ function render() {
   }
   renderTabs();
   renderPeriode();
+  renderToday();
   renderRdvs();
   renderSorties();
   renderWeeks();
+}
+
+/* ---------- Mon planning du jour ---------- */
+
+/** Journée d'aujourd'hui dans le planning : la semaine qui contient la date,
+ *  le code horaire posé dessus et les heures comptées. Cherchée sur toutes les
+ *  périodes : l'encart répond à « qu'est-ce que je fais aujourd'hui ? », il ne
+ *  suit donc pas l'onglet affiché. */
+function jourDuPlanning(iso) {
+  for (const s of state.data.semaines) {
+    if (!s.Semaine_debut) continue;
+    const i = Math.round(
+      (Date.parse(iso + "T00:00:00") - Date.parse(s.Semaine_debut + "T00:00:00")) / 86400000);
+    if (i < 0 || i > 6) continue;
+    return {
+      semaine: s,
+      code: state.data.codes.find((c) => c.id === s[DAYS[i]]) || null,
+      info: (s.jours && s.jours[i]) || { heures: 0, ferie: false },
+    };
+  }
+  return null;
+}
+
+/** Période à laquelle rattacher la journée : celle de la semaine trouvée,
+ *  sinon celle qui couvre la date, sinon le stage marqué en cours. */
+function periodeDuJour(iso, jour) {
+  const periodes = state.data.periodes;
+  return (jour && periodes.find((p) => p.id === jour.semaine.Periode))
+    || periodes.find((p) => p.Du && p.Au && p.Du <= iso && iso <= p.Au)
+    || periodes.find((p) => p.En_cours)
+    || null;
+}
+
+/** Encart d'accueil : horaires du jour, rendez-vous et déclarations du jour,
+ *  puis rappel du solde d'heures du stage. */
+function renderToday() {
+  const section = $("today-section");
+  const container = $("today");
+  container.innerHTML = "";
+
+  const today = isoDate(new Date());
+  const jour = jourDuPlanning(today);
+  const rdvs = (state.data.rdvs || []).filter((r) => r.Date_rdv === today);
+  const sorties = state.data.sorties.filter((s) => s.Date === today);
+  const p = periodeDuJour(today, jour);
+
+  // Hors stage : ni journée planifiée, ni rendez-vous, ni période à rappeler —
+  // l'encart n'aurait rien à dire, on le masque plutôt que d'afficher du vide.
+  if (!jour && !rdvs.length && !sorties.length && !p) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+
+  const card = el("div", "today-card");
+
+  const tete = el("div", "today-head");
+  tete.appendChild(el("div", "today-date", longDate(today)));
+  if (p) tete.appendChild(el("div", "today-service", p.Service || "Stage"));
+  card.appendChild(tete);
+
+  card.appendChild(renderTodayJournee(jour));
+
+  if (rdvs.length) card.appendChild(todayBloc("Rendez-vous du jour", rdvs.map(todayRdvLigne)));
+  if (sorties.length) card.appendChild(todayBloc("Mes déclarations du jour", sorties.map(todaySortieLigne)));
+
+  if (p && p.A_FAIRE != null) {
+    const bilan = el("div", "today-bilan");
+    bilan.append(...badgesAvancement(p));
+    card.appendChild(bilan);
+  }
+
+  container.appendChild(card);
+}
+
+/** Ligne principale de l'encart : le code horaire du jour, son libellé et son
+ *  créneau. Sans code posé, on le dit — une case vide se lit mal. */
+function renderTodayJournee(jour) {
+  const ligne = el("div", "today-journee");
+  const code = jour && jour.code;
+  if (!code) {
+    ligne.classList.add("repos");
+    ligne.appendChild(el("span", "", jour
+      ? "Repos : aucun horaire n'est posé sur cette journée."
+      : "Aucune journée de stage planifiée aujourd'hui."));
+    return ligne;
+  }
+
+  ligne.appendChild(el("span", "today-code", code.Code));
+  const corps = el("div", "today-journee-corps");
+  if (code.Libelle) corps.appendChild(el("div", "today-libelle", code.Libelle));
+  if (code.Heure_debut && code.Heure_fin) {
+    corps.appendChild(el("div", "today-horaires", `${code.Heure_debut} – ${code.Heure_fin}`));
+  }
+  ligne.appendChild(corps);
+
+  const marques = el("div", "today-marques");
+  if (jour.info.heures > 0) marques.appendChild(badge(`${formatH(jour.info.heures)} comptées`, "ok"));
+  if (jour.info.ferie) marques.appendChild(badge("jour férié", "pending"));
+  if (jour.info.recup) marques.appendChild(badge("récup férié", "ok"));
+  if (marques.childElementCount) ligne.appendChild(marques);
+  return ligne;
+}
+
+/** Sous-bloc de l'encart : un intitulé, puis les lignes qu'on lui donne. */
+function todayBloc(titre, lignes) {
+  const bloc = el("div", "today-bloc");
+  bloc.appendChild(el("h3", "today-bloc-titre", titre));
+  for (const ligne of lignes) bloc.appendChild(ligne);
+  return bloc;
+}
+
+function todayRdvLigne(r) {
+  const item = el("div", "today-item");
+  item.appendChild(el("span", "today-item-titre", r.Type_de_rendez_vous || "Rendez-vous"));
+  const details = [];
+  if (r.Formateur) details.push("avec " + r.Formateur);
+  if (r.Precision) details.push(r.Precision);
+  if (details.length) item.appendChild(el("span", "today-item-meta", details.join(" · ")));
+  return item;
+}
+
+function todaySortieLigne(s) {
+  const item = el("div", "today-item");
+  const adj = s.Valide ? s.Ajustement_h : expectedAdjustment(s);
+  item.appendChild(el("span", "today-item-titre", s.Motif || "(sans motif)"));
+  item.appendChild(el("span", "today-item-meta",
+    `${s.Heure_debut || "?"} – ${s.Heure_fin || "?"} · ${adj > 0 ? "+" : ""}${formatH(adj)}`));
+  item.appendChild(badge(s.Valide ? "Validé" : "En attente", s.Valide ? "ok" : "pending"));
+  return item;
+}
+
+/** Avancement d'une période : effectuées / à réaliser / solde. Partagé par la
+ *  carte de période et l'encart du jour, pour qu'ils ne divergent jamais. */
+function badgesAvancement(p) {
+  const badges = [
+    badge(`${formatH(p.FAIT ?? 0)} effectuées`, "ok"),
+    badge(`${formatH(p.A_FAIRE)} à réaliser`, ""),
+  ];
+  if (p.Solde_heures != null) {
+    badges.push(badge(`Solde : ${p.Solde_heures > 0 ? "+" : ""}${formatH(p.Solde_heures)}`,
+      p.Solde_heures >= 0 ? "ok" : "warn"));
+  }
+  return badges;
 }
 
 /* ---------- Rendez-vous du stage ---------- */
@@ -293,14 +438,8 @@ function renderPeriode() {
     (p.Tuteur ? ` · Tuteur : ${p.Tuteur}` : "")));
 
   if (p.A_FAIRE != null) {
-    const fait = p.FAIT ?? 0;
     const stats = el("div", "periode-stats");
-    stats.appendChild(badge(`${formatH(fait)} effectuées`, "ok"));
-    stats.appendChild(badge(`${formatH(p.A_FAIRE)} à réaliser`, ""));
-    if (p.Solde_heures != null) {
-      stats.appendChild(badge(`Solde : ${p.Solde_heures > 0 ? "+" : ""}${formatH(p.Solde_heures)}`,
-        p.Solde_heures >= 0 ? "ok" : "warn"));
-    }
+    stats.append(...badgesAvancement(p));
     if (p.Recuperation > 0) {
       stats.appendChild(badge(`${p.Recuperation} jour${p.Recuperation > 1 ? "s" : ""} de récupération à poser`, "ok"));
     }
@@ -539,10 +678,19 @@ function renderWeeks() {
       if (code) chip.title = code.Libelle + (code.Heure_debut && code.Heure_fin ? ` (${code.Heure_debut}–${code.Heure_fin})` : "");
       cell.appendChild(chip);
 
+      // Créneau ET heures comptées : le créneau n'apparaissait qu'en infobulle
+      // dès qu'une journée comptait des heures, alors que c'est l'information
+      // que l'étudiant vient chercher. Les deux bornes sont dans des <span>
+      // séparés pour pouvoir passer à la ligne sur écran étroit.
+      if (code && code.Heure_debut && code.Heure_fin) {
+        const time = el("div", "day-time");
+        time.appendChild(el("span", "", code.Heure_debut));
+        time.appendChild(el("span", "day-time-sep", "–"));
+        time.appendChild(el("span", "", code.Heure_fin));
+        cell.appendChild(time);
+      }
       if (info.heures > 0) {
         cell.appendChild(el("div", "day-hours", formatH(info.heures)));
-      } else if (code && code.Heure_debut && code.Heure_fin) {
-        cell.appendChild(el("div", "day-hours", `${code.Heure_debut}–${code.Heure_fin}`));
       }
       grid.appendChild(cell);
     });
@@ -779,6 +927,15 @@ function frDate(iso) {
   return new Date(iso + "T00:00:00").toLocaleDateString("fr-FR", {
     day: "numeric", month: "long", year: "numeric",
   });
+}
+
+// « Vendredi 8 août 2026 » : l'encart du jour nomme le jour de la semaine,
+// c'est ce qui permet de vérifier d'un coup d'œil qu'on lit la bonne journée.
+function longDate(iso) {
+  const s = new Date(iso + "T00:00:00").toLocaleDateString("fr-FR", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  });
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function shortDate(iso) {
