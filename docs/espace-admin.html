@@ -327,6 +327,7 @@
         <div class="admin-subtabs">
           <button type="button" class="admin-subtab active" data-subonglet="etablissement">Établissement</button>
           <button type="button" class="admin-subtab" data-subonglet="rdv">Rendez-vous</button>
+          <button type="button" class="admin-subtab" data-subonglet="etudiant">Espace étudiant</button>
         </div>
 
         <section id="subtab-etablissement" class="admin-subtab-panel">
@@ -441,6 +442,33 @@
             <p id="rdvsp-error" class="error" hidden></p>
             <div class="dialog-actions">
               <button type="submit" class="btn btn-primary" id="rdvsp-save-btn">Enregistrer</button>
+            </div>
+          </form>
+        </section>
+
+        <section id="subtab-etudiant" class="admin-subtab-panel" hidden>
+          <p class="section-note">Ce que l'étudiant voit dans son espace. Ces réglages ne changent
+            rien aux données : ils décident seulement de ce qui lui est transmis.</p>
+
+          <form id="etu-form" class="etab-form">
+            <div class="fiche-section">
+              <h3>Commentaires du planning</h3>
+              <label class="checkbox-label"><input type="checkbox" id="v-commentaire-semaine" checked>
+                Montrer à l'étudiant le commentaire de chaque semaine</label>
+              <p class="save-hint">Le commentaire de semaine (colonne <strong>Commentaire</strong> de
+                <strong>PLANNING_HEBDO</strong>, saisie dans le document Grist) s'affiche sous le tableau
+                de la semaine. Cochée, la case convient si vous vous en servez pour parler à l'étudiant
+                (« semaine de cours », « pensez à votre feuille de présence »). Décochez-la si ce champ
+                vous sert de note interne : le texte cesse alors d'être transmis à son espace — il n'est
+                pas seulement masqué à l'écran.</p>
+              <p class="save-hint">Sans effet sur le commentaire d'un <strong>rendez-vous</strong>, qui
+                n'est jamais transmis à l'étudiant, ni sur les commentaires et pièces jointes du stage,
+                réservés aux cadres et aux administrateurs.</p>
+            </div>
+
+            <p id="etu-error" class="error" hidden></p>
+            <div class="dialog-actions">
+              <button type="submit" class="btn btn-primary" id="etu-save-btn">Enregistrer</button>
             </div>
           </form>
         </section>
@@ -659,6 +687,6 @@
   <script src="config.js?v=21"></script>
   <script src="layout.js?v=26"></script>
   <script src="etablissement.js?v=30"></script>
-  <script src="espace-admin.js?v=12"></script>
+  <script src="espace-admin.js?v=13"></script>
 </body>
 </html>

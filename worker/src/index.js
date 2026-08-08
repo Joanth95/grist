@@ -1102,7 +1102,7 @@ async function chargerCadre(env, match) {
 /* ------------------------------------------------------------------ */
 
 async function buildPayload(env, student) {
-  const [periodes, services, codes, sorties, users, feries, evaluations] = await Promise.all([
+  const [periodes, services, codes, sorties, users, feries, evaluations, etablissement] = await Promise.all([
     gristFilter(env, T_PERIODES, { Code_anonymat: [student.code] }),
     gristAll(env, T_SERVICES),
     gristAll(env, T_CODES),
@@ -1110,7 +1110,15 @@ async function buildPayload(env, student) {
     gristAll(env, T_UTILISATEURS),
     gristAll(env, T_FERIES),
     gristAll(env, T_EVALUATIONS),
+    ligneEtablissement(env),
   ]);
+
+  // Commentaire de semaine du planning : c'est un champ libre du document, il
+  // peut servir à parler À l'étudiant (« semaine de cours ») comme à noter
+  // quelque chose sur lui. L'administrateur tranche depuis l'espace admin, et
+  // décoché le texte n'est pas seulement masqué : il ne sort pas d'ici.
+  const commentaireSemaineVisible =
+    !(etablissement && etablissement.fields.Afficher_commentaire_semaine === false);
 
   // Questionnaire de satisfaction déjà rempli : cf. buildCadrePayload — lien
   // par UUID de la période (Cle_lien), avec repli sur la référence directe.
@@ -1248,7 +1256,7 @@ async function buildPayload(env, student) {
         id: s.id,
         Periode: s.fields.Periode,
         Semaine_debut: epochToIso(s.fields.Semaine_debut),
-        Commentaire: s.fields.Commentaire || "",
+        Commentaire: commentaireSemaineVisible ? (s.fields.Commentaire || "") : "",
         Total_h_semaine: s.fields.Total_h_semaine ?? null,
         jours,
       };
@@ -1379,6 +1387,7 @@ const COLONNES_ETABLISSEMENT = [
   { id: "Mode_etablissement_public", label: "Habillage public (DSFR)", type: "Bool" },
   { id: "Rdv_sp_actif", label: "RDV Service Public — activé", type: "Bool" },
   { id: "Rdv_sp_url", label: "RDV Service Public — lien de prise de rendez-vous", type: "Text" },
+  { id: "Afficher_commentaire_semaine", label: "Montrer le commentaire de semaine à l'étudiant", type: "Bool" },
 ];
 
 /** Première (et seule) ligne de la table ETABLISSEMENT, ou null si la table
@@ -1412,6 +1421,7 @@ async function listerEtablissementAdmin(env, request) {
     modeEtablissementPublic: f.Mode_etablissement_public !== false,
     rdvSpActif: f.Rdv_sp_actif === true,
     rdvSpUrl: f.Rdv_sp_url || "",
+    afficherCommentaireSemaine: f.Afficher_commentaire_semaine !== false,
     // Les deux valeurs suivantes ne se règlent pas dans Grist : elles disent à
     // l'administrateur ce qu'il doit saisir dans RDV Service Public (l'URL à
     // notifier) et si le secret partagé a bien été posé côté Worker. Le secret
@@ -1435,6 +1445,9 @@ async function modifierEtablissementAdmin(request, env, info) {
   if (body.afficherBeta !== undefined) fields.Afficher_bandeau_beta = !!body.afficherBeta;
   if (body.modeEtablissementPublic !== undefined) fields.Mode_etablissement_public = !!body.modeEtablissementPublic;
   if (body.rdvSpActif !== undefined) fields.Rdv_sp_actif = !!body.rdvSpActif;
+  if (body.afficherCommentaireSemaine !== undefined) {
+    fields.Afficher_commentaire_semaine = !!body.afficherCommentaireSemaine;
+  }
   if (body.rdvSpUrl !== undefined) {
     const url = cleanText(body.rdvSpUrl, 300);
     // Refusé plutôt que silencieusement ignoré : une adresse mal recopiée

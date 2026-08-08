@@ -2051,8 +2051,37 @@ function rendreEtablissement() {
   $("e-footer-lien").value = e.urlDocumentGrist || "";
   rendreLogoEtab();
   rendreRdvSp();
+  rendreEspaceEtudiant();
   rafraichirCacheEtab();
 }
+
+/* Sous-onglet « Espace étudiant » : ce qui est transmis à l'étudiant. */
+function rendreEspaceEtudiant() {
+  const e = state.etab || {};
+  $("v-commentaire-semaine").checked = e.afficherCommentaireSemaine !== false;
+}
+
+$("etu-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const btn = $("etu-save-btn");
+  const errEl = $("etu-error");
+  errEl.hidden = true;
+  btn.disabled = true;
+  try {
+    state.etab = await api("PATCH", "/api/admin/etablissement", {
+      afficherCommentaireSemaine: $("v-commentaire-semaine").checked,
+    });
+    rendreEtablissement();
+    toast($("v-commentaire-semaine").checked
+      ? "Les commentaires de semaine sont visibles par l'étudiant."
+      : "Les commentaires de semaine ne sont plus transmis à l'étudiant.");
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 /* Sous-onglet « Rendez-vous » : mêmes données que l'établissement (une seule
  * ligne Grist, un seul appel), d'où le rendu et l'enregistrement séparés mais
