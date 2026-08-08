@@ -212,8 +212,47 @@ function render() {
   }
   renderTabs();
   renderPeriode();
+  renderRdvs();
   renderSorties();
   renderWeeks();
+}
+
+/* ---------- Rendez-vous du stage ---------- */
+
+/** Rendez-vous de la période affichée : à venir d'abord, puis les passés,
+ *  grisés. La section reste masquée tant qu'il n'y en a aucun — un stage sans
+ *  rendez-vous n'a pas besoin d'un bloc vide. */
+function renderRdvs() {
+  const section = $("rdvs-section");
+  const container = $("rdvs");
+  container.innerHTML = "";
+  const p = currentPeriode();
+  const rdvs = (state.data.rdvs || [])
+    .filter((r) => p && r.Periode === p.id && r.Date_rdv)
+    .sort((a, b) => a.Date_rdv.localeCompare(b.Date_rdv));
+  section.hidden = !rdvs.length;
+  if (!rdvs.length) return;
+
+  const today = isoDate(new Date());
+  for (const r of rdvs) {
+    const passe = r.Date_rdv < today;
+    const ligne = el("div", "rdv-item" + (passe ? " passe" : ""));
+
+    const date = el("div", "rdv-date", frDate(r.Date_rdv));
+    ligne.appendChild(date);
+
+    const corps = el("div", "rdv-corps");
+    const titre = el("div", "rdv-titre", r.Type_de_rendez_vous || "Rendez-vous");
+    if (!passe) titre.appendChild(badge("à venir", "ok"));
+    corps.appendChild(titre);
+
+    const details = [];
+    if (r.Formateur) details.push("avec " + r.Formateur);
+    if (r.Precision) details.push(r.Precision);
+    if (details.length) corps.appendChild(el("div", "rdv-meta", details.join(" · ")));
+    ligne.appendChild(corps);
+    container.appendChild(ligne);
+  }
 }
 
 function renderTabs() {

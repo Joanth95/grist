@@ -1135,9 +1135,12 @@ async function buildPayload(env, student) {
     }
   }
 
-  const semaines = periodeIds.length
-    ? await gristFilter(env, T_HEBDO, { Periode: periodeIds })
-    : [];
+  const [semaines, rdvs] = periodeIds.length
+    ? await Promise.all([
+      gristFilter(env, T_HEBDO, { Periode: periodeIds }),
+      gristFilter(env, T_RDV, { Periode: periodeIds }),
+    ])
+    : [[], []];
 
   // Heures par jour de chaque semaine + compteurs par période :
   // - un férié travaillé (heures > 0) ouvre un jour de récupération ; poser un
@@ -1220,6 +1223,23 @@ async function buildPayload(env, student) {
     }),
     // Suivi cursus : total des jours d'absence toutes périodes (franchise 30 j)
     absences_cursus: Object.values(absencesByPeriode).reduce((a, b) => a + b, 0),
+    // Rendez-vous du stage (RDV_FORMATEUR) : l'étudiant doit savoir quand il
+    // est attendu, et avec qui. Le COMMENTAIRE libre saisi par un cadre reste
+    // interne — il peut porter des notes de suivi qui ne lui sont pas
+    // destinées ; seul le texte que le worker écrit lui-même pour un
+    // rendez-vous venu de RDV Service Public (heure, lieu) est renvoyé.
+    rdvs: rdvs.map((r) => {
+      const deRdvSp = r.fields.Cree_par === "RDV Service Public";
+      return {
+        id: r.id,
+        Periode: r.fields.Periode,
+        Date_rdv: epochToIso(r.fields.Date_rdv),
+        Type_de_rendez_vous: r.fields.Type_de_rendez_vous || "",
+        Formateur: r.fields.Formateur || "",
+        Precision: deRdvSp ? (r.fields.Commentaire || "") : "",
+        Rdv_service_public: deRdvSp,
+      };
+    }),
     semaines: semainesData.map(({ s, jours }) => {
       const out = {
         id: s.id,

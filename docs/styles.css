@@ -659,6 +659,30 @@ input[type="checkbox"], input[type="radio"] {
 }
 .sortie-delete:hover { background: var(--gris-fond); }
 
+/* ---------- Rendez-vous du stage ---------- */
+
+#rdvs { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.rdv-item {
+  background: var(--blanc);
+  border: 1px solid var(--gris-bordure);
+  padding: 0.6rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+/* Un rendez-vous passé reste consultable, mais ne doit plus attirer l'œil. */
+.rdv-item.passe { opacity: 0.6; }
+.rdv-date { min-width: 9rem; font-weight: 600; }
+.rdv-corps { flex: 1; }
+.rdv-titre { font-weight: 600; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.rdv-meta { font-size: 0.85rem; color: var(--texte-doux); }
+
+@media (max-width: 640px) {
+  .rdv-item { align-items: flex-start; flex-direction: column; gap: 0.25rem; }
+  .rdv-date { min-width: 0; }
+}
+
 /* ---------- Dialogue ---------- */
 
 dialog {
@@ -869,7 +893,7 @@ dialog h2 { margin: 0 0 0.5rem; }
   .fr-header, .fr-notice, .fr-footer, .app-header, .app-footer,
   .header-actions, .fr-header-tools, #add-sortie-btn, .sortie-delete,
   .periode-tabs, #login-screen, dialog, .periode-eval, .periode-rdv { display: none !important; }
-  .periode-card, .week-card, .sortie-row { border: 1px solid #999; }
+  .periode-card, .week-card, .sortie-row, .rdv-item { border: 1px solid #999; }
   .week-card { break-inside: avoid; }
   .content { max-width: none; margin: 0; }
 }
