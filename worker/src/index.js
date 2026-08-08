@@ -54,6 +54,18 @@
  *   PATCH  /api/cadre/profil  { Telephone }                   -> modifie son propre numéro de téléphone
  *   PATCH  /api/cadre/services/:id  { codes: [ids] }          -> codes horaires actifs du service
  *                                                                (SERVICES.Codes_horaires ; vide = tous)
+ *   GET    /api/cadre/formulaires[?serviceId=N]                -> grilles d'évaluation du service
+ *                                                                 (+ modèles), état de leurs versions
+ *   POST   /api/cadre/formulaires  { serviceId, Nom, modeleId? } -> crée une grille (version 1 en
+ *                                                                 brouillon, éventuellement dupliquée)
+ *   GET    /api/cadre/formulaires/:id/version/:vid             -> contenu d'une version (items)
+ *   PATCH  /api/cadre/formulaires/:id  { Nom?, Systematique?, Niveaux_cibles?, ... }
+ *                                                              -> entête de la grille
+ *   PUT    /api/cadre/formulaires/:id/brouillon  { items: [...] } -> remplace le contenu du brouillon
+ *                                                                 (le crée si la grille est publiée)
+ *   DELETE /api/cadre/formulaires/:id/brouillon                -> jette le brouillon
+ *   POST   /api/cadre/formulaires/:id/publier                  -> le brouillon devient la version en
+ *                                                                 service, la précédente est archivée
  *   POST   /api/cadre/codes  { Code, Libelle, ... }           -> crée un code horaire (pas de doublon,
  *                                                                pas de suppression possible)
  *   GET    /api/cadre/periodes/:id/planning-imprimable        -> HTML de la fiche de stage imprimable
@@ -146,6 +158,25 @@ const T_COMMENTAIRES = "BDD_COM";
 const T_JOURNAL = "JOURNAL_ACTIVITE_V2";
 const T_ETABLISSEMENT = "ETABLISSEMENT";
 const T_POLE = "Pole";
+// Évaluation des compétences : grilles d'observation construites par le cadre
+// pour son service. Une grille PUBLIÉE ne se modifie jamais — on édite un
+// brouillon, et publier archive la version précédente (voir sql/schema-evaluation.sql).
+const T_FORMULAIRE = "FORMULAIRE";
+const T_FORMULAIRE_VERSION = "FORMULAIRE_VERSION";
+const T_FORMULAIRE_ITEM = "FORMULAIRE_ITEM";
+
+// Types d'items d'une grille. « section » n'appelle pas de réponse.
+const TYPES_ITEM = ["section", "acquisition", "oui_non", "echelle", "texte"];
+// Niveaux qu'une grille peut viser. Union volontaire : la constante NIVEAUX du
+// code propose M1 et M2, la colonne Grist PERIODES_DE_STAGE.Niveau propose
+// « Autre » — les deux listes divergent depuis avant ce module. Une grille doit
+// pouvoir viser n'importe quel niveau réellement présent dans une fiche de
+// stage, quelle que soit son origine.
+const NIVEAUX_CIBLABLES = ["ESI L1", "ESI L2", "ESI L3", "M1", "M2", "Aide-Soignant", "Autre"];
+// Au-delà, l'écran de saisie devient trop long pour être rempli après un soin.
+// Avertissement côté cadre, refus au-delà du double : une grille de 30 items
+// n'est pas une grille, c'est un questionnaire que personne ne remplira.
+const MAX_QUESTIONS_GRILLE = 20;
 
 const DAY_COLUMNS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
@@ -594,6 +625,37 @@ async function route(request, env, ctx) {
     if (request.method === "POST" && path === "/api/cadre/codes") {
       return withLog(env, ctx, who, "Création d'un code horaire", "",
         (info) => creerCodeHoraire(request, env, cadre, info));
+    }
+    // --- Grilles d'évaluation du service ---
+    if (request.method === "GET" && path === "/api/cadre/formulaires") {
+      return json(await listerFormulaires(request, env, cadre));
+    }
+    if (request.method === "POST" && path === "/api/cadre/formulaires") {
+      return withLog(env, ctx, who, "Création d'une grille d'évaluation", "",
+        (info) => creerFormulaire(request, env, cadre, info));
+    }
+    const fvm = path.match(/^\/api\/cadre\/formulaires\/(\d+)\/version\/(\d+)$/);
+    if (request.method === "GET" && fvm) {
+      return json(await lireVersionFormulaire(env, cadre, Number(fvm[1]), Number(fvm[2])));
+    }
+    const fpm = path.match(/^\/api\/cadre\/formulaires\/(\d+)\/publier$/);
+    if (request.method === "POST" && fpm) {
+      return withLog(env, ctx, who, "Publication d'une grille d'évaluation", "",
+        (info) => publierFormulaire(env, cadre, Number(fpm[1]), info));
+    }
+    const fbm = path.match(/^\/api\/cadre\/formulaires\/(\d+)\/brouillon$/);
+    if (request.method === "PUT" && fbm) {
+      return withLog(env, ctx, who, "Modification d'une grille d'évaluation", "",
+        (info) => enregistrerBrouillon(request, env, cadre, Number(fbm[1]), info));
+    }
+    if (request.method === "DELETE" && fbm) {
+      return withLog(env, ctx, who, "Abandon du brouillon d'une grille", "",
+        (info) => abandonnerBrouillon(env, cadre, Number(fbm[1]), info));
+    }
+    const fm = path.match(/^\/api\/cadre\/formulaires\/(\d+)$/);
+    if (request.method === "PATCH" && fm) {
+      return withLog(env, ctx, who, "Modification d'une grille d'évaluation", "",
+        (info) => updateFormulaire(request, env, cadre, Number(fm[1]), info));
     }
     throw httpError(404, "Route inconnue");
   }
@@ -2612,6 +2674,374 @@ async function creerCodeHoraire(request, env, cadre, info) {
       + (body.Compte_stage === false ? ", ne compte pas dans le stage" : "");
   }
   return json({ id: newId }, 201);
+}
+
+/* ------------------------------------------------------------------ */
+/* Grilles d'évaluation : le cadre construit celles de son service     */
+/* ------------------------------------------------------------------ */
+/* Règle centrale : une version PUBLIÉE est immuable. Le cadre édite
+ * toujours un brouillon ; publier archive la version en service. Sans quoi
+ * corriger une question changerait rétroactivement le sens des évaluations
+ * déjà remplies avec l'ancienne formulation.
+ *
+ * Grist n'applique ni UNIQUE ni CHECK : l'unicité de la version publiée, les
+ * types d'items et les niveaux sont donc garantis ici, et nulle part ailleurs. */
+
+/** Valeurs d'une colonne ChoiceList Grist, stockée sous la forme ["L", …]. */
+function choixListe(value) {
+  if (Array.isArray(value) && value[0] === "L") {
+    return value.slice(1).filter((v) => typeof v === "string");
+  }
+  return [];
+}
+
+/** Retourne la grille et ses versions, en refusant celles d'un autre service.
+ * Les modèles d'établissement (sans service) sont lisibles par tous mais ne
+ * s'éditent que depuis l'espace administrateur : un cadre les duplique. */
+async function ensureFormulaireDuCadre(env, cadre, formulaireId) {
+  const rows = await gristFilter(env, T_FORMULAIRE, { id: [formulaireId] });
+  if (!rows.length) throw httpError(404, "Grille introuvable");
+  const formulaire = rows[0];
+  const serviceId = Number(formulaire.fields.Service) || 0;
+  if (!serviceId) {
+    throw httpError(403, "Ce modèle d'établissement ne se modifie pas : dupliquez-le dans votre service");
+  }
+  if (!cadre.serviceIds.has(serviceId)) throw httpError(403, "Cette grille n'est pas celle de votre service");
+
+  const versions = (await gristFilter(env, T_FORMULAIRE_VERSION, { Formulaire: [formulaireId] }))
+    .sort((a, b) => (a.fields.Numero || 0) - (b.fields.Numero || 0));
+  return {
+    formulaire,
+    serviceId,
+    versions,
+    publiee: versions.find((v) => v.fields.Statut === "publie") || null,
+    brouillon: versions.find((v) => v.fields.Statut === "brouillon") || null,
+  };
+}
+
+/** Items d'une version, dans l'ordre d'affichage. */
+async function itemsDeLaVersion(env, versionId) {
+  const rows = await gristFilter(env, T_FORMULAIRE_ITEM, { Version: [versionId] });
+  return rows.sort((a, b) => (a.fields.Ordre || 0) - (b.fields.Ordre || 0));
+}
+
+function itemPublic(row) {
+  const f = row.fields;
+  return {
+    id: row.id,
+    Ordre: f.Ordre || 0,
+    Type: f.Type || "acquisition",
+    Libelle: f.Libelle || "",
+    Aide: f.Aide || "",
+    Obligatoire: !!f.Obligatoire,
+    // Rattachement au référentiel : renvoyé mais pas encore alimenté
+    // (référentiel infirmier en cours de refonte, cf. arrêté du 20/02/2026).
+    ActeId: Number(f.Acte) || 0,
+    CompetenceId: Number(f.Competence) || 0,
+  };
+}
+
+/** Valide la liste d'items envoyée par l'éditeur et la normalise. */
+function normaliserItems(brut) {
+  if (!Array.isArray(brut)) throw httpError(400, "Liste d'items attendue");
+  const items = brut.map((it, i) => {
+    const type = String(it && it.Type || "").trim();
+    if (!TYPES_ITEM.includes(type)) throw httpError(400, `Type d'item inconnu : « ${cleanText(type, 20)} »`);
+    const libelle = cleanText(it.Libelle, 200);
+    if (!libelle) throw httpError(400, `L'item ${i + 1} n'a pas d'intitulé`);
+    return {
+      Ordre: (i + 1) * 10,
+      Type: type,
+      Libelle: libelle,
+      Aide: cleanText(it.Aide, 200),
+      // Une section n'appelle pas de réponse : jamais obligatoire.
+      Obligatoire: type !== "section" && it.Obligatoire !== false,
+      Acte: 0,
+      Competence: 0,
+    };
+  });
+  const questions = items.filter((it) => it.Type !== "section").length;
+  if (questions > MAX_QUESTIONS_GRILLE) {
+    throw httpError(400, `${questions} questions : au-delà de ${MAX_QUESTIONS_GRILLE}, `
+      + "la grille ne sera pas remplie. Découpez-la en plusieurs grilles.");
+  }
+  return { items, questions };
+}
+
+/** Grilles visibles par le cadre : celles de ses services + les modèles
+ * d'établissement, avec l'état de leurs versions. */
+async function listerFormulaires(request, env, cadre) {
+  const serviceId = Number(new URL(request.url).searchParams.get("serviceId")) || 0;
+  const tous = await gristAll(env, T_FORMULAIRE);
+  const retenus = tous.filter((f) => {
+    const sid = Number(f.fields.Service) || 0;
+    if (!sid) return true;                                   // modèle d'établissement
+    if (serviceId) return sid === serviceId && cadre.serviceIds.has(sid);
+    return cadre.serviceIds.has(sid);
+  });
+  if (!retenus.length) return { formulaires: [] };
+
+  const versions = await gristAll(env, T_FORMULAIRE_VERSION);
+  const items = await gristAll(env, T_FORMULAIRE_ITEM);
+  const parVersion = new Map();
+  for (const it of items) {
+    const v = Number(it.fields.Version) || 0;
+    if (it.fields.Type !== "section") parVersion.set(v, (parVersion.get(v) || 0) + 1);
+  }
+
+  const formulaires = retenus.map((f) => {
+    const miennes = versions.filter((v) => Number(v.fields.Formulaire) === f.id);
+    const publiee = miennes.find((v) => v.fields.Statut === "publie");
+    const brouillon = miennes.find((v) => v.fields.Statut === "brouillon");
+    return {
+      id: f.id,
+      Nom: f.fields.Nom || "",
+      Description: f.fields.Description || "",
+      ServiceId: Number(f.fields.Service) || 0,
+      Modele: !Number(f.fields.Service),
+      Formation: f.fields.Formation || "",
+      Systematique: !!f.fields.Systematique,
+      Niveaux_cibles: choixListe(f.fields.Niveaux_cibles),
+      Nb_attendu_defaut: Number(f.fields.Nb_attendu_defaut) || 1,
+      Actif: !!f.fields.Actif,
+      Referentiel: f.fields.Referentiel || "",
+      versionPubliee: publiee ? { id: publiee.id, numero: publiee.fields.Numero || 0,
+        questions: parVersion.get(publiee.id) || 0 } : null,
+      brouillon: brouillon ? { id: brouillon.id, numero: brouillon.fields.Numero || 0,
+        questions: parVersion.get(brouillon.id) || 0 } : null,
+      modifiable: !!Number(f.fields.Service) && cadre.serviceIds.has(Number(f.fields.Service)),
+    };
+  });
+  formulaires.sort((a, b) => a.Nom.localeCompare(b.Nom, "fr"));
+  return { formulaires };
+}
+
+/** Contenu d'une version précise (brouillon, publiée ou archivée) : c'est ce
+ * que l'éditeur charge à l'ouverture. Pas de journalisation — simple lecture,
+ * l'ouverture de l'onglet est déjà signalée par /api/cadre/vue. */
+async function lireVersionFormulaire(env, cadre, formulaireId, versionId) {
+  const { versions } = await ensureFormulaireDuCadre(env, cadre, formulaireId);
+  const version = versions.find((v) => v.id === versionId);
+  if (!version) throw httpError(404, "Version introuvable pour cette grille");
+  const items = await itemsDeLaVersion(env, versionId);
+  return {
+    versionId,
+    numero: Number(version.fields.Numero) || 0,
+    statut: version.fields.Statut || "",
+    items: items.map(itemPublic),
+  };
+}
+
+/** Champs de la grille elle-même, communs à la création et à la modification. */
+function champsFormulaire(body) {
+  const fields = {};
+  if (body.Nom !== undefined) {
+    const nom = cleanText(body.Nom, 120);
+    if (!nom) throw httpError(400, "Le nom de la grille est obligatoire");
+    fields.Nom = nom;
+  }
+  if (body.Description !== undefined) fields.Description = cleanText(body.Description, 500);
+  if (body.Formation !== undefined) {
+    const f = cleanText(body.Formation, 20).toUpperCase();
+    if (f && !FORMATIONS.includes(f)) throw httpError(400, "Formation inconnue");
+    fields.Formation = f;
+  }
+  if (body.Systematique !== undefined) fields.Systematique = !!body.Systematique;
+  if (body.Actif !== undefined) fields.Actif = !!body.Actif;
+  if (body.Nb_attendu_defaut !== undefined) {
+    const n = Number(body.Nb_attendu_defaut);
+    if (!Number.isInteger(n) || n < 1 || n > 10) {
+      throw httpError(400, "Le nombre d'observations attendues doit être compris entre 1 et 10");
+    }
+    fields.Nb_attendu_defaut = n;
+  }
+  if (body.Niveaux_cibles !== undefined) {
+    const niveaux = Array.isArray(body.Niveaux_cibles) ? body.Niveaux_cibles : [];
+    for (const n of niveaux) {
+      if (!NIVEAUX_CIBLABLES.includes(n)) throw httpError(400, `Niveau inconnu : « ${cleanText(String(n), 20)} »`);
+    }
+    fields.Niveaux_cibles = ["L", ...niveaux];
+  }
+  return fields;
+}
+
+/** Crée une grille pour un service du cadre, avec sa version 1 en brouillon.
+ * `modeleId` duplique une grille existante (modèle d'établissement ou grille
+ * du service) plutôt que de partir d'une page blanche. */
+async function creerFormulaire(request, env, cadre, info) {
+  const body = await request.json().catch(() => ({}));
+  const serviceId = Number(body.serviceId);
+  if (!cadre.serviceIds.has(serviceId)) throw httpError(403, "Service inconnu ou hors de votre périmètre");
+
+  const fields = champsFormulaire(body);
+  if (!fields.Nom) throw httpError(400, "Le nom de la grille est obligatoire");
+
+  // Duplication : on reprend l'entête et les items de la version publiée.
+  let itemsSource = [];
+  const modeleId = Number(body.modeleId) || 0;
+  if (modeleId) {
+    const src = await gristFilter(env, T_FORMULAIRE, { id: [modeleId] });
+    if (!src.length) throw httpError(404, "Modèle introuvable");
+    const sid = Number(src[0].fields.Service) || 0;
+    if (sid && !cadre.serviceIds.has(sid)) throw httpError(403, "Ce modèle n'est pas accessible");
+    const vs = await gristFilter(env, T_FORMULAIRE_VERSION, { Formulaire: [modeleId] });
+    const publiee = vs.find((v) => v.fields.Statut === "publie") || vs[vs.length - 1];
+    if (publiee) itemsSource = (await itemsDeLaVersion(env, publiee.id)).map((r) => itemPublic(r));
+  }
+
+  const cree = await grist(env, "POST", `/tables/${T_FORMULAIRE}/records`, {
+    records: [{ fields: {
+      Service: serviceId,
+      Systematique: false,
+      Actif: true,
+      Nb_attendu_defaut: 1,
+      Referentiel: "indifferent",
+      Cree_par: cadreNomComplet(cadre),
+      Cree_le: Math.floor(Date.now() / 1000),
+      ...fields,
+    } }],
+  });
+  const formulaireId = cree.records[0].id;
+
+  const version = await grist(env, "POST", `/tables/${T_FORMULAIRE_VERSION}/records`, {
+    records: [{ fields: { Formulaire: formulaireId, Numero: 1, Statut: "brouillon" } }],
+  });
+  const versionId = version.records[0].id;
+
+  if (itemsSource.length) {
+    const { items } = normaliserItems(itemsSource);
+    await grist(env, "POST", `/tables/${T_FORMULAIRE_ITEM}/records`, {
+      records: items.map((it) => ({ fields: { ...it, Version: versionId } })),
+    });
+  }
+
+  if (info) {
+    info.serviceId = serviceId;
+    info.detail = `« ${fields.Nom} »` + (modeleId ? `, dupliquée depuis la grille #${modeleId}` : "");
+  }
+  return json({ id: formulaireId, versionId, items: itemsSource.length }, 201);
+}
+
+/** Modifie l'entête de la grille (nom, ciblage, caractère systématique).
+ * N'affecte aucune version : ce sont des propriétés de la grille, pas de son
+ * contenu, et les évaluations déjà remplies n'en dépendent pas. */
+async function updateFormulaire(request, env, cadre, formulaireId, info) {
+  const { formulaire, serviceId } = await ensureFormulaireDuCadre(env, cadre, formulaireId);
+  const body = await request.json().catch(() => ({}));
+  const fields = champsFormulaire(body);
+  if (!Object.keys(fields).length) throw httpError(400, "Rien à modifier");
+
+  const avant = formulaire.fields;
+  const changements = [];
+  if (fields.Nom !== undefined && fields.Nom !== avant.Nom) {
+    changements.push(`nom : ${avant.Nom || "(vide)"} → ${fields.Nom}`);
+  }
+  if (fields.Systematique !== undefined && fields.Systematique !== !!avant.Systematique) {
+    changements.push(fields.Systematique ? "devient systématique" : "n'est plus systématique");
+  }
+  if (fields.Actif !== undefined && fields.Actif !== !!avant.Actif) {
+    changements.push(fields.Actif ? "réactivée" : "désactivée");
+  }
+  if (fields.Niveaux_cibles !== undefined) {
+    const apres = fields.Niveaux_cibles.slice(1);
+    changements.push(`niveaux : ${apres.length ? apres.join(", ") : "tous"}`);
+  }
+  if (fields.Nb_attendu_defaut !== undefined && fields.Nb_attendu_defaut !== Number(avant.Nb_attendu_defaut)) {
+    changements.push(`observations attendues : ${fields.Nb_attendu_defaut}`);
+  }
+
+  await gristUpdate(env, T_FORMULAIRE, formulaireId, fields);
+  if (info) {
+    info.serviceId = serviceId;
+    info.detail = `« ${fields.Nom || avant.Nom} »`
+      + (changements.length ? ` — ${changements.join(" · ")}` : "");
+  }
+  return json({ ok: true });
+}
+
+/** Enregistre le contenu du brouillon : la liste d'items est remplacée en
+ * bloc, telle que l'éditeur l'affiche. Crée le brouillon s'il n'existe pas
+ * encore — c'est ce qui matérialise « éditer une grille publiée revient à
+ * préparer la version suivante ». */
+async function enregistrerBrouillon(request, env, cadre, formulaireId, info) {
+  const { formulaire, serviceId, versions, brouillon } =
+    await ensureFormulaireDuCadre(env, cadre, formulaireId);
+  const body = await request.json().catch(() => ({}));
+  const { items, questions } = normaliserItems(body.items);
+
+  let versionId = brouillon ? brouillon.id : 0;
+  let numero = brouillon ? Number(brouillon.fields.Numero) || 1 : 0;
+  if (!versionId) {
+    numero = versions.reduce((max, v) => Math.max(max, Number(v.fields.Numero) || 0), 0) + 1;
+    const cree = await grist(env, "POST", `/tables/${T_FORMULAIRE_VERSION}/records`, {
+      records: [{ fields: { Formulaire: formulaireId, Numero: numero, Statut: "brouillon" } }],
+    });
+    versionId = cree.records[0].id;
+  } else {
+    const anciens = await itemsDeLaVersion(env, versionId);
+    if (anciens.length) {
+      await grist(env, "POST", `/tables/${T_FORMULAIRE_ITEM}/data/delete`, anciens.map((r) => r.id));
+    }
+  }
+  if (items.length) {
+    await grist(env, "POST", `/tables/${T_FORMULAIRE_ITEM}/records`, {
+      records: items.map((it) => ({ fields: { ...it, Version: versionId } })),
+    });
+  }
+
+  if (info) {
+    info.serviceId = serviceId;
+    info.detail = `« ${formulaire.fields.Nom || ""} » brouillon v${numero} — `
+      + `${questions} question${questions > 1 ? "s" : ""}, ${items.length - questions} section(s)`;
+  }
+  return json({ versionId, numero, questions, items: items.length });
+}
+
+/** Publie le brouillon : il devient la version en service, la précédente est
+ * archivée. Aucune évaluation existante n'est touchée — chacune reste
+ * rattachée à la version avec laquelle elle a été remplie. */
+async function publierFormulaire(env, cadre, formulaireId, info) {
+  const { formulaire, serviceId, publiee, brouillon } =
+    await ensureFormulaireDuCadre(env, cadre, formulaireId);
+  if (!brouillon) throw httpError(409, "Aucun brouillon à publier");
+
+  const items = await itemsDeLaVersion(env, brouillon.id);
+  const questions = items.filter((it) => it.fields.Type !== "section").length;
+  if (!questions) throw httpError(400, "Une grille sans question ne peut pas être publiée");
+
+  // Archiver d'abord : à aucun instant deux versions ne doivent être publiées.
+  if (publiee) await gristUpdate(env, T_FORMULAIRE_VERSION, publiee.id, { Statut: "archive" });
+  await gristUpdate(env, T_FORMULAIRE_VERSION, brouillon.id, {
+    Statut: "publie",
+    Publie_le: Math.floor(Date.now() / 1000),
+    Publie_par: cadreNomComplet(cadre),
+  });
+
+  if (info) {
+    info.serviceId = serviceId;
+    info.detail = `« ${formulaire.fields.Nom || ""} » v${brouillon.fields.Numero || "?"} publiée`
+      + (publiee ? ` (v${publiee.fields.Numero || "?"} archivée)` : "")
+      + ` — ${questions} question${questions > 1 ? "s" : ""}`;
+  }
+  return json({ ok: true, versionPubliee: brouillon.id, questions });
+}
+
+/** Jette le brouillon. La version publiée, elle, reste en service. */
+async function abandonnerBrouillon(env, cadre, formulaireId, info) {
+  const { formulaire, serviceId, brouillon } = await ensureFormulaireDuCadre(env, cadre, formulaireId);
+  if (!brouillon) throw httpError(409, "Aucun brouillon en cours");
+
+  const items = await itemsDeLaVersion(env, brouillon.id);
+  if (items.length) {
+    await grist(env, "POST", `/tables/${T_FORMULAIRE_ITEM}/data/delete`, items.map((r) => r.id));
+  }
+  await grist(env, "POST", `/tables/${T_FORMULAIRE_VERSION}/data/delete`, [brouillon.id]);
+
+  if (info) {
+    info.serviceId = serviceId;
+    info.detail = `« ${formulaire.fields.Nom || ""} » brouillon v${brouillon.fields.Numero || "?"} abandonné`;
+  }
+  return json({ ok: true });
 }
 
 /* ------------------------------------------------------------------ */

@@ -523,6 +523,108 @@
       }
       .legend-off-swatch { background: #555; border-color: #555; }
     }
+
+    /* ---------- Grilles d'évaluation (onglet Paramètres) ----------
+       Deux colonnes : l'édition à gauche, le rendu téléphone à droite. Le
+       cadre doit voir ce que verra le professionnel pendant qu'il écrit :
+       c'est ce qui l'empêche de produire une grille interminable. */
+    .gr-liste { display: flex; flex-direction: column; gap: 0.5rem; }
+    .gr-carte {
+      display: flex; align-items: center; gap: 0.75rem; width: 100%; text-align: left;
+      background: var(--blanc); border: 1px solid var(--gris-bordure);
+      border-left: 3px solid transparent; padding: 0.85rem 0.9rem; font: inherit; cursor: pointer;
+    }
+    .gr-carte:hover { border-left-color: var(--bleu); background: var(--info-bg); }
+    .gr-carte .gr-nom { font-weight: 700; font-size: 0.95rem; }
+    .gr-carte .gr-meta { font-size: 0.8rem; color: var(--texte-doux); }
+    .gr-carte .gr-droite { margin-left: auto; display: flex; align-items: center; gap: 0.4rem; }
+    .gr-carte.inactive { opacity: 0.6; }
+
+    .gr-zone { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 1.25rem; align-items: start; }
+    @media (max-width: 1100px) { .gr-zone { grid-template-columns: minmax(0, 1fr); } }
+
+    .gr-bloc { background: var(--blanc); border: 1px solid var(--gris-bordure); margin-bottom: 1.25rem; }
+    .gr-bloc > h4 {
+      margin: 0; padding: 0.7rem 1rem; font-size: 0.72rem; text-transform: uppercase;
+      letter-spacing: 0.05em; color: var(--texte-doux); background: var(--gris-fond);
+      border-bottom: 1px solid var(--gris-bordure);
+    }
+    .gr-corps { padding: 1rem; }
+    .gr-champ { margin-bottom: 0.85rem; }
+    .gr-champ label { display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 0.2rem; }
+    .gr-champ .gr-indice { font-size: 0.76rem; color: var(--texte-doux); margin-bottom: 0.25rem; }
+    .gr-champ input[type="text"], .gr-champ textarea, .gr-champ select {
+      width: 100%; padding: 0.5rem; border: 1px solid var(--gris-bordure); font: inherit; font-size: 0.9rem;
+    }
+    .gr-champ textarea { resize: vertical; min-height: 3rem; }
+    .gr-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
+    @media (max-width: 640px) { .gr-duo { grid-template-columns: 1fr; } }
+
+    .gr-inter { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.7rem;
+      border: 1px solid var(--gris-bordure); background: var(--gris-fond); margin-bottom: 0.85rem; }
+    .gr-inter input { margin-top: 0.2rem; flex: none; width: 1.05rem; height: 1.05rem; }
+    .gr-inter .t { font-size: 0.87rem; font-weight: 600; }
+    .gr-inter .d { font-size: 0.78rem; color: var(--texte-doux); }
+
+    .gr-puces { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.3rem; }
+    .gr-puce { border: 1px solid var(--gris-bordure); background: var(--blanc); font: inherit;
+      font-size: 0.8rem; font-weight: 600; color: var(--texte-doux); padding: 0.3rem 0.7rem; cursor: pointer; }
+    .gr-puce.on { background: var(--bleu); border-color: var(--bleu); color: var(--blanc); }
+
+    .gr-compteur { display: flex; gap: 0.5rem; align-items: center; padding: 0.6rem 0.8rem;
+      margin-bottom: 0.8rem; font-size: 0.83rem; border: 1px solid var(--gris-bordure); background: var(--gris-fond); }
+    .gr-compteur.trop { background: var(--alerte-bg); border-color: #f0b8ae; color: var(--alerte); font-weight: 600; }
+
+    .gr-item { border: 1px solid var(--gris-bordure); margin-bottom: 0.5rem; background: var(--blanc); }
+    .gr-item.section { background: var(--gris-fond); }
+    .gr-item-tete { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.6rem; }
+    .gr-item:not(.section) .gr-item-tete { border-bottom: 1px solid var(--gris-bordure); }
+    .gr-type { font: inherit; font-size: 0.78rem; font-weight: 700; padding: 0.2rem 0.4rem;
+      border: 1px solid var(--gris-bordure); background: var(--blanc); color: var(--texte-doux); }
+    .gr-item-tete input.gr-lib { flex: 1; min-width: 0; padding: 0.4rem; border: 1px solid transparent;
+      font: inherit; font-size: 0.9rem; font-weight: 600; background: transparent; }
+    .gr-item-tete input.gr-lib:hover { border-color: var(--gris-bordure); }
+    .gr-item-tete input.gr-lib:focus { border-color: var(--bleu); background: var(--blanc); }
+    .gr-mini { background: none; border: none; color: var(--texte-doux); cursor: pointer;
+      font-size: 0.95rem; padding: 0.2rem 0.35rem; line-height: 1; }
+    .gr-mini:hover:not(:disabled) { color: var(--texte); background: var(--gris-contraste); }
+    .gr-mini:disabled { opacity: 0.3; cursor: default; }
+    .gr-mini.sup:hover { color: var(--rouge); }
+    .gr-item-bas { padding: 0.5rem 0.6rem; display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap; }
+    .gr-item-bas input.gr-aide { flex: 1; min-width: 10rem; padding: 0.35rem;
+      border: 1px solid var(--gris-bordure); font: inherit; font-size: 0.82rem; }
+    .gr-item-bas label { font-size: 0.79rem; color: var(--texte-doux); display: flex; align-items: center; gap: 0.3rem; }
+    .gr-ref { font-size: 0.76rem; color: var(--texte-doux); background: var(--gris-contraste); padding: 0.2rem 0.45rem; }
+    .gr-ajouts { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.8rem;
+      padding-top: 0.8rem; border-top: 1px dashed var(--gris-bordure); }
+
+    /* Aperçu : reprend l'écran de saisie du professionnel, en réduit. */
+    .gr-apercu { position: sticky; top: 1rem; }
+    .gr-tel { width: 100%; max-width: 320px; margin: 0 auto; background: var(--blanc);
+      border: 8px solid #1a1a1a; border-radius: 24px; overflow: hidden; }
+    .gr-tel-tete { background: var(--info-bg); border-bottom: 1px solid #c9d4ff; padding: 0.5rem 0.7rem;
+      font-size: 0.78rem; font-weight: 700; }
+    .gr-tel-corps { height: 400px; overflow-y: auto; padding: 0.7rem; background: var(--gris-fond); }
+    .gp-grp { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--texte-doux); margin: 0.8rem 0 0.35rem; padding-bottom: 0.2rem;
+      border-bottom: 1px solid var(--gris-bordure); }
+    .gp-grp:first-child { margin-top: 0; }
+    .gp-item { background: var(--blanc); border: 1px solid var(--gris-bordure); padding: 0.55rem; margin-bottom: 0.4rem; }
+    .gp-lib { font-size: 0.82rem; font-weight: 600; margin-bottom: 0.1rem; }
+    .gp-aide { font-size: 0.72rem; color: var(--texte-doux); margin-bottom: 0.3rem; }
+    .gp-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem; }
+    .gp-opts.trio { grid-template-columns: 1fr 1fr 1fr; }
+    .gp-opt { border: 1px solid var(--gris-bordure); font-size: 0.72rem; font-weight: 600;
+      color: var(--texte-doux); padding: 0.45rem 0.2rem; text-align: center; }
+    .gp-opt.gris { color: #999; }
+    .gp-txt { border: 1px solid var(--gris-bordure); height: 2.2rem; background: var(--gris-fond); }
+    .gp-vide { text-align: center; color: var(--texte-doux); font-size: 0.8rem; padding: 2rem 1rem; }
+    .gr-defile { font-size: 0.72rem; color: var(--alerte); text-align: center; padding: 0.4rem; font-weight: 600; }
+
+    .gr-barre { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .gr-barre .gr-etat { font-size: 0.8rem; font-weight: 600; padding: 0.35rem 0.7rem;
+      background: var(--info-bg); color: var(--info); }
+    .gr-barre .gr-etat.publie { background: var(--succes-bg); color: var(--succes); }
   </style>
 </head>
 <body>
@@ -687,6 +789,11 @@
         <div id="tab-mailbienvenue" hidden>
           <p class="section-note">Modèle de mail de bienvenue du service. Il est utilisé par le bouton « ✉ Mail de bienvenue » présent sur le dossier de chaque étudiant.</p>
           <div id="mailbienvenue-content" class="decl-card" style="padding: 1rem 1.25rem;"></div>
+        </div>
+
+        <div id="tab-grilles" hidden>
+          <p class="section-note">Grilles d'observation utilisées pour évaluer un soin. Une grille <strong>publiée ne se modifie plus</strong> : vos changements constituent un brouillon, qui remplace la version en service une fois publié. Les évaluations déjà remplies gardent la version avec laquelle elles ont été saisies.</p>
+          <div id="grilles-content"></div>
         </div>
       </section>
 

@@ -16,6 +16,7 @@ const TABS = [
   { id: "satisfaction", label: "Questionnaires de satisfaction" },
   { id: "codes", label: "Codes horaires" },
   { id: "mailbienvenue", label: "Mail de bienvenue" },
+  { id: "grilles", label: "Grilles d'évaluation" },
 ];
 
 // Onglets de 1er niveau (groupes) ; chaque groupe déroule ses sous-onglets.
@@ -23,7 +24,7 @@ const TAB_GROUPS = [
   { id: "dashboard", label: "Tableau de bord", tabs: ["dashboard"] },
   { id: "etudiants", label: "Étudiants", tabs: ["dossier", "inscription", "declarations", "evaluation"] },
   { id: "service", label: "Gestion de service", tabs: ["planning", "stats", "satisfaction"] },
-  { id: "parametres", label: "Paramètres", tabs: ["codes", "mailbienvenue"] },
+  { id: "parametres", label: "Paramètres", tabs: ["codes", "mailbienvenue", "grilles"] },
 ];
 
 // Modèle de mail de bienvenue par défaut (si le service n'en a pas configuré).
@@ -572,6 +573,7 @@ function renderActiveTab() {
   $("tab-satisfaction").hidden = state.activeTab !== "satisfaction";
   $("tab-codes").hidden = state.activeTab !== "codes";
   $("tab-mailbienvenue").hidden = state.activeTab !== "mailbienvenue";
+  $("tab-grilles").hidden = state.activeTab !== "grilles";
   if (state.activeTab === "dashboard") renderDashboardTab();
   if (state.activeTab === "declarations") renderDeclarationsTab();
   if (state.activeTab === "dossier") renderDossierTab();
@@ -582,6 +584,7 @@ function renderActiveTab() {
   if (state.activeTab === "satisfaction") renderSatisfactionTab();
   if (state.activeTab === "codes") renderCodesTab();
   if (state.activeTab === "mailbienvenue") renderMailBienvenueTab();
+  if (state.activeTab === "grilles") renderGrillesTab();
 }
 
 /** Change d'onglet par programmation (clic sur une carte du tableau de bord). */
@@ -3452,6 +3455,544 @@ function renderMailBienvenueTab() {
   actions.style.marginTop = "0.75rem";
   actions.append(saveBtn, resetBtn);
   container.append(actions, hint);
+}
+
+/* ================================================================== */
+/* Onglet Grilles d'évaluation                                         */
+/* ================================================================== */
+/* Deux écrans dans le même onglet : la liste des grilles du service, et
+ * l'éditeur d'une grille. L'éditeur affiche en permanence le rendu
+ * téléphone : le cadre doit voir ce que verra le professionnel pendant
+ * qu'il écrit, sinon il produit des grilles que personne ne remplit.
+ *
+ * Le brouillon n'est jamais sauvegardé automatiquement : le cadre
+ * enregistre, puis publie. Publier archive la version en service, et les
+ * évaluations déjà remplies gardent la leur (règle tenue par le worker). */
+
+const GRILLE_TYPES = {
+  acquisition: "Acquisition",
+  oui_non: "Oui / Non",
+  texte: "Commentaire",
+  section: "Section",
+};
+// Échelle du portfolio, reprise telle quelle dans l'aperçu.
+const GRILLE_OPT_ACQ = ["Non acquis", "À améliorer", "Acquis", "Non mobilisé"];
+const GRILLE_OPT_OUI = ["Oui", "Non", "Non applic."];
+const GRILLE_NIVEAUX = ["ESI L1", "ESI L2", "ESI L3", "M1", "M2", "Aide-Soignant", "Autre"];
+// Seuil d'avertissement (le worker, lui, refuse au-delà de 20).
+const GRILLE_SEUIL_ALERTE = 7;
+
+// État local de l'onglet, hors de `state.data` : rechargé à chaque ouverture.
+const grilles = { liste: null, edition: null, chargement: false };
+
+function renderGrillesTab() {
+  const container = $("grilles-content");
+  if (grilles.edition) return renderGrilleEditeur(container);
+
+  container.innerHTML = "";
+  if (!state.selectedServiceId) {
+    container.appendChild(el("p", "empty", "Sélectionnez un service."));
+    return;
+  }
+  if (!grilles.liste) {
+    container.appendChild(el("p", "empty", "Chargement…"));
+    if (!grilles.chargement) chargerGrilles();
+    return;
+  }
+
+  const barre = el("div", "gr-barre");
+  const nouveau = el("button", "btn btn-primary", "+ Nouvelle grille");
+  nouveau.type = "button";
+  nouveau.addEventListener("click", creerGrille);
+  barre.appendChild(nouveau);
+  container.appendChild(barre);
+
+  const miennes = grilles.liste.filter((g) => g.ServiceId === state.selectedServiceId);
+  const modeles = grilles.liste.filter((g) => g.Modele);
+
+  if (!miennes.length) {
+    container.appendChild(el("p", "empty",
+      "Aucune grille dans ce service. Créez-en une, ou dupliquez un modèle d'établissement."));
+  } else {
+    const liste = el("div", "gr-liste");
+    miennes.forEach((g) => liste.appendChild(carteGrille(g)));
+    container.appendChild(liste);
+  }
+
+  if (modeles.length) {
+    const titre = el("h3", "", "Modèles d'établissement");
+    titre.style.cssText = "font-size:0.95rem;margin:1.5rem 0 0.5rem;";
+    container.append(titre, el("p", "save-hint",
+      "Ces modèles ne se modifient pas : dupliquez-en un pour l'adapter à votre service."));
+    const liste = el("div", "gr-liste");
+    modeles.forEach((g) => liste.appendChild(carteGrille(g, true)));
+    container.appendChild(liste);
+  }
+}
+
+function carteGrille(g, estModele) {
+  const carte = el("button", "gr-carte" + (g.Actif || estModele ? "" : " inactive"));
+  carte.type = "button";
+
+  const gauche = el("div", "");
+  gauche.appendChild(el("div", "gr-nom", g.Nom));
+  const bits = [];
+  if (g.Systematique) bits.push("systématique");
+  if (g.Niveaux_cibles.length) bits.push(g.Niveaux_cibles.join(", "));
+  bits.push(`${g.Nb_attendu_defaut} observation${g.Nb_attendu_defaut > 1 ? "s" : ""} attendue${g.Nb_attendu_defaut > 1 ? "s" : ""}`);
+  if (!g.Actif && !estModele) bits.push("désactivée");
+  gauche.appendChild(el("div", "gr-meta", bits.join(" · ")));
+
+  const droite = el("div", "gr-droite");
+  if (g.versionPubliee) {
+    droite.appendChild(badge(`v${g.versionPubliee.numero} · ${g.versionPubliee.questions} question${g.versionPubliee.questions > 1 ? "s" : ""}`, "ok"));
+  } else {
+    droite.appendChild(badge("jamais publiée", "pending"));
+  }
+  if (g.brouillon) droite.appendChild(badge(`brouillon v${g.brouillon.numero}`, "info"));
+
+  carte.append(gauche, droite);
+  carte.addEventListener("click", () => estModele ? dupliquerModele(g) : ouvrirGrille(g));
+  return carte;
+}
+
+async function chargerGrilles() {
+  grilles.chargement = true;
+  try {
+    const res = await api("GET", `/api/cadre/formulaires?serviceId=${state.selectedServiceId}`);
+    grilles.liste = res.formulaires;
+  } catch (err) {
+    grilles.liste = [];
+    $("grilles-content").innerHTML = "";
+    $("grilles-content").appendChild(el("p", "empty", "Chargement impossible : " + err.message));
+    return;
+  } finally {
+    grilles.chargement = false;
+  }
+  if (state.activeTab === "grilles") renderGrillesTab();
+}
+
+async function creerGrille() {
+  const nom = prompt("Nom de la grille (ex. « Pose de perfusion périphérique ») :");
+  if (nom === null) return;
+  if (!nom.trim()) return;
+  try {
+    await api("POST", "/api/cadre/formulaires", { serviceId: state.selectedServiceId, Nom: nom.trim() });
+    grilles.liste = null;
+    renderGrillesTab();
+  } catch (err) {
+    alert("Création impossible : " + err.message);
+  }
+}
+
+async function dupliquerModele(modele) {
+  const nom = prompt("Nom de la copie dans votre service :", modele.Nom);
+  if (nom === null || !nom.trim()) return;
+  try {
+    await api("POST", "/api/cadre/formulaires", {
+      serviceId: state.selectedServiceId, Nom: nom.trim(),
+      Description: modele.Description, Formation: modele.Formation, modeleId: modele.id,
+    });
+    grilles.liste = null;
+    renderGrillesTab();
+  } catch (err) {
+    alert("Duplication impossible : " + err.message);
+  }
+}
+
+/** Ouvre l'éditeur : on charge le contenu à éditer, c'est-à-dire le brouillon
+ *  s'il existe, sinon une copie de la version publiée (qui deviendra le
+ *  brouillon de la version suivante au premier enregistrement). */
+async function ouvrirGrille(g) {
+  try {
+    const source = g.brouillon || g.versionPubliee;
+    const items = source
+      ? (await api("GET", `/api/cadre/formulaires/${g.id}/version/${source.id}`)).items
+      : [];
+    grilles.edition = { grille: { ...g }, items, modifie: false };
+  } catch (err) {
+    // La lecture des items passe par /api/cadre/formulaires : si la route
+    // détaillée manque, on ouvre au moins l'entête plutôt que de bloquer.
+    grilles.edition = { grille: { ...g }, items: [], modifie: false, erreur: err.message };
+  }
+  renderGrillesTab();
+}
+
+function renderGrilleEditeur(container) {
+  const ed = grilles.edition;
+  const g = ed.grille;
+  container.innerHTML = "";
+
+  /* --- Barre d'état et actions --- */
+  const barre = el("div", "gr-barre");
+  const retour = el("button", "btn btn-ghost btn-small", "← Toutes les grilles");
+  retour.type = "button";
+  retour.addEventListener("click", () => {
+    if (ed.modifie && !confirm("Vos modifications non enregistrées seront perdues. Quitter ?")) return;
+    grilles.edition = null;
+    renderGrillesTab();
+  });
+
+  const etat = el("span", "gr-etat" + (g.versionPubliee && !g.brouillon ? " publie" : ""),
+    g.versionPubliee
+      ? (g.brouillon ? `v${g.versionPubliee.numero} publiée · brouillon v${g.brouillon.numero}`
+                     : `v${g.versionPubliee.numero} publiée`)
+      : (g.brouillon ? `brouillon v${g.brouillon.numero} · jamais publiée` : "nouvelle grille"));
+
+  const hint = el("span", "save-hint", "");
+  const enregistrer = el("button", "btn btn-primary btn-small", "Enregistrer le brouillon");
+  enregistrer.type = "button";
+  enregistrer.addEventListener("click", () => enregistrerGrille(hint));
+
+  const publier = el("button", "btn btn-secondary btn-small", "Publier");
+  publier.type = "button";
+  publier.addEventListener("click", () => publierGrille(hint));
+
+  barre.append(retour, etat, enregistrer, publier, hint);
+  container.appendChild(barre);
+
+  if (ed.erreur) {
+    const avert = el("p", "empty", "Contenu non chargé (" + ed.erreur + ") : "
+      + "enregistrer remplacerait la grille par une version vide. Revenez à la liste.");
+    container.appendChild(avert);
+  }
+
+  /* --- Deux colonnes --- */
+  const zone = el("div", "gr-zone");
+  const gauche = el("div", "");
+  const droite = el("div", "gr-apercu");
+  zone.append(gauche, droite);
+  container.appendChild(zone);
+
+  gauche.appendChild(blocEntete(g));
+  gauche.appendChild(blocQuestions(ed));
+
+  const panneau = el("div", "gr-bloc");
+  panneau.appendChild(el("h4", "", "Ce que verra le professionnel"));
+  const corpsP = el("div", "gr-corps");
+  corpsP.style.padding = "0.8rem";
+  const tel = el("div", "gr-tel");
+  const teleTete = el("div", "gr-tel-tete", "Un étudiant du service");
+  const telCorps = el("div", "gr-tel-corps");
+  telCorps.id = "gr-apercu-corps";
+  tel.append(teleTete, telCorps);
+  const alerte = el("div", "gr-defile", "⚠ Plus de 2 écrans à faire défiler");
+  alerte.id = "gr-alerte-defile";
+  alerte.hidden = true;
+  corpsP.append(tel, alerte);
+  panneau.appendChild(corpsP);
+  droite.appendChild(panneau);
+
+  dessinerApercuGrille();
+}
+
+function blocEntete(g) {
+  const bloc = el("div", "gr-bloc");
+  bloc.appendChild(el("h4", "", "La grille"));
+  const corps = el("div", "gr-corps");
+
+  const champNom = el("div", "gr-champ");
+  champNom.appendChild(el("label", "", "Nom"));
+  const nom = document.createElement("input");
+  nom.type = "text"; nom.maxLength = 120; nom.value = g.Nom;
+  nom.addEventListener("input", () => { g.Nom = nom.value; grilles.edition.modifie = true; });
+  champNom.appendChild(nom);
+
+  const champDesc = el("div", "gr-champ");
+  champDesc.appendChild(el("label", "", "Description"));
+  const desc = document.createElement("textarea");
+  desc.maxLength = 500; desc.value = g.Description || "";
+  desc.addEventListener("input", () => { g.Description = desc.value; grilles.edition.modifie = true; });
+  champDesc.appendChild(desc);
+
+  const duo = el("div", "gr-duo");
+  const champFor = el("div", "gr-champ");
+  champFor.appendChild(el("label", "", "Formation"));
+  const sel = document.createElement("select");
+  ["", "INFIRMIER", "AIDE SOIGNANT", "AUTRE"].forEach((f) => {
+    const o = document.createElement("option");
+    o.value = f; o.textContent = f || "(toutes)"; o.selected = (g.Formation || "") === f;
+    sel.appendChild(o);
+  });
+  sel.addEventListener("change", () => { g.Formation = sel.value; grilles.edition.modifie = true; });
+  champFor.appendChild(sel);
+
+  const champNb = el("div", "gr-champ");
+  champNb.appendChild(el("label", "", "Observations attendues par étudiant"));
+  champNb.appendChild(el("div", "gr-indice", "Au-delà de 1, on suit une progression."));
+  const nb = document.createElement("select");
+  [1, 2, 3, 4, 5].forEach((n) => {
+    const o = document.createElement("option");
+    o.value = String(n); o.textContent = String(n); o.selected = g.Nb_attendu_defaut === n;
+    nb.appendChild(o);
+  });
+  nb.addEventListener("change", () => {
+    g.Nb_attendu_defaut = Number(nb.value); grilles.edition.modifie = true;
+  });
+  champNb.appendChild(nb);
+  duo.append(champFor, champNb);
+
+  const inter = el("div", "gr-inter");
+  const cb = document.createElement("input");
+  cb.type = "checkbox"; cb.checked = !!g.Systematique;
+  const texteInter = el("div", "");
+  texteInter.appendChild(el("div", "t", "Grille systématique"));
+  texteInter.appendChild(el("div", "d",
+    "Posée automatiquement à chaque étudiant entrant dans le service. "
+    + "Décochée, vous l'attribuez au cas par cas depuis le dossier de l'étudiant."));
+  inter.append(cb, texteInter);
+
+  const champNiv = el("div", "gr-champ");
+  champNiv.appendChild(el("label", "", "Niveaux concernés"));
+  champNiv.appendChild(el("div", "gr-indice", "Aucun sélectionné = tous les niveaux."));
+  const puces = el("div", "gr-puces");
+  GRILLE_NIVEAUX.forEach((n) => {
+    const p = el("button", "gr-puce" + (g.Niveaux_cibles.includes(n) ? " on" : ""), n);
+    p.type = "button";
+    p.addEventListener("click", () => {
+      const i = g.Niveaux_cibles.indexOf(n);
+      if (i >= 0) g.Niveaux_cibles.splice(i, 1); else g.Niveaux_cibles.push(n);
+      p.classList.toggle("on");
+      grilles.edition.modifie = true;
+    });
+    puces.appendChild(p);
+  });
+  champNiv.appendChild(puces);
+  champNiv.hidden = !cb.checked;
+  cb.addEventListener("change", () => {
+    g.Systematique = cb.checked;
+    champNiv.hidden = !cb.checked;
+    grilles.edition.modifie = true;
+  });
+
+  const inactive = el("label", "gr-item-bas");
+  inactive.style.padding = "0";
+  const cbA = document.createElement("input");
+  cbA.type = "checkbox"; cbA.checked = g.Actif === false;
+  cbA.addEventListener("change", () => { g.Actif = !cbA.checked; grilles.edition.modifie = true; });
+  inactive.append(cbA, document.createTextNode("Grille désactivée (plus proposée à la saisie)"));
+
+  corps.append(champNom, champDesc, duo, inter, champNiv, inactive);
+  bloc.appendChild(corps);
+  return bloc;
+}
+
+function blocQuestions(ed) {
+  const bloc = el("div", "gr-bloc");
+  bloc.appendChild(el("h4", "", "Les questions"));
+  const corps = el("div", "gr-corps");
+
+  const compteur = el("div", "gr-compteur");
+  compteur.id = "gr-compteur";
+  corps.appendChild(compteur);
+
+  const liste = el("div", "");
+  liste.id = "gr-liste-items";
+  corps.appendChild(liste);
+
+  const ajouts = el("div", "gr-ajouts");
+  [["acquisition", "+ Question d'acquisition"], ["oui_non", "+ Oui / Non"],
+   ["texte", "+ Commentaire libre"], ["section", "+ Titre de section"]].forEach(([type, label]) => {
+    const b = el("button", "btn btn-ghost btn-small", label);
+    b.type = "button";
+    b.addEventListener("click", () => {
+      ed.items.push({ Type: type, Libelle: "", Aide: "", Obligatoire: type !== "section" });
+      ed.modifie = true;
+      dessinerItemsGrille();
+      const champs = document.querySelectorAll("#gr-liste-items input.gr-lib");
+      if (champs.length) champs[champs.length - 1].focus();
+    });
+    ajouts.appendChild(b);
+  });
+  corps.appendChild(ajouts);
+
+  bloc.appendChild(corps);
+  // Rempli après insertion dans le document (les ids doivent exister).
+  setTimeout(dessinerItemsGrille, 0);
+  return bloc;
+}
+
+function dessinerItemsGrille() {
+  const ed = grilles.edition;
+  const liste = document.getElementById("gr-liste-items");
+  if (!ed || !liste) return;
+  liste.innerHTML = "";
+
+  ed.items.forEach((it, i) => {
+    const d = el("div", "gr-item" + (it.Type === "section" ? " section" : ""));
+    const tete = el("div", "gr-item-tete");
+
+    const sel = document.createElement("select");
+    sel.className = "gr-type";
+    Object.entries(GRILLE_TYPES).forEach(([v, t]) => {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = t; o.selected = v === it.Type;
+      sel.appendChild(o);
+    });
+    sel.addEventListener("change", () => {
+      it.Type = sel.value;
+      if (it.Type === "section") it.Obligatoire = false;
+      ed.modifie = true;
+      dessinerItemsGrille();
+    });
+
+    const lib = document.createElement("input");
+    lib.type = "text"; lib.className = "gr-lib"; lib.maxLength = 200; lib.value = it.Libelle;
+    lib.placeholder = it.Type === "section" ? "Titre de la section" : "Intitulé de la question";
+    lib.addEventListener("input", () => {
+      it.Libelle = lib.value; ed.modifie = true; dessinerApercuGrille();
+    });
+
+    const haut = el("button", "gr-mini", "↑");
+    haut.type = "button"; haut.title = "Monter"; haut.disabled = i === 0;
+    haut.addEventListener("click", () => {
+      [ed.items[i - 1], ed.items[i]] = [ed.items[i], ed.items[i - 1]];
+      ed.modifie = true; dessinerItemsGrille();
+    });
+
+    const bas = el("button", "gr-mini", "↓");
+    bas.type = "button"; bas.title = "Descendre"; bas.disabled = i === ed.items.length - 1;
+    bas.addEventListener("click", () => {
+      [ed.items[i + 1], ed.items[i]] = [ed.items[i], ed.items[i + 1]];
+      ed.modifie = true; dessinerItemsGrille();
+    });
+
+    const sup = el("button", "gr-mini sup", "✕");
+    sup.type = "button"; sup.title = "Supprimer";
+    sup.addEventListener("click", () => {
+      ed.items.splice(i, 1); ed.modifie = true; dessinerItemsGrille();
+    });
+
+    tete.append(sel, lib, haut, bas, sup);
+    d.appendChild(tete);
+
+    if (it.Type !== "section") {
+      const bas2 = el("div", "gr-item-bas");
+      const aide = document.createElement("input");
+      aide.type = "text"; aide.className = "gr-aide"; aide.maxLength = 200;
+      aide.placeholder = "Précision affichée au professionnel (facultatif)";
+      aide.value = it.Aide || "";
+      aide.addEventListener("input", () => {
+        it.Aide = aide.value; ed.modifie = true; dessinerApercuGrille();
+      });
+
+      const lo = document.createElement("label");
+      const cb = document.createElement("input");
+      cb.type = "checkbox"; cb.checked = it.Obligatoire !== false;
+      cb.addEventListener("change", () => { it.Obligatoire = cb.checked; ed.modifie = true; });
+      lo.append(cb, document.createTextNode("Obligatoire"));
+
+      const ref = el("span", "gr-ref", "Référentiel : indisponible");
+      ref.title = "Rattachement à un acte ou une compétence — en attente de la refonte du référentiel";
+
+      bas2.append(aide, lo, ref);
+      d.appendChild(bas2);
+    }
+    liste.appendChild(d);
+  });
+
+  dessinerCompteurGrille();
+  dessinerApercuGrille();
+}
+
+function dessinerCompteurGrille() {
+  const compteur = document.getElementById("gr-compteur");
+  if (!compteur || !grilles.edition) return;
+  const n = grilles.edition.items.filter((it) => it.Type !== "section").length;
+  const trop = n >= GRILLE_SEUIL_ALERTE;
+  compteur.classList.toggle("trop", trop);
+  compteur.textContent = trop
+    ? `${n} questions — au-delà de ${GRILLE_SEUIL_ALERTE - 1}, la grille est rarement remplie `
+      + "jusqu'au bout après un soin."
+    : `${n} question${n > 1 ? "s" : ""} — bonne longueur pour une saisie après un soin.`;
+}
+
+function dessinerApercuGrille() {
+  const zone = document.getElementById("gr-apercu-corps");
+  if (!zone || !grilles.edition) return;
+  const items = grilles.edition.items;
+  zone.innerHTML = "";
+
+  if (!items.length) {
+    zone.appendChild(el("div", "gp-vide", "Grille vide. Ajoutez une première question."));
+    document.getElementById("gr-alerte-defile").hidden = true;
+    return;
+  }
+
+  items.forEach((it) => {
+    if (it.Type === "section") {
+      zone.appendChild(el("div", "gp-grp", it.Libelle || "Section sans titre"));
+      return;
+    }
+    const d = el("div", "gp-item");
+    d.appendChild(el("div", "gp-lib", it.Libelle || "Sans intitulé"));
+    if (it.Aide) d.appendChild(el("div", "gp-aide", it.Aide));
+    if (it.Type === "texte") {
+      d.appendChild(el("div", "gp-txt"));
+    } else {
+      const opts = it.Type === "acquisition" ? GRILLE_OPT_ACQ : GRILLE_OPT_OUI;
+      const grille = el("div", "gp-opts" + (it.Type === "oui_non" ? " trio" : ""));
+      opts.forEach((t, k) => {
+        // La dernière option est l'échappatoire (« Non mobilisé » / « Non
+        // applic. ») : grisée, elle ne doit pas être sur le chemin.
+        const derniere = k === opts.length - 1;
+        grille.appendChild(el("div", "gp-opt" + (derniere ? " gris" : ""), t));
+      });
+      d.appendChild(grille);
+    }
+    zone.appendChild(d);
+  });
+
+  requestAnimationFrame(() => {
+    const alerte = document.getElementById("gr-alerte-defile");
+    if (alerte) alerte.hidden = zone.scrollHeight <= zone.clientHeight * 2;
+  });
+}
+
+async function enregistrerGrille(hint) {
+  const ed = grilles.edition;
+  hint.textContent = "";
+  const vides = ed.items.filter((it) => !String(it.Libelle || "").trim()).length;
+  if (vides) { hint.textContent = `${vides} item(s) sans intitulé.`; return; }
+  try {
+    await api("PATCH", `/api/cadre/formulaires/${ed.grille.id}`, {
+      Nom: ed.grille.Nom,
+      Description: ed.grille.Description,
+      Formation: ed.grille.Formation,
+      Systematique: ed.grille.Systematique,
+      Actif: ed.grille.Actif !== false,
+      Nb_attendu_defaut: ed.grille.Nb_attendu_defaut,
+      Niveaux_cibles: ed.grille.Systematique ? ed.grille.Niveaux_cibles : [],
+    });
+    const res = await api("PUT", `/api/cadre/formulaires/${ed.grille.id}/brouillon`, { items: ed.items });
+    ed.modifie = false;
+    ed.grille.brouillon = { id: res.versionId, numero: res.numero, questions: res.questions };
+    grilles.liste = null;
+    hint.textContent = `Brouillon v${res.numero} enregistré ✅`;
+    renderGrillesTab();
+  } catch (err) {
+    hint.textContent = "Échec : " + err.message;
+  }
+}
+
+async function publierGrille(hint) {
+  const ed = grilles.edition;
+  if (ed.modifie) { hint.textContent = "Enregistrez le brouillon avant de publier."; return; }
+  if (!ed.grille.brouillon) { hint.textContent = "Aucun brouillon à publier."; return; }
+  const ancienne = ed.grille.versionPubliee;
+  if (!confirm(
+    `Publier la v${ed.grille.brouillon.numero} ?\n\n`
+    + (ancienne ? `La v${ancienne.numero} sera archivée. ` : "")
+    + "Les évaluations déjà remplies gardent leur version : elles ne changent pas de sens.\n"
+    + "Une version publiée ne se modifie plus — la modifier créera la version suivante.")) return;
+  try {
+    await api("POST", `/api/cadre/formulaires/${ed.grille.id}/publier`, {});
+    grilles.edition = null;
+    grilles.liste = null;
+    renderGrillesTab();
+  } catch (err) {
+    hint.textContent = "Publication impossible : " + err.message;
+  }
 }
 
 /* ------------------------------------------------------------------ */
