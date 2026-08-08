@@ -487,13 +487,16 @@ input[type="checkbox"], input[type="radio"] {
   padding: 0.6rem 0.9rem;
 }
 
-/* Accès au questionnaire de satisfaction, en bas de la carte de période */
-.periode-eval {
+/* Accès au questionnaire de satisfaction et prise de rendez-vous, en bas de
+   la carte de période */
+.periode-eval,
+.periode-rdv {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--gris-bordure);
 }
-.periode-eval .btn { text-decoration: none; display: inline-flex; align-items: center; }
+.periode-eval .btn,
+.periode-rdv .btn { text-decoration: none; display: inline-flex; align-items: center; }
 .eval-note { margin: 0.5rem 0 0; font-size: 0.82rem; color: var(--texte-doux); }
 .periode-eval .eval-note:only-child { margin-top: 0; }
 
@@ -865,7 +868,7 @@ dialog h2 { margin: 0 0 0.5rem; }
   body { background: #fff; }
   .fr-header, .fr-notice, .fr-footer, .app-header, .app-footer,
   .header-actions, .fr-header-tools, #add-sortie-btn, .sortie-delete,
-  .periode-tabs, #login-screen, dialog, .periode-eval { display: none !important; }
+  .periode-tabs, #login-screen, dialog, .periode-eval, .periode-rdv { display: none !important; }
   .periode-card, .week-card, .sortie-row { border: 1px solid #999; }
   .week-card { break-inside: avoid; }
   .content { max-width: none; margin: 0; }

@@ -280,10 +280,41 @@ function renderPeriode() {
   if (p.cadre && p.cadre.nom) {
     card.appendChild(renderCadre(p.cadre));
   }
+  const rdv = renderRdvInvite(p);
+  if (rdv) card.appendChild(rdv);
   const invite = renderEvaluationInvite(p);
   if (invite) card.appendChild(invite);
   container.appendChild(card);
 }
+
+/** Prise de rendez-vous sur RDV Service Public : proposée tant que le stage
+ *  n'est pas terminé, quand l'administrateur a activé le raccordement et
+ *  renseigné l'adresse de la page de réservation (voir etablissement.js). */
+function renderRdvInvite(p) {
+  const cfg = window.ETAB_CONFIG || {};
+  // Le lien vient de Grist : le Worker ne laisse passer que du http(s), on le
+  // revérifie ici puisque le cache local peut être plus ancien.
+  if (!cfg.rdvSpActif || !/^https?:\/\//i.test(cfg.rdvSpUrl || "")) return null;
+  if (stageTermine(p)) return null;
+
+  const wrap = el("div", "periode-rdv");
+  const a = el("a", "btn btn-secondary", "📅 Prendre rendez-vous");
+  a.href = cfg.rdvSpUrl;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  wrap.appendChild(a);
+  wrap.appendChild(el("p", "eval-note",
+    "Entretien de suivi, bilan de mi-stage : réservez un créneau sur RDV Service Public. "
+    + "Le rendez-vous se range ensuite tout seul dans votre dossier de stage."));
+  return wrap;
+}
+
+// La config de l'établissement arrive après coup (etablissement.js) : si
+// l'espace est déjà affiché, on rejoue le rendu pour faire apparaître — ou
+// disparaître — le bouton de prise de rendez-vous.
+document.addEventListener("etab-config", () => {
+  if (state.data) render();
+});
 
 /** Un stage est terminé le lendemain de sa date de fin — sauf si le service le
  *  maintient « en cours ». Sert au questionnaire comme aux déclarations. */

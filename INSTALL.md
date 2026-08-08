@@ -14,7 +14,7 @@ l'installation actuelle (CHR Metz-Thionville).
 Comptez environ 1h la première fois. Prérequis : un compte
 [Grist DINUM](https://grist.numerique.gouv.fr) (ou une autre instance Grist),
 un compte [Cloudflare](https://dash.cloudflare.com/sign-up) (gratuit), un
-compte GitHub, et Node.js installé sur votre poste.
+compte GitHub, et Node.js 22 ou plus (exigé par Wrangler 4) sur votre poste.
 
 ---
 
@@ -144,6 +144,7 @@ Puis les **secrets** — jamais dans `wrangler.toml`, qui est versionné :
 npx wrangler secret put GRIST_API_KEY     # obligatoire : clé API Grist (étape 2)
 npx wrangler secret put SESSION_SECRET    # recommandé : chaîne aléatoire longue
 npx wrangler secret put ADMIN_KEY         # facultatif : clé de dépannage
+npx wrangler secret put RDV_SP_WEBHOOK_SECRET   # facultatif : RDV Service Public (étape 8)
 npx wrangler deploy
 ```
 
@@ -156,6 +157,9 @@ npx wrangler deploy
   (`espace-cadre.html#email=…&code=…&admin=…`), elle ouvre l'espace du cadre
   **sans son PIN** et n'est jamais bloquée par le compteur d'essais. Ne la
   définissez que si vous en avez besoin, et ne la diffusez pas.
+- `RDV_SP_WEBHOOK_SECRET` est le **secret partagé** du webhook RDV Service
+  Public : il sert à vérifier la signature des rendez-vous reçus. À ne définir
+  que si vous raccordez RDV Service Public (étape 8).
 - Pour les essais en local, ces valeurs vont dans `worker/.dev.vars` (déjà
   exclu du dépôt).
 
@@ -276,6 +280,63 @@ limite les appels par appareil (15 connexions/minute, 5 auto-inscriptions par
 
 ---
 
+## Étape 8 — Raccorder RDV Service Public (facultatif)
+
+[RDV Service Public](https://rdv.numerique.gouv.fr) est le service public de
+prise de rendez-vous en ligne. Raccordé, il fait deux choses : l'étudiant
+réserve son créneau depuis son espace, et les rendez-vous pris là-bas
+apparaissent tout seuls dans son dossier de stage, à côté de ceux saisis par
+les cadres.
+
+L'accès à RDV Service Public suppose que votre structure y ait un espace ; sans
+compte, sautez cette étape — tout le reste fonctionne sans.
+
+**1. Le secret partagé, côté Worker.** Choisissez une chaîne aléatoire longue
+(`openssl rand -base64 32`) et posez-la :
+
+```bash
+cd worker && npx wrangler secret put RDV_SP_WEBHOOK_SECRET
+```
+
+**2. Le webhook, côté RDV Service Public.** « Mon compte » → « Mes
+organisations » → « Configuration » → **Webhooks** → *Ajouter un webhook* :
+
+- **URL à notifier** : `https://votre-worker.workers.dev/api/webhooks/rdv-service-public`
+  (l'adresse exacte est affichée dans l'espace administrateur, prête à copier) ;
+- **Secret partagé** : celui de l'étape 1, à l'identique ;
+- **Modèles** : cochez au moins **Rendez-vous** (les autres sont ignorés).
+
+**3. L'activation, côté application.** Espace administrateur → onglet
+**Configuration** → sous-onglet **Rendez-vous** : cochez « Activer RDV Service
+Public », et collez le lien public de prise de rendez-vous si vous voulez que
+le bouton apparaisse dans l'espace étudiant. Les colonnes `Rdv_sp_actif` et
+`Rdv_sp_url` sont créées toutes seules dans `ETABLISSEMENT`, comme
+`Rdv_sp_id` dans `RDV_FORMATEUR` au premier rendez-vous reçu.
+
+Décocher la case coupe tout : plus de bouton, et les rendez-vous envoyés sont
+acceptés puis ignorés (sans erreur, donc sans réessais en boucle côté RDV
+Service Public).
+
+**Comment le rendez-vous retrouve son étudiant.** Par l'**adresse e-mail** du
+dossier d'abord ; à défaut par le **code anonymat** reconstitué depuis prénom +
+date de naissance + nom, et seulement s'il ne désigne qu'un dossier. Le
+rendez-vous est ensuite rattaché au stage qui couvre sa date, sinon au stage en
+cours, sinon au prochain à commencer. Ce qui ne se rattache à rien n'est pas
+écrit : une ligne `Rendez-vous RDV Service Public non rattaché` part dans le
+journal d'activité, avec la raison. Un rendez-vous annulé ou supprimé retire la
+ligne correspondante.
+
+Vérifications :
+
+- [ ] Un rendez-vous de test pris sur RDV Service Public pour un étudiant dont
+      l'e-mail est celui de son dossier apparaît dans son dossier, avec
+      `Cree_par = RDV Service Public`.
+- [ ] Le déplacer met à jour **la même** ligne ; l'annuler la retire.
+- [ ] Sans le secret sur le Worker, l'espace administrateur le signale et les
+      notifications sont refusées (`403`).
+
+---
+
 ## Développement local
 
 ```bash
@@ -340,7 +401,8 @@ formules).
 | | Logo | Pièce jointe |
 | | Url_site, Url_document_grist, Url_formulaire_evaluation, Signature_invitation | Texte |
 | | DOMAINE_MAIL, Texte_pied_de_page | Texte (facultatif) |
-| | Afficher_bandeau_beta, Mode_etablissement_public | Bool (facultatif) |
+| | Afficher_bandeau_beta, Mode_etablissement_public, Rdv_sp_actif | Bool (facultatif) |
+| | Rdv_sp_url | Texte (facultatif) |
 | **JOURNAL_ACTIVITE** | Horodatage | Date/heure (le worker écrit un timestamp Unix en secondes) |
 | | Role, Qui, Nom, Action, Detail | Texte |
 | | Site, Service, Etudiant | Texte (créées par le worker) |
@@ -348,6 +410,7 @@ formules).
 | | Date_rdv | Date |
 | | Type_de_rendez_vous | Choix |
 | | Formateur, Commentaire, Cree_par | Texte |
+| | Rdv_sp_id | Texte (créée par le worker, étape 8) |
 | **JOURS_FERIES** | Date | Date |
 | | Libelle | Texte |
 | **EVALUATION_STAGE_ETUDIANT** | Periode_de_stage | Référence → PERIODES_DE_STAGE |

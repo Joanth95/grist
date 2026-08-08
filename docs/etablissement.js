@@ -44,6 +44,12 @@
 
   function fill(cfg) {
     if (!cfg) return;
+    // Config tenue à disposition des scripts de page (l'espace étudiant s'en
+    // sert pour le bouton de prise de rendez-vous). L'événement prévient ceux
+    // qui ont déjà affiché leur écran depuis le cache, quand la réponse réseau
+    // arrive ensuite avec des valeurs différentes.
+    window.ETAB_CONFIG = cfg;
+    document.dispatchEvent(new CustomEvent("etab-config"));
     // Habillage du site : "public" (DSFR, défaut) ou "modern" (colonne
     // ETABLISSEMENT.Mode_etablissement_public décochée). Posé au plus tôt
     // par le script inline en tête de page (cache localStorage) ; ici on

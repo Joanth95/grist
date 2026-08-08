@@ -81,7 +81,7 @@ Rien d'autre : pas de modification du planning, pas d'accès aux autres tables
 ## 2. Déployer le proxy (Cloudflare Workers)
 
 Prérequis : un compte gratuit sur [cloudflare.com](https://dash.cloudflare.com/sign-up)
-et Node.js installé.
+et Node.js 22 ou plus installé (exigé par Wrangler 4).
 
 ```bash
 cd worker
@@ -128,6 +128,14 @@ npx wrangler deploy
   cadre. Les suppressions se limitent à des cas précis et journalisés (l'étudiant
   retire une déclaration **non validée** ; le cadre retire une période ou un RDV
   de son service, un stage terminé étant verrouillé au bout de 5 jours).
+- L'endpoint de réception des rendez-vous RDV Service Public
+  (`/api/webhooks/rdv-service-public`) est **public par nature** : c'est la
+  signature `X-Lapin-Signature` du corps (HMAC-SHA256, secret partagé
+  `RDV_SP_WEBHOOK_SECRET`) qui authentifie l'appelant, comparée en temps
+  constant. Sans secret défini, ou avec la case « Activer RDV Service Public »
+  décochée dans l'espace administrateur, rien n'est écrit. Les rendez-vous
+  reçus sont journalisés, y compris ceux qui n'ont pu être rattachés à aucun
+  dossier.
 - Les connexions et actions des trois rôles (étudiant, cadre, administrateur)
   sont consignées dans `JOURNAL_ACTIVITE`, y compris les **consultations**
   (espace étudiant, espace cadre, dossier d'un étudiant, espace administrateur)

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mode d'emploi — Administrateurs</title>
   <script src="theme.js?v=1"></script>
-  <link rel="stylesheet" href="styles.css?v=28">
+  <link rel="stylesheet" href="styles.css?v=29">
   <link rel="stylesheet" href="theme-modern.css?v=3">
   <script src="config.js?v=21"></script>
   <style>
@@ -89,6 +89,7 @@
         <tr><td><span class="code">Afficher_bandeau_beta</span></td><td>Bascule (case à cocher) facultative : décochée, le bandeau « Version bêta » en haut des pages et sa mention dans le pied de page disparaissent. Colonne absente ou cochée : bandeau affiché.</td></tr>
         <tr><td><span class="code">DOMAINE_MAIL</span></td><td>Domaine mail de l'établissement (ex. <span class="code">chu-exemple.fr</span>). Renseigné, il adapte les champs e-mail <strong>professionnels</strong> — aujourd'hui celui de la connexion à l'espace cadre : l'exemple affiché devient <span class="code">prenom.nom@<em>votre-domaine</em></span> et une saisie sans « @ » est complétée automatiquement à la sortie du champ. Les adresses <strong>personnelles</strong> des étudiants ne sont pas concernées : leurs champs restent génériques. Vide : comportement générique partout.</td></tr>
         <tr><td><span class="code">Mode_etablissement_public</span></td><td>Bascule facultative choisissant l'<strong>habillage visuel</strong> du site. Colonne absente ou cochée : rendu <strong>DSFR</strong>, conforme aux conventions des services publics (comportement par défaut). Décochée : habillage <strong>« moderne »</strong> alternatif (coins arrondis, palette plus douce), pour un établissement qui n'est pas soumis à ces conventions. Les fonctionnalités sont identiques dans les deux cas.</td></tr>
+        <tr><td><span class="code">Rdv_sp_actif</span> / <span class="code">Rdv_sp_url</span></td><td>Raccordement à <strong>RDV Service Public</strong>, à régler depuis l'espace administrateur (onglet <strong>Configuration</strong>, sous-onglet <strong>Rendez-vous</strong>) plutôt qu'ici. Case cochée : les rendez-vous pris sur RDV Service Public se rangent automatiquement dans le dossier de l'étudiant, et le lien renseigné fait apparaître un bouton « Prendre rendez-vous » dans l'espace étudiant. La réception exige en plus un secret partagé posé sur le Worker (<span class="code">RDV_SP_WEBHOOK_SECRET</span>) : le sous-onglet indique s'il est en place.</td></tr>
       </table>
       <div class="callout">Si la table est absente ou vide, le site garde son affichage générique.</div>
     </section>
@@ -302,6 +303,6 @@
   <footer class="fr-footer"></footer>
 
   <script src="layout.js?v=26"></script>
-  <script src="etablissement.js?v=29"></script>
+  <script src="etablissement.js?v=30"></script>
 </body>
 </html>

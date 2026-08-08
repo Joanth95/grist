@@ -667,8 +667,8 @@ document.querySelectorAll(".admin-tab").forEach((btn) => {
   btn.addEventListener("click", () => montrerOnglet(btn.dataset.onglet));
 });
 
-/* Sous-onglets de l'onglet « Configuration » (un seul pour l'instant :
- * Établissement — la structure accueille les prochains sans y retoucher). */
+/* Sous-onglets de l'onglet « Configuration » (Établissement, Rendez-vous) :
+ * ils partagent la même ligne Grist, donc le même chargement. */
 document.querySelectorAll(".admin-subtab").forEach((btn) => {
   btn.addEventListener("click", () => montrerSousOnglet(btn.dataset.subonglet));
 });
@@ -2032,7 +2032,11 @@ async function chargerEtablissement(onglet) {
  * même forme que la réponse de /api/config, donc réutilisable telle quelle.
  * Un reflet immédiat, en attendant le prochain chargement d'une autre page. */
 function rafraichirCacheEtab() {
-  try { localStorage.setItem("etablissement-config", JSON.stringify(state.etab)); } catch { /* stockage plein : ignoré */ }
+  // Les champs réservés à cet écran (adresse du webhook, présence du secret)
+  // ne font pas partie de /api/config : ils n'ont rien à faire dans le cache
+  // que relisent toutes les autres pages.
+  const { rdvSpWebhookUrl, rdvSpSecretConfigure, ...config } = state.etab || {};
+  try { localStorage.setItem("etablissement-config", JSON.stringify(config)); } catch { /* stockage plein : ignoré */ }
 }
 
 function rendreEtablissement() {
@@ -2046,8 +2050,59 @@ function rendreEtablissement() {
   $("e-footer-texte").value = e.textePiedDePage || "";
   $("e-footer-lien").value = e.urlDocumentGrist || "";
   rendreLogoEtab();
+  rendreRdvSp();
   rafraichirCacheEtab();
 }
+
+/* Sous-onglet « Rendez-vous » : mêmes données que l'établissement (une seule
+ * ligne Grist, un seul appel), d'où le rendu et l'enregistrement séparés mais
+ * la charge commune. */
+function rendreRdvSp() {
+  const e = state.etab || {};
+  $("r-actif").checked = e.rdvSpActif === true;
+  $("r-url").value = e.rdvSpUrl || "";
+  $("r-webhook-url").textContent = e.rdvSpWebhookUrl || "";
+  const etat = $("r-secret-etat");
+  etat.textContent = e.rdvSpSecretConfigure
+    ? "✅ Secret partagé configuré sur le Worker : les rendez-vous envoyés par RDV Service Public sont acceptés."
+    : "⚠️ Aucun secret partagé sur le Worker : les rendez-vous envoyés par RDV Service Public sont refusés tant qu'il n'est pas posé.";
+}
+
+$("r-webhook-copier").addEventListener("click", async () => {
+  const url = $("r-webhook-url").textContent.trim();
+  if (!url) return;
+  try {
+    await navigator.clipboard.writeText(url);
+    toast("Adresse du webhook copiée.");
+  } catch {
+    // Presse-papiers refusé (navigateur ancien, page non sécurisée) : la
+    // sélection manuelle reste possible, on le dit plutôt que de rester muet.
+    toast("Copie impossible : sélectionnez l'adresse à la main.", true);
+  }
+});
+
+$("rdvsp-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const btn = $("rdvsp-save-btn");
+  const errEl = $("rdvsp-error");
+  errEl.hidden = true;
+  btn.disabled = true;
+  try {
+    state.etab = await api("PATCH", "/api/admin/etablissement", {
+      rdvSpActif: $("r-actif").checked,
+      rdvSpUrl: $("r-url").value.trim(),
+    });
+    rendreEtablissement();
+    toast($("r-actif").checked
+      ? "RDV Service Public activé."
+      : "RDV Service Public désactivé.");
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 function rendreLogoEtab() {
   const e = state.etab || {};

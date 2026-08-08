@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Espace administrateur</title>
   <script src="theme.js?v=1"></script>
-  <link rel="stylesheet" href="styles.css?v=28">
+  <link rel="stylesheet" href="styles.css?v=29">
   <link rel="stylesheet" href="theme-modern.css?v=3">
   <style>
     /* Écran d'administration : un tableau dense et ses actions. Les couleurs
@@ -157,6 +157,16 @@
     #e-logo-apercu{width:4.5rem;height:4.5rem;object-fit:contain;background:var(--gris-fond);
       border:1px solid var(--gris-bordure);border-radius:4px;padding:.3rem}
     .etab-logo-actions{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+    /* Même précision qu'en espace cadre : la classe y est définie, mais pas
+       dans styles.css — sans cette règle les explications sous les champs
+       s'affichent en corps de texte plein. */
+    .save-hint{font-size:.8rem;color:var(--texte-doux);margin-top:.25rem}
+
+    /* Sous-onglet Rendez-vous : l'URL du webhook, à recopier dans RDV Service
+       Public — elle doit rester lisible et sélectionnable d'un bloc. */
+    .rdvsp-url{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.4rem 0}
+    .rdvsp-url code{background:var(--gris-fond);border:1px solid var(--gris-bordure);
+      border-radius:4px;padding:.35rem .5rem;font-size:.85rem;word-break:break-all}
   </style>
 </head>
 <body>
@@ -316,6 +326,7 @@
 
         <div class="admin-subtabs">
           <button type="button" class="admin-subtab active" data-subonglet="etablissement">Établissement</button>
+          <button type="button" class="admin-subtab" data-subonglet="rdv">Rendez-vous</button>
         </div>
 
         <section id="subtab-etablissement" class="admin-subtab-panel">
@@ -386,6 +397,50 @@
             <p id="etab-error" class="error" hidden></p>
             <div class="dialog-actions">
               <button type="submit" class="btn btn-primary" id="etab-save-btn">Enregistrer</button>
+            </div>
+          </form>
+        </section>
+
+        <section id="subtab-rdv" class="admin-subtab-panel" hidden>
+          <p class="section-note">Raccordement à <strong>RDV Service Public</strong>, le service
+            public de prise de rendez-vous en ligne. Une fois activé, les étudiants prennent
+            rendez-vous depuis leur espace, et les rendez-vous pris là-bas se rangent
+            automatiquement dans le dossier de l'étudiant.</p>
+
+          <form id="rdvsp-form" class="etab-form">
+            <label class="checkbox-label"><input type="checkbox" id="r-actif">
+              Activer RDV Service Public</label>
+            <p class="save-hint">Décochée, cette case suffit à tout couper : le bouton disparaît de
+              l'espace étudiant et les rendez-vous envoyés par RDV Service Public sont ignorés.</p>
+
+            <div class="fiche-section">
+              <h3>Prise de rendez-vous par l'étudiant</h3>
+              <label for="r-url">Lien public de prise de rendez-vous <span class="optional">(facultatif)</span>
+                <span class="fr-hint-text">L'adresse de votre page de réservation, telle qu'elle
+                  apparaît dans RDV Service Public (« Prendre rendez-vous »). Laissez vide pour ne
+                  recevoir que les rendez-vous, sans proposer de bouton aux étudiants.</span>
+              </label>
+              <input type="url" id="r-url" maxlength="300" autocomplete="off"
+                     placeholder="https://rdv.numerique.gouv.fr/…">
+            </div>
+
+            <div class="fiche-section">
+              <h3>Réception des rendez-vous</h3>
+              <p class="save-hint">Dans RDV Service Public, ouvrez « Paramètres de votre espace »,
+                puis « Webhooks », et ajoutez un webhook vers l'adresse ci-dessous en cochant le
+                modèle <strong>Rendez-vous</strong>. Le secret partagé que vous y saisirez doit être
+                le même que celui posé sur le Worker
+                (<code>npx wrangler secret put RDV_SP_WEBHOOK_SECRET</code>).</p>
+              <div class="rdvsp-url">
+                <code id="r-webhook-url">…</code>
+                <button type="button" class="btn btn-ghost btn-small" id="r-webhook-copier">Copier</button>
+              </div>
+              <p id="r-secret-etat" class="save-hint"></p>
+            </div>
+
+            <p id="rdvsp-error" class="error" hidden></p>
+            <div class="dialog-actions">
+              <button type="submit" class="btn btn-primary" id="rdvsp-save-btn">Enregistrer</button>
             </div>
           </form>
         </section>
@@ -603,7 +658,7 @@
 
   <script src="config.js?v=21"></script>
   <script src="layout.js?v=26"></script>
-  <script src="etablissement.js?v=29"></script>
-  <script src="espace-admin.js?v=11"></script>
+  <script src="etablissement.js?v=30"></script>
+  <script src="espace-admin.js?v=12"></script>
 </body>
 </html>

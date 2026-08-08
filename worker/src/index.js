@@ -18,6 +18,9 @@
  *
  * Endpoints (code anonymat dans l'en-tête X-Student-Code) :
  *   GET    /api/services                       -> services accueillant des étudiants (public)
+ *   POST   /api/webhooks/rdv-service-public    -> rendez-vous poussé par RDV Service Public
+ *                                                 (public, authentifié par la signature
+ *                                                 X-Lapin-Signature ; voir recevoirWebhookRdvSp)
  *   POST   /api/inscription    { ... }         -> auto-inscription (public)
  *   POST   /api/login          { code }        -> payload complet
  *   GET    /api/data[?vue=1]                   -> payload complet (rafraîchissement ;
@@ -314,6 +317,14 @@ async function route(request, env, ctx) {
   }
   if (request.method === "GET" && path === "/api/services") {
     return listServices(env);
+  }
+  if (request.method === "POST" && path === CHEMIN_WEBHOOK_RDV_SP) {
+    // Notification de RDV Service Public : authentifiée par la signature du
+    // corps, pas par une session. Le frein reste utile — l'URL est publique,
+    // et sans lui n'importe qui pourrait faire tourner le Worker à vide.
+    limiterDebit(`rdvsp:${ipAppelant(request)}`, 300, 60,
+      "Trop de notifications reçues : réessayez dans un instant.");
+    return recevoirWebhookRdvSp(request, env, ctx);
   }
   if (request.method === "POST" && path === "/api/inscription") {
     // Endpoint public qui crée un dossier, une période et jusqu'à 30 semaines
@@ -623,7 +634,7 @@ async function route(request, env, ctx) {
         logActivite(env, ctx, { ...whoA, action: "Consultation de l'espace administrateur",
           detail: ongletVu(request) || "onglet « Établissement »" });
       }
-      return json(await listerEtablissementAdmin(env));
+      return json(await listerEtablissementAdmin(env, request));
     }
     if (request.method === "PATCH" && path === "/api/admin/etablissement") {
       return withLog(env, ctx, whoA, "Modification des paramètres de l'établissement", "",
@@ -1279,10 +1290,24 @@ async function getConfigEtablissement(env) {
       // conforme aux conventions des services publics ; décochée -> habillage
       // "moderne" alternatif). Défaut à true = comportement actuel inchangé.
       modeEtablissementPublic: f.Mode_etablissement_public !== false,
+      // Raccordement à RDV Service Public (bascule Rdv_sp_actif) : quand il est
+      // actif ET qu'une adresse de prise de rendez-vous est renseignée, le
+      // bouton « Prendre rendez-vous » apparaît dans l'espace étudiant. Ces
+      // deux valeurs sont publiques : l'URL est celle que l'usager ouvre.
+      rdvSpActif: f.Rdv_sp_actif === true,
+      rdvSpUrl: urlPublique(f.Rdv_sp_url),
     });
   } catch {
-    return json({ nom: "", description: "", sousTitre: "", logoId: null, urlDocumentGrist: "", textePiedDePage: "", afficherBeta: true, domaineMail: "", modeEtablissementPublic: true });
+    return json({ nom: "", description: "", sousTitre: "", logoId: null, urlDocumentGrist: "", textePiedDePage: "", afficherBeta: true, domaineMail: "", modeEtablissementPublic: true, rdvSpActif: false, rdvSpUrl: "" });
   }
+}
+
+/** Adresse http(s) utilisable telle quelle dans un lien, "" sinon : le front
+ *  fabrique un <a href> avec, et une valeur saisie dans Grist ne doit jamais
+ *  pouvoir y glisser un javascript:. */
+function urlPublique(valeur) {
+  const url = String(valeur || "").trim();
+  return /^https?:\/\/\S+$/i.test(url) ? url : "";
 }
 
 /** Id de la première pièce jointe d'une cellule Attachments (["L", id, …]). */
@@ -1329,6 +1354,8 @@ const COLONNES_ETABLISSEMENT = [
   { id: "Afficher_bandeau_beta", label: "Afficher le bandeau bêta", type: "Bool" },
   { id: "DOMAINE_MAIL", label: "Domaine mail de l'établissement", type: "Text" },
   { id: "Mode_etablissement_public", label: "Habillage public (DSFR)", type: "Bool" },
+  { id: "Rdv_sp_actif", label: "RDV Service Public — activé", type: "Bool" },
+  { id: "Rdv_sp_url", label: "RDV Service Public — lien de prise de rendez-vous", type: "Text" },
 ];
 
 /** Première (et seule) ligne de la table ETABLISSEMENT, ou null si la table
@@ -1347,7 +1374,7 @@ async function ligneEtablissement(env) {
  * que /api/config (voir getConfigEtablissement), mais destinés à être relus
  * puis modifiés depuis un formulaire, pas seulement affichés.
  */
-async function listerEtablissementAdmin(env) {
+async function listerEtablissementAdmin(env, request) {
   const ligne = await ligneEtablissement(env);
   const f = (ligne && ligne.fields) || {};
   return {
@@ -1360,6 +1387,14 @@ async function listerEtablissementAdmin(env) {
     afficherBeta: f.Afficher_bandeau_beta !== false,
     domaineMail: f.DOMAINE_MAIL || "",
     modeEtablissementPublic: f.Mode_etablissement_public !== false,
+    rdvSpActif: f.Rdv_sp_actif === true,
+    rdvSpUrl: f.Rdv_sp_url || "",
+    // Les deux valeurs suivantes ne se règlent pas dans Grist : elles disent à
+    // l'administrateur ce qu'il doit saisir dans RDV Service Public (l'URL à
+    // notifier) et si le secret partagé a bien été posé côté Worker. Le secret
+    // lui-même ne sort évidemment jamais d'ici.
+    rdvSpWebhookUrl: request ? new URL(request.url).origin + CHEMIN_WEBHOOK_RDV_SP : "",
+    rdvSpSecretConfigure: !!(env.RDV_SP_WEBHOOK_SECRET || "").trim(),
   };
 }
 
@@ -1376,6 +1411,17 @@ async function modifierEtablissementAdmin(request, env, info) {
   if (body.domaineMail !== undefined) fields.DOMAINE_MAIL = cleanText(body.domaineMail, 120).replace(/^@+/, "");
   if (body.afficherBeta !== undefined) fields.Afficher_bandeau_beta = !!body.afficherBeta;
   if (body.modeEtablissementPublic !== undefined) fields.Mode_etablissement_public = !!body.modeEtablissementPublic;
+  if (body.rdvSpActif !== undefined) fields.Rdv_sp_actif = !!body.rdvSpActif;
+  if (body.rdvSpUrl !== undefined) {
+    const url = cleanText(body.rdvSpUrl, 300);
+    // Refusé plutôt que silencieusement ignoré : une adresse mal recopiée
+    // enverrait les étudiants nulle part, et /api/config la filtrerait sans
+    // que personne ne comprenne pourquoi le bouton n'apparaît pas.
+    if (url && !urlPublique(url)) {
+      throw httpError(400, "Le lien de prise de rendez-vous doit commencer par https://");
+    }
+    fields.Rdv_sp_url = url;
+  }
   if (!Object.keys(fields).length) throw httpError(400, "Aucune modification fournie");
   if (body.nom !== undefined && !fields.Nom) throw httpError(400, "Le nom de l'établissement est obligatoire");
 
@@ -1387,7 +1433,256 @@ async function modifierEtablissementAdmin(request, env, info) {
     await grist(env, "POST", `/tables/${T_ETABLISSEMENT}/records`, { records: [{ fields }] });
   }
   if (info) info.detail = Object.keys(fields).join(", ");
-  return json(await listerEtablissementAdmin(env));
+  return json(await listerEtablissementAdmin(env, request));
+}
+
+/* ------------------------------------------------------------------ */
+/* RDV Service Public : réception des rendez-vous (webhooks)           */
+/* ------------------------------------------------------------------ */
+
+/*
+ * RDV Service Public (rdv.numerique.gouv.fr, ex-RDV Solidarités) notifie le
+ * système d'information de la structure à chaque création, modification ou
+ * annulation. La notification est un POST JSON signé :
+ *
+ *   { "data": { … le rendez-vous … },
+ *     "meta": { "model": "Rdv", "event": "created|updated|destroyed", … } }
+ *
+ * en-tête « X-Lapin-Signature » = HMAC-SHA256 hexadécimal du corps brut,
+ * calculé avec le secret partagé saisi dans RDV Service Public à la création
+ * du webhook. Ce secret est un secret du Worker (RDV_SP_WEBHOOK_SECRET) et non
+ * une colonne Grist : il n'a aucune raison d'être lisible par les cadres qui
+ * ouvrent le document.
+ *
+ * Le rendez-vous est rattaché au dossier de l'étudiant concerné et écrit dans
+ * RDV_FORMATEUR, à côté des rendez-vous saisis par les cadres. Sa colonne
+ * Rdv_sp_id porte l'identifiant du rendez-vous chez RDV Service Public : c'est
+ * elle qui fait qu'une modification met à jour la ligne au lieu d'en créer une
+ * seconde, et qu'une annulation retrouve la bonne ligne à supprimer.
+ */
+
+const CHEMIN_WEBHOOK_RDV_SP = "/api/webhooks/rdv-service-public";
+
+/** Colonne ajoutée à RDV_FORMATEUR au premier rendez-vous reçu. */
+const COLONNES_RDV_SP = [
+  { id: "Rdv_sp_id", label: "Identifiant RDV Service Public", type: "Text" },
+];
+
+/** Statuts RDV Service Public qui valent annulation du rendez-vous. */
+const STATUTS_RDV_SP_ANNULES = ["excused", "revoked"];
+
+/** Signature hexadécimale d'un corps de requête (HMAC-SHA256). */
+async function signatureRdvSp(secret, corps) {
+  const cle = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", cle, new TextEncoder().encode(corps));
+  return [...new Uint8Array(sig)].map((o) => o.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Notification reçue de RDV Service Public. Endpoint PUBLIC : c'est la
+ * signature qui authentifie l'appelant, pas une session.
+ *
+ * Une notification correctement signée mais inexploitable (autre modèle,
+ * étudiant inconnu, aucun stage à cette date) répond 200 avec le motif : un
+ * code d'erreur ferait réessayer RDV Service Public en boucle pour un
+ * rendez-vous qui ne nous concerne pas. Ce qui n'a pas pu être rattaché part
+ * dans le journal d'activité, pour que l'administrateur le voie.
+ */
+async function recevoirWebhookRdvSp(request, env, ctx) {
+  const secret = (env.RDV_SP_WEBHOOK_SECRET || "").trim();
+  if (!secret) throw httpError(503, "Réception des rendez-vous non configurée");
+
+  const corps = await request.text();
+  if (corps.length > 200000) throw httpError(413, "Notification trop volumineuse");
+  const signature = (request.headers.get("X-Lapin-Signature") || "").trim().toLowerCase();
+  if (!safeEqual(signature, await signatureRdvSp(secret, corps))) {
+    throw httpError(403, "Signature invalide");
+  }
+
+  let enveloppe;
+  try {
+    enveloppe = JSON.parse(corps);
+  } catch {
+    throw httpError(400, "Notification illisible");
+  }
+  const meta = enveloppe.meta || {};
+  const data = enveloppe.data || {};
+  if (meta.model !== "Rdv") return json({ ok: true, ignore: "modèle non traité" });
+
+  // La case de l'espace administrateur : décochée, les notifications sont
+  // acceptées (donc pas de réessais) mais rien n'est écrit dans le document.
+  const ligne = await ligneEtablissement(env);
+  if (!(ligne && ligne.fields && ligne.fields.Rdv_sp_actif === true)) {
+    return json({ ok: true, ignore: "intégration désactivée" });
+  }
+
+  const identifiant = String(data.uuid || data.id || "").trim();
+  if (!identifiant) return json({ ok: true, ignore: "rendez-vous sans identifiant" });
+
+  await ensureColumns(env, T_RDV, COLONNES_RDV_SP);
+  const existantes = await gristFilter(env, T_RDV, { Rdv_sp_id: [identifiant] });
+
+  const annule = meta.event === "destroyed" || !!data.cancelled_at
+    || STATUTS_RDV_SP_ANNULES.includes(String(data.status || ""));
+  if (annule) {
+    if (existantes.length) {
+      await grist(env, "POST", `/tables/${T_RDV}/data/delete`, existantes.map((r) => r.id));
+      journalRdvSp(env, ctx, "Rendez-vous RDV Service Public annulé",
+        `${existantes[0].fields.Type_de_rendez_vous || "rendez-vous"} du ${jDateEpoch(existantes[0].fields.Date_rdv)}`,
+        { etudiantId: null, periode: null });
+    }
+    return json({ ok: true, supprime: existantes.length });
+  }
+
+  const dateIso = String(data.starts_at || "").slice(0, 10);
+  const dateEpoch = isoToEpoch(dateIso);
+  if (dateEpoch === null) return json({ ok: true, ignore: "date de rendez-vous absente" });
+
+  const etudiant = await trouverEtudiantRdvSp(env, usagersRdvSp(data));
+  if (!etudiant) {
+    journalRdvSp(env, ctx, "Rendez-vous RDV Service Public non rattaché",
+      `${typeRdvSp(data)} du ${jDate(dateIso)} — aucun dossier étudiant ne correspond à l'usager`, {});
+    return json({ ok: true, ignore: "aucun dossier étudiant correspondant" });
+  }
+
+  const periode = await periodePourRdvSp(env, etudiant.id, dateEpoch);
+  if (!periode) {
+    journalRdvSp(env, ctx, "Rendez-vous RDV Service Public non rattaché",
+      `${typeRdvSp(data)} du ${jDate(dateIso)} — aucun stage à cette date`,
+      { etudiantId: etudiant.id });
+    return json({ ok: true, ignore: "aucune période de stage à cette date" });
+  }
+
+  const fields = {
+    Periode: periode.id,
+    Date_rdv: dateEpoch,
+    Type_de_rendez_vous: typeRdvSp(data),
+    Formateur: agentsRdvSp(data),
+    Commentaire: commentaireRdvSp(data),
+    Cree_par: "RDV Service Public",
+    Rdv_sp_id: identifiant,
+  };
+
+  if (existantes.length) {
+    await gristUpdate(env, T_RDV, existantes[0].id, fields);
+    // Doublons éventuels (deux notifications arrivées en même temps sur un
+    // document où la colonne venait d'être créée) : on n'en garde qu'un.
+    if (existantes.length > 1) {
+      await grist(env, "POST", `/tables/${T_RDV}/data/delete`, existantes.slice(1).map((r) => r.id));
+    }
+  } else {
+    await grist(env, "POST", `/tables/${T_RDV}/records`, { records: [{ fields }] });
+  }
+
+  journalRdvSp(env, ctx,
+    existantes.length ? "Rendez-vous RDV Service Public modifié" : "Rendez-vous RDV Service Public reçu",
+    `${fields.Type_de_rendez_vous} le ${jDate(dateIso)}${fields.Formateur ? ` avec ${fields.Formateur}` : ""}`,
+    { etudiantId: etudiant.id, periode });
+  return json({ ok: true, mis_a_jour: existantes.length > 0 });
+}
+
+/** Ligne de journal d'un rendez-vous venu de RDV Service Public. */
+function journalRdvSp(env, ctx, action, detail, { etudiantId, periode } = {}) {
+  logActivite(env, ctx, {
+    role: "RDV Service Public",
+    qui: "webhook",
+    action,
+    detail,
+    etudiantId: etudiantId || undefined,
+    serviceId: periode ? periode.fields.Service : undefined,
+  });
+}
+
+/** Usagers portés par la notification : `users` (format historique, toujours
+ *  envoyé) ou, à défaut, les usagers des participations. */
+function usagersRdvSp(data) {
+  if (Array.isArray(data.users) && data.users.length) return data.users;
+  return (Array.isArray(data.participations) ? data.participations : [])
+    .map((p) => p && p.user).filter(Boolean);
+}
+
+/**
+ * Dossier étudiant correspondant à l'usager du rendez-vous. Deux pistes, dans
+ * cet ordre :
+ *   1. l'adresse e-mail du dossier (Adresse_mail), la seule vraiment fiable ;
+ *   2. le code anonymat reconstitué depuis prénom + date de naissance + nom,
+ *      et retenu seulement s'il ne désigne qu'un dossier — deux homonymes nés
+ *      le même jour partagent le même code, et rien ne permet de trancher.
+ * Rien de trouvé : le rendez-vous n'est pas écrit (voir l'appelant).
+ */
+async function trouverEtudiantRdvSp(env, usagers) {
+  if (!usagers.length) return null;
+  const etudiants = await gristAll(env, T_ETUDIANTS);
+  for (const u of usagers) {
+    const email = String(u.email || "").trim().toLowerCase();
+    if (email) {
+      const parMail = etudiants.find((e) => (e.fields.Adresse_mail || "").trim().toLowerCase() === email);
+      if (parMail) return parMail;
+    }
+    const code = codeAnonymatRdvSp(u);
+    if (code) {
+      const parCode = etudiants.filter((e) => (e.fields.Anonymat || "").trim().toUpperCase() === code);
+      if (parCode.length === 1) return parCode[0];
+    }
+  }
+  return null;
+}
+
+/** Code anonymat d'un usager RDV Service Public, même formule qu'à
+ *  l'inscription (1ʳᵉ lettre du prénom + JJMMAA + 1ʳᵉ lettre du nom). */
+function codeAnonymatRdvSp(usager) {
+  const prenom = String(usager.first_name || "").trim();
+  const nom = String(usager.last_name || usager.birth_name || "").trim();
+  const ddn = String(usager.birth_date || "").slice(0, 10);
+  if (!prenom || !nom || !/^\d{4}-\d{2}-\d{2}$/.test(ddn)) return "";
+  const [annee, mois, jour] = ddn.split("-");
+  return (prenom[0] + jour + mois + annee.slice(2) + nom[0]).toUpperCase();
+}
+
+/**
+ * Stage auquel rattacher le rendez-vous : celui qui couvre la date, sinon le
+ * stage en cours, sinon le prochain à commencer (un entretien se prend souvent
+ * avant le premier jour). Aucun des trois : le rendez-vous reste dehors plutôt
+ * que d'atterrir sur un stage sans rapport.
+ */
+async function periodePourRdvSp(env, etudiantId, dateEpoch) {
+  const periodes = await gristFilter(env, T_PERIODES, { Etudiant: [etudiantId] });
+  if (!periodes.length) return null;
+  const couvre = periodes.find((p) => p.fields.Du <= dateEpoch && dateEpoch <= p.fields.Au);
+  if (couvre) return couvre;
+  const enCours = periodes.find((p) => p.fields.En_cours === true);
+  if (enCours) return enCours;
+  const aVenir = periodes.filter((p) => p.fields.Du > dateEpoch)
+    .sort((a, b) => a.fields.Du - b.fields.Du);
+  return aVenir[0] || null;
+}
+
+/** Type de rendez-vous : le motif choisi par l'usager dans RDV Service Public. */
+function typeRdvSp(data) {
+  return cleanText((data.motif && data.motif.name) || "", 80) || "Rendez-vous (RDV Service Public)";
+}
+
+/** Agents affectés au rendez-vous, tels qu'affichés dans la colonne Formateur. */
+function agentsRdvSp(data) {
+  const noms = (Array.isArray(data.agents) ? data.agents : [])
+    .map((a) => [a && a.first_name, a && a.last_name].filter(Boolean).join(" ").trim())
+    .filter(Boolean);
+  return cleanText(noms.join(", "), 80);
+}
+
+/** Heure, lieu et provenance du rendez-vous, résumés dans le commentaire. */
+function commentaireRdvSp(data) {
+  const bouts = [];
+  // starts_at est daté dans le fuseau du rendez-vous : l'heure lue telle
+  // quelle dans la chaîne est bien l'heure affichée à l'usager.
+  const heure = /T(\d{2}):(\d{2})/.exec(String(data.starts_at || ""));
+  if (heure) bouts.push(`${heure[1]}h${heure[2]}`);
+  if (data.lieu && data.lieu.name) bouts.push(String(data.lieu.name));
+  else if (data.address) bouts.push(String(data.address));
+  if (data.visio_url) bouts.push("visioconférence");
+  bouts.push("pris sur RDV Service Public");
+  return cleanText(bouts.join(" · "), 300);
 }
 
 /** Identifiant complet du document. GRIST_DOC_ID contient l'identifiant court
