@@ -1224,22 +1224,19 @@ async function buildPayload(env, student) {
     // Suivi cursus : total des jours d'absence toutes périodes (franchise 30 j)
     absences_cursus: Object.values(absencesByPeriode).reduce((a, b) => a + b, 0),
     // Rendez-vous du stage (RDV_FORMATEUR) : l'étudiant doit savoir quand il
-    // est attendu, et avec qui. Le COMMENTAIRE libre saisi par un cadre reste
-    // interne — il peut porter des notes de suivi qui ne lui sont pas
-    // destinées ; seul le texte que le worker écrit lui-même pour un
-    // rendez-vous venu de RDV Service Public (heure, lieu) est renvoyé.
-    rdvs: rdvs.map((r) => {
-      const deRdvSp = r.fields.Cree_par === "RDV Service Public";
-      return {
-        id: r.id,
-        Periode: r.fields.Periode,
-        Date_rdv: epochToIso(r.fields.Date_rdv),
-        Type_de_rendez_vous: r.fields.Type_de_rendez_vous || "",
-        Formateur: r.fields.Formateur || "",
-        Precision: deRdvSp ? (r.fields.Commentaire || "") : "",
-        Rdv_service_public: deRdvSp,
-      };
-    }),
+    // est attendu, et avec qui. La colonne Commentaire n'est JAMAIS renvoyée —
+    // c'est le champ libre des cadres, il peut porter des notes de suivi qui ne
+    // sont pas destinées à l'étudiant, y compris sur une ligne venue de RDV
+    // Service Public. La seule précision transmise est Rdv_sp_details (heure et
+    // lieu), que le worker est seul à écrire.
+    rdvs: rdvs.map((r) => ({
+      id: r.id,
+      Periode: r.fields.Periode,
+      Date_rdv: epochToIso(r.fields.Date_rdv),
+      Type_de_rendez_vous: r.fields.Type_de_rendez_vous || "",
+      Formateur: r.fields.Formateur || "",
+      Precision: r.fields.Rdv_sp_details || "",
+    })),
     semaines: semainesData.map(({ s, jours }) => {
       const out = {
         id: s.id,
@@ -1483,9 +1480,14 @@ async function modifierEtablissementAdmin(request, env, info) {
 
 const CHEMIN_WEBHOOK_RDV_SP = "/api/webhooks/rdv-service-public";
 
-/** Colonne ajoutée à RDV_FORMATEUR au premier rendez-vous reçu. */
+/** Colonnes ajoutées à RDV_FORMATEUR au premier rendez-vous reçu.
+ *  Rdv_sp_details tient l'heure et le lieu du rendez-vous. C'est la SEULE
+ *  colonne de texte de cette table que voit l'étudiant, et le worker est le
+ *  seul à y écrire : la colonne Commentaire reste au cadre, qui peut y noter
+ *  ce qu'il veut sans que cela parte dans l'espace étudiant. */
 const COLONNES_RDV_SP = [
   { id: "Rdv_sp_id", label: "Identifiant RDV Service Public", type: "Text" },
+  { id: "Rdv_sp_details", label: "RDV Service Public — heure et lieu", type: "Text" },
 ];
 
 /** Statuts RDV Service Public qui valent annulation du rendez-vous. */
@@ -1579,7 +1581,11 @@ async function recevoirWebhookRdvSp(request, env, ctx) {
     Date_rdv: dateEpoch,
     Type_de_rendez_vous: typeRdvSp(data),
     Formateur: agentsRdvSp(data),
+    // Même texte dans les deux colonnes : Commentaire pour que l'espace cadre
+    // l'affiche comme pour tout rendez-vous, Rdv_sp_details parce que c'est
+    // celle-là, et elle seule, que lit l'espace étudiant (voir COLONNES_RDV_SP).
     Commentaire: commentaireRdvSp(data),
+    Rdv_sp_details: commentaireRdvSp(data),
     Cree_par: "RDV Service Public",
     Rdv_sp_id: identifiant,
   };
