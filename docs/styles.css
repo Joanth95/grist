@@ -579,13 +579,11 @@ input[type="checkbox"], input[type="radio"] {
    permet, et repassent à la ligne sinon. */
 .today-marques { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-left: auto; }
 
-.today-bloc,
-.today-bilan {
+.today-bloc {
   margin-top: 0.85rem;
   padding-top: 0.7rem;
   border-top: 1px solid var(--gris-bordure);
 }
-.today-bilan { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
 .today-bloc-titre {
   margin: 0 0 0.4rem;

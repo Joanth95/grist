@@ -282,12 +282,8 @@ function renderToday() {
   if (rdvs.length) card.appendChild(todayBloc("Rendez-vous du jour", rdvs.map(todayRdvLigne)));
   if (sorties.length) card.appendChild(todayBloc("Mes déclarations du jour", sorties.map(todaySortieLigne)));
 
-  if (p && p.A_FAIRE != null) {
-    const bilan = el("div", "today-bilan");
-    bilan.append(...badgesAvancement(p));
-    card.appendChild(bilan);
-  }
-
+  // Pas de rappel du solde d'heures ici : la carte de période, juste au-dessus,
+  // porte déjà les mêmes badges.
   container.appendChild(card);
 }
 
@@ -346,20 +342,6 @@ function todaySortieLigne(s) {
     `${s.Heure_debut || "?"} – ${s.Heure_fin || "?"} · ${adj > 0 ? "+" : ""}${formatH(adj)}`));
   item.appendChild(badge(s.Valide ? "Validé" : "En attente", s.Valide ? "ok" : "pending"));
   return item;
-}
-
-/** Avancement d'une période : effectuées / à réaliser / solde. Partagé par la
- *  carte de période et l'encart du jour, pour qu'ils ne divergent jamais. */
-function badgesAvancement(p) {
-  const badges = [
-    badge(`${formatH(p.FAIT ?? 0)} effectuées`, "ok"),
-    badge(`${formatH(p.A_FAIRE)} à réaliser`, ""),
-  ];
-  if (p.Solde_heures != null) {
-    badges.push(badge(`Solde : ${p.Solde_heures > 0 ? "+" : ""}${formatH(p.Solde_heures)}`,
-      p.Solde_heures >= 0 ? "ok" : "warn"));
-  }
-  return badges;
 }
 
 /* ---------- Rendez-vous du stage ---------- */
@@ -439,7 +421,12 @@ function renderPeriode() {
 
   if (p.A_FAIRE != null) {
     const stats = el("div", "periode-stats");
-    stats.append(...badgesAvancement(p));
+    stats.appendChild(badge(`${formatH(p.FAIT ?? 0)} effectuées`, "ok"));
+    stats.appendChild(badge(`${formatH(p.A_FAIRE)} à réaliser`, ""));
+    if (p.Solde_heures != null) {
+      stats.appendChild(badge(`Solde : ${p.Solde_heures > 0 ? "+" : ""}${formatH(p.Solde_heures)}`,
+        p.Solde_heures >= 0 ? "ok" : "warn"));
+    }
     if (p.Recuperation > 0) {
       stats.appendChild(badge(`${p.Recuperation} jour${p.Recuperation > 1 ? "s" : ""} de récupération à poser`, "ok"));
     }
