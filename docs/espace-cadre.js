@@ -3722,6 +3722,26 @@ function renderAttendus(periode, carte, data) {
     carte.actions.appendChild(sel);
   }
 
+  /* Lien de saisie : ce que le professionnel ouvrira au poste de soins. Il
+     désigne cet étudiant seul, et reste inutilisable sans le code du service. */
+  if (periode.Jeton_saisie) {
+    const lien = new URL("saisie-evaluation.html", location.href).href
+      + "#jeton=" + encodeURIComponent(periode.Jeton_saisie);
+    const btn = el("button", "btn btn-ghost btn-small", "Lien de saisie");
+    btn.type = "button";
+    btn.title = "Copier le lien à donner aux professionnels du service";
+    btn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(lien);
+        btn.textContent = "Lien copié ✅";
+        setTimeout(() => { btn.textContent = "Lien de saisie"; }, 2500);
+      } catch (e) {
+        prompt("Copiez le lien de saisie :", lien);
+      }
+    });
+    carte.actions.appendChild(btn);
+  }
+
   if (!data.attendus.length) {
     carte.body.appendChild(el("p", "empty",
       data.ajoutables.length

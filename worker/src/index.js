@@ -369,6 +369,15 @@ async function route(request, env, ctx) {
   if (request.method === "GET" && path === "/api/config/logo") {
     return getLogoEtablissement(env);
   }
+  // Saisie d'une évaluation : public par nature (le professionnel n'a pas de
+  // compte). C'est le couple lien + code du service qui autorise, et le débit
+  // est borné par IP et par lien.
+  if (request.method === "GET" && path === "/api/saisie/contexte") {
+    return json(await ouvrirSaisie(env, request));
+  }
+  if (request.method === "POST" && path === "/api/saisie/evaluation") {
+    return deposerSaisie(request, env);
+  }
   if (request.method === "GET" && path === "/api/services") {
     return listServices(env);
   }
@@ -2136,6 +2145,9 @@ async function buildCadrePayload(env, cadre) {
         Tuteur: p.fields.Tuteur || "",
         Referent_pedagogique: p.fields.Referent_pedagogique || "",
         En_cours: !!p.fields.En_cours,
+        // Jeton du lien de saisie d'évaluation : désigne CET étudiant, et
+        // rien d'autre. Réservé au cadre, qui le transmet à son équipe.
+        Jeton_saisie: p.fields.UUID || "",
         A_FAIRE: aFaire,
         FAIT: fait,
         Solde_heures: Math.round((fait - aFaire) * 100) / 100,
@@ -3101,6 +3113,203 @@ async function abandonnerBrouillon(env, cadre, formulaireId, info) {
     info.detail = `« ${formulaire.fields.Nom || ""} » brouillon v${brouillon.fields.Numero || "?"} abandonné`;
   }
   return json({ ok: true });
+}
+
+/* ------------------------------------------------------------------ */
+/* Saisie d'une évaluation par un professionnel du service             */
+/* ------------------------------------------------------------------ */
+/* Point d'entrée PUBLIC, sans compte : le professionnel ouvre un lien qui
+ * désigne UN étudiant (l'UUID de sa période), saisit le code du service et
+ * choisit son nom dans la liste.
+ *
+ * Deux invariants de sécurité :
+ *   - le jeton ne donne accès qu'à l'étudiant du lien, jamais à une liste :
+ *     un code affiché au poste de soins ne doit pas ouvrir l'annuaire des
+ *     stagiaires ;
+ *   - rien n'est jamais LU d'un dossier — ni planning, ni heures, ni
+ *     évaluation déjà déposée. C'est une porte en écriture seule.
+ *
+ * La saisie se fait DEVANT L'ÉTUDIANT (arrêté du 20 février 2026 : les
+ * professionnels renseignent la feuille par une argumentation précise et
+ * factuelle en présence de l'étudiant). L'écran n'a donc aucune zone
+ * masquée, et la confirmation de présence est exigée à l'envoi. */
+
+/** Résout le lien de saisie : la période visée et son service, après
+ * vérification du code. Messages volontairement identiques en cas de jeton
+ * inconnu ou de code faux : ne pas révéler qu'un lien est valide. */
+async function contexteSaisie(env, request, jeton, code) {
+  const ip = ipAppelant(request);
+  limiterDebit(`saisie:${ip}`, 60, 60);
+  const uuid = typeof jeton === "string" ? jeton.trim() : "";
+  const saisi = typeof code === "string" ? code.trim().toUpperCase().replace(/\s+/g, "") : "";
+  if (!uuid || !saisi) throw httpError(400, "Lien ou code manquant");
+  limiterDebit(`saisie:jeton:${uuid}`, 20, 600,
+    "Trop d'essais de code sur ce lien : réessayez dans quelques minutes.");
+
+  const periodes = await gristFilter(env, T_PERIODES, { UUID: [uuid] });
+  const refus = () => httpError(403, "Lien ou code invalide");
+  if (!periodes.length) throw refus();
+  const periode = periodes[0];
+
+  const serviceId = Number(periode.fields.Service) || 0;
+  const services = await gristFilter(env, T_SERVICES, { id: [serviceId] });
+  const service = services[0];
+  const attendu = ((service && service.fields.Code_evaluation) || "").trim().toUpperCase();
+  if (!attendu || !safeEqual(attendu, saisi)) throw refus();
+
+  return { periode, service };
+}
+
+/** Ce que le professionnel voit à l'ouverture : l'étudiant, les grilles
+ * attendues et leurs questions. Rien d'autre du dossier. */
+async function ouvrirSaisie(env, request) {
+  const url = new URL(request.url);
+  const { periode, service } = await contexteSaisie(
+    env, request, url.searchParams.get("jeton"), url.searchParams.get("code"));
+
+  const [etudiants, pros, attendus, formulaires, versions, dejaFaites] = await Promise.all([
+    gristFilter(env, T_ETUDIANTS, { id: [Number(periode.fields.Anonymat) || 0] }),
+    gristFilter(env, T_PROFESSIONNEL, { Service: [service.id] }),
+    gristFilter(env, T_FORMULAIRE_ATTENDU, { Periode: [periode.id] }),
+    gristFilter(env, T_FORMULAIRE, { Service: [service.id] }),
+    gristAll(env, T_FORMULAIRE_VERSION),
+    observationsParFormulaire(env, periode.id),
+  ]);
+
+  const e = (etudiants[0] && etudiants[0].fields) || {};
+  const prenom = (e.PRENOM || "").trim();
+  const nom = (e.NOM || "").trim();
+
+  const parFormulaire = new Map(formulaires.map((f) => [f.id, f]));
+  const versionPubliee = new Map();
+  for (const v of versions) {
+    if (v.fields.Statut === "publie") versionPubliee.set(Number(v.fields.Formulaire), v);
+  }
+
+  const grilles = [];
+  for (const a of attendus) {
+    if (!a.fields.Actif) continue;
+    const fid = Number(a.fields.Formulaire);
+    const f = parFormulaire.get(fid);
+    const version = versionPubliee.get(fid);
+    if (!f || !f.fields.Actif || !version) continue;   // rien à remplir
+    const items = await itemsDeLaVersion(env, version.id);
+    grilles.push({
+      formulaireId: fid,
+      versionId: version.id,
+      Nom: f.fields.Nom || "",
+      Description: f.fields.Description || "",
+      Nb_attendu: Math.max(1, Number(a.fields.Nb_attendu) || 1),
+      Faits: dejaFaites.get(fid) || 0,
+      items: items.map(itemPublic),
+    });
+  }
+  grilles.sort((a, b) => a.Nom.localeCompare(b.Nom, "fr"));
+
+  return {
+    etudiant: {
+      // Prénom + initiale : de quoi être sûr de la personne, pas davantage.
+      prenom,
+      initiale: nom ? nom[0].toUpperCase() + "." : "",
+      niveau: periode.fields.Niveau || "",
+    },
+    service: { nom: service.fields.Nom || "" },
+    professionnels: pros
+      .filter((p) => p.fields.Actif)
+      .map((p) => ({ id: p.id, nom: [p.fields.Prenom, p.fields.Nom].filter(Boolean).join(" "),
+        fonction: p.fields.Fonction || "" }))
+      .sort((a, b) => a.nom.localeCompare(b.nom, "fr")),
+    grilles,
+  };
+}
+
+/** Dépose une évaluation. Elle part en « à valider » : elle ne compte pour
+ * l'étudiant qu'une fois validée par son tuteur. */
+async function deposerSaisie(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const { periode, service } = await contexteSaisie(env, request, body.jeton, body.code);
+  limiterDebit(`saisie:depot:${ipAppelant(request)}`, 30, 600,
+    "Trop d'évaluations déposées coup sur coup : réessayez dans quelques minutes.");
+
+  // L'arrêté du 20/02/2026 impose la présence de l'étudiant : on la confirme
+  // et on la trace, plutôt que de la supposer.
+  if (body.presenceEtudiant !== true) {
+    throw httpError(400, "L'évaluation se remplit en présence de l'étudiant : confirmez-le pour l'envoyer");
+  }
+
+  const formulaireId = Number(body.formulaireId);
+  const attendus = await gristFilter(env, T_FORMULAIRE_ATTENDU,
+    { Periode: [periode.id], Formulaire: [formulaireId] });
+  if (!attendus.length || !attendus[0].fields.Actif) {
+    throw httpError(409, "Cette grille n'est pas attendue sur ce stage");
+  }
+  const versions = await gristFilter(env, T_FORMULAIRE_VERSION, { Formulaire: [formulaireId] });
+  const version = versions.find((v) => v.fields.Statut === "publie");
+  if (!version) throw httpError(409, "Cette grille n'a plus de version publiée");
+
+  // Idempotence : la tablette génère l'UUID avant l'envoi, un renvoi après
+  // une coupure réseau ne doit pas créer de doublon.
+  const uuid = cleanText(body.uuid, 60);
+  if (uuid) {
+    const deja = await gristFilter(env, T_EVALUATION_SOIN, { Uuid: [uuid] });
+    if (deja.length) return json({ id: deja[0].id, deja: true });
+  }
+
+  const items = await itemsDeLaVersion(env, version.id);
+  const parId = new Map(items.map((i) => [i.id, i]));
+  const brut = Array.isArray(body.reponses) ? body.reponses : [];
+  const reponses = [];
+  for (const r of brut) {
+    const item = parId.get(Number(r && r.itemId));
+    if (!item || item.fields.Type === "section") continue;
+    const valeur = cleanText(r.valeur, 40);
+    if (!valeur && !cleanText(r.commentaire, 500)) continue;
+    reponses.push({
+      itemId: item.id,
+      // Libellé recopié : la version est immuable, mais un JSON lisible seul
+      // vaut mieux qu'une jointure au moment de la purge.
+      libelle: item.fields.Libelle || "",
+      type: item.fields.Type,
+      valeur,
+      commentaire: cleanText(r.commentaire, 500),
+    });
+  }
+  const manquants = items.filter((i) => i.fields.Type !== "section" && i.fields.Obligatoire
+    && !reponses.some((r) => r.itemId === i.id && r.valeur));
+  if (manquants.length) {
+    throw httpError(400, `${manquants.length} réponse(s) obligatoire(s) manquante(s)`);
+  }
+
+  // Auteur : un nom de la liste du service, sinon la saisie libre signalée
+  // comme telle au tuteur.
+  const proId = Number(body.professionnelId) || 0;
+  let auteurId = 0;
+  if (proId) {
+    const pros = await gristFilter(env, T_PROFESSIONNEL, { id: [proId] });
+    if (pros.length && Number(pros[0].fields.Service) === service.id && pros[0].fields.Actif) {
+      auteurId = proId;
+    }
+  }
+  const auteurLibre = auteurId ? "" : cleanText(body.auteurLibre, 60);
+  if (!auteurId && !auteurLibre) throw httpError(400, "Indiquez qui réalise l'évaluation");
+
+  const cree = await grist(env, "POST", `/tables/${T_EVALUATION_SOIN}/records`, {
+    records: [{ fields: {
+      Version: version.id,
+      Periode: periode.id,
+      Auteur_professionnel: auteurId,
+      Auteur_saisi: auteurLibre,
+      Date_observation: Math.floor(Date.now() / 1000),
+      Contexte: cleanText(body.contexte, 200),
+      Statut: "a_valider",
+      Soumise_le: Math.floor(Date.now() / 1000),
+      Commentaire_global: cleanText(body.commentaireGlobal, 1000),
+      Reponses: JSON.stringify(reponses),
+      Faite_en_presence: true,
+      Uuid: uuid,
+    } }],
+  });
+  return json({ id: cree.records[0].id }, 201);
 }
 
 /* ------------------------------------------------------------------ */

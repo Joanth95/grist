@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Évaluation d'un soin</title>
+  <script src="theme.js?v=1"></script>
+  <link rel="stylesheet" href="styles.css?v=30">
+  <link rel="stylesheet" href="theme-modern.css?v=3">
+  <style>
+    /* Écran de saisie : rempli DEVANT l'étudiant, sur un téléphone ou une
+       tablette tenue à deux. Aucune zone masquée, cibles tactiles larges,
+       une seule colonne. */
+    body { background: var(--gris-fond); }
+    .sa-app { max-width: 34rem; margin: 0 auto; min-height: 100vh;
+      display: flex; flex-direction: column; background: var(--gris-fond); }
+
+    .sa-bar { background: var(--blanc); border-bottom: 1px solid var(--gris-bordure);
+      padding: 0.7rem 1rem; display: flex; align-items: center; gap: 0.7rem;
+      position: sticky; top: 0; z-index: 10; }
+    .sa-retour { background: none; border: none; font-size: 1.35rem; line-height: 1;
+      color: var(--texte-doux); cursor: pointer; padding: 0.2rem 0.35rem; margin-left: -0.35rem; }
+    .sa-titre { font-weight: 700; font-size: 0.98rem; min-width: 0; }
+    .sa-titre small { display: block; font-weight: 400; font-size: 0.78rem; color: var(--texte-doux); }
+
+    .sa-etudiant { background: var(--info-bg); border-bottom: 1px solid #c9d4ff;
+      padding: 0.6rem 1rem; display: flex; align-items: center; gap: 0.7rem; }
+    .sa-pastille { width: 2.2rem; height: 2.2rem; border-radius: 50%; background: var(--bleu);
+      color: #fff; display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 0.82rem; flex: none; }
+    .sa-qui { font-weight: 700; font-size: 0.94rem; line-height: 1.2; }
+    .sa-niv { font-size: 0.79rem; color: var(--info); }
+
+    .sa-main { flex: 1; padding: 1rem; }
+    .sa-ecran { display: none; }
+    .sa-ecran.actif { display: block; }
+
+    .sa-h2 { font-size: 1.08rem; margin: 0 0 0.2rem; }
+    .sa-aide { color: var(--texte-doux); font-size: 0.86rem; margin: 0 0 1rem; }
+
+    .sa-choix { display: block; width: 100%; text-align: left; background: var(--blanc);
+      border: 1px solid var(--gris-bordure); border-left: 3px solid transparent;
+      padding: 0.85rem 0.9rem; margin-bottom: 0.5rem; font: inherit; cursor: pointer;
+      display: flex; align-items: center; gap: 0.75rem; }
+    .sa-choix:hover { border-left-color: var(--bleu); background: #fafaff; }
+    .sa-choix .sa-nom { font-weight: 600; font-size: 0.94rem; }
+    .sa-choix .sa-meta { font-size: 0.79rem; color: var(--texte-doux); }
+    .sa-choix .sa-fleche { margin-left: auto; color: var(--texte-doux); }
+    .sa-choix.fait { opacity: 0.6; }
+
+    .sa-champ { background: var(--blanc); border: 1px solid var(--gris-bordure);
+      padding: 0.85rem; margin-bottom: 0.6rem; }
+    .sa-champ label { display: block; font-size: 0.92rem; font-weight: 600; margin-bottom: 0.1rem; }
+    .sa-champ .sa-indice { font-size: 0.79rem; color: var(--texte-doux); margin-bottom: 0.5rem; }
+    .sa-champ input[type="text"], .sa-champ textarea, .sa-champ select {
+      width: 100%; padding: 0.6rem; border: 1px solid var(--gris-bordure);
+      font: inherit; font-size: 0.92rem; }
+    .sa-champ textarea { resize: vertical; min-height: 3.5rem; }
+    .sa-garde { display: flex; gap: 0.4rem; align-items: flex-start; margin-top: 0.45rem;
+      font-size: 0.77rem; color: var(--alerte); background: var(--alerte-bg); padding: 0.4rem 0.5rem; }
+
+    .sa-progress { position: sticky; top: 3.6rem; z-index: 5; margin: -1rem -1rem 1rem;
+      background: var(--blanc); border-bottom: 1px solid var(--gris-bordure); padding: 0.6rem 1rem; }
+    .sa-progress .txt { display: flex; justify-content: space-between; font-size: 0.79rem;
+      color: var(--texte-doux); margin-bottom: 0.35rem; }
+    .sa-barre { height: 4px; background: var(--gris-contraste); }
+    .sa-barre span { display: block; height: 100%; background: var(--bleu); width: 0; transition: width 0.2s; }
+
+    .sa-grp { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--texte-doux); margin: 1.4rem 0 0.5rem; padding-bottom: 0.3rem;
+      border-bottom: 1px solid var(--gris-bordure); }
+    .sa-grp:first-child { margin-top: 0; }
+
+    .sa-item { background: var(--blanc); border: 1px solid var(--gris-bordure);
+      padding: 0.8rem 0.85rem; margin-bottom: 0.6rem; }
+    .sa-item.repondu { border-left: 3px solid var(--succes); }
+    .sa-lib { font-size: 0.94rem; font-weight: 600; margin-bottom: 0.1rem; }
+    .sa-precision { font-size: 0.8rem; color: var(--texte-doux); margin-bottom: 0.6rem; }
+    .sa-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
+    .sa-opts.trio { grid-template-columns: 1fr 1fr 1fr; }
+    .sa-opt { padding: 0.75rem 0.4rem; border: 1px solid var(--gris-bordure); background: var(--blanc);
+      font: inherit; font-size: 0.85rem; font-weight: 600; color: var(--texte-doux); cursor: pointer;
+      min-height: 3rem; display: flex; align-items: center; justify-content: center; text-align: center; }
+    .sa-opt:hover { border-color: var(--bleu); color: var(--texte); }
+    .sa-opt.on { background: var(--bleu); border-color: var(--bleu); color: #fff; }
+    .sa-opt.on.neutre { background: var(--texte-doux); border-color: var(--texte-doux); }
+    .sa-opt.on.non { background: var(--rouge); border-color: var(--rouge); }
+    .sa-com-btn { background: none; border: none; color: var(--bleu); font: inherit; font-size: 0.82rem;
+      font-weight: 600; padding: 0.5rem 0 0; cursor: pointer; text-decoration: underline; }
+    .sa-item textarea { width: 100%; margin-top: 0.5rem; padding: 0.5rem;
+      border: 1px solid var(--gris-bordure); font: inherit; font-size: 0.88rem; min-height: 3rem; }
+
+    /* Récapitulatif lu à deux avant l'envoi */
+    .sa-recap { background: var(--blanc); border: 1px solid var(--gris-bordure); padding: 0.9rem; }
+    .sa-recap-l { display: flex; justify-content: space-between; gap: 1rem;
+      padding: 0.4rem 0; border-bottom: 1px solid var(--gris-contraste); font-size: 0.88rem; }
+    .sa-recap-l:last-child { border-bottom: none; }
+    .sa-recap-l .v { font-weight: 700; text-align: right; white-space: nowrap; }
+    .sa-recap-com { font-size: 0.83rem; color: var(--texte-doux); font-style: italic;
+      border-left: 2px solid var(--gris-bordure); padding-left: 0.5rem; margin-top: 0.2rem; }
+    .sa-presence { display: flex; gap: 0.6rem; align-items: flex-start; background: var(--info-bg);
+      border: 1px solid #c9d4ff; padding: 0.8rem; margin-top: 0.8rem; }
+    .sa-presence input { margin-top: 0.15rem; width: 1.15rem; height: 1.15rem; flex: none; }
+    .sa-presence label { font-size: 0.88rem; }
+
+    .sa-pied { position: sticky; bottom: 0; background: var(--blanc);
+      border-top: 1px solid var(--gris-bordure);
+      padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom)); }
+    .sa-btn { display: block; width: 100%; padding: 0.95rem; border: none; background: var(--bleu);
+      color: #fff; font: inherit; font-size: 0.98rem; font-weight: 700; cursor: pointer; min-height: 3.1rem; }
+    .sa-btn:hover { background: var(--bleu-hover); }
+    .sa-btn[disabled] { background: var(--gris-contraste); color: #999; cursor: not-allowed; }
+    .sa-sous { text-align: center; font-size: 0.78rem; color: var(--texte-doux); margin-top: 0.5rem; }
+    .sa-erreur { color: var(--rouge); font-size: 0.85rem; margin-top: 0.5rem; text-align: center; }
+
+    .sa-fini { text-align: center; padding: 2.5rem 1rem; }
+    .sa-rond { width: 4rem; height: 4rem; border-radius: 50%; background: var(--succes-bg);
+      color: var(--succes); display: flex; align-items: center; justify-content: center;
+      font-size: 2rem; margin: 0 auto 1.2rem; }
+    .sa-brouillon { display: flex; align-items: center; gap: 0.4rem; justify-content: center;
+      font-size: 0.77rem; color: var(--texte-doux); margin: 0.9rem 0 0.2rem; }
+    .sa-point { width: 6px; height: 6px; border-radius: 50%; background: var(--succes); flex: none; }
+  </style>
+</head>
+<body>
+
+<div class="sa-app">
+
+  <header class="sa-bar">
+    <button class="sa-retour" id="sa-retour" type="button" hidden>‹</button>
+    <div class="sa-titre">Évaluation d'un soin<small id="sa-fil">Chargement…</small></div>
+  </header>
+
+  <div class="sa-etudiant" id="sa-etudiant" hidden>
+    <div class="sa-pastille" id="sa-initiales"></div>
+    <div>
+      <div class="sa-qui" id="sa-nom"></div>
+      <div class="sa-niv" id="sa-detail"></div>
+    </div>
+  </div>
+
+  <main class="sa-main">
+
+    <!-- 0 — code du service + qui remplit -->
+    <section class="sa-ecran actif" id="sa-e0">
+      <h2 class="sa-h2">Ouvrir l'évaluation</h2>
+      <p class="sa-aide">Cette évaluation se remplit <strong>avec l'étudiant</strong>, à l'issue du soin.</p>
+      <div class="sa-champ">
+        <label for="sa-code">Code du service</label>
+        <div class="sa-indice">Affiché au poste de soins.</div>
+        <input type="text" id="sa-code" autocapitalize="characters" autocomplete="off"
+               spellcheck="false" maxlength="12" placeholder="ex. K7RM4PQZ">
+      </div>
+      <p class="sa-erreur" id="sa-e0-err" hidden></p>
+    </section>
+
+    <!-- 1 — qui réalise l'évaluation -->
+    <section class="sa-ecran" id="sa-e1">
+      <h2 class="sa-h2">Qui réalise l'évaluation&nbsp;?</h2>
+      <p class="sa-aide">Choisissez votre nom. Il sera retenu sur cet appareil.</p>
+      <div id="sa-pros"></div>
+    </section>
+
+    <!-- 2 — quel soin -->
+    <section class="sa-ecran" id="sa-e2">
+      <h2 class="sa-h2">Quel soin évaluez-vous&nbsp;?</h2>
+      <p class="sa-aide" id="sa-e2-aide"></p>
+      <div id="sa-grilles"></div>
+    </section>
+
+    <!-- 3 — la grille -->
+    <section class="sa-ecran" id="sa-e3">
+      <div class="sa-progress">
+        <div class="txt"><span id="sa-p-nom"></span><span id="sa-p-cpt"></span></div>
+        <div class="sa-barre"><span id="sa-p-barre"></span></div>
+      </div>
+      <div class="sa-champ">
+        <label for="sa-contexte">Situation observée</label>
+        <div class="sa-indice">Facultatif — pour se souvenir du contexte.</div>
+        <input type="text" id="sa-contexte" maxlength="200" placeholder="ex. 1re pose, patient anxieux">
+        <div class="sa-garde"><span>⚠</span><span>Aucun nom, n° de chambre ou identifiant de patient : ce document suit l'étudiant.</span></div>
+      </div>
+      <div id="sa-items"></div>
+      <div class="sa-brouillon" id="sa-brouillon" hidden><span class="sa-point"></span> Brouillon conservé sur cet appareil</div>
+    </section>
+
+    <!-- 4 — récapitulatif lu à deux -->
+    <section class="sa-ecran" id="sa-e4">
+      <h2 class="sa-h2">À relire ensemble</h2>
+      <p class="sa-aide">Voici ce qui sera transmis au tuteur. Lisez-le avec l'étudiant avant d'envoyer.</p>
+      <div class="sa-recap" id="sa-recap"></div>
+      <div class="sa-champ" style="margin-top:0.6rem">
+        <label for="sa-global">Appréciation générale</label>
+        <div class="sa-indice">Factuelle : ce qui a été observé, pas une impression.</div>
+        <textarea id="sa-global" maxlength="1000" placeholder="ex. a su s'arrêter et redemander du matériel plutôt que d'insister"></textarea>
+      </div>
+      <div class="sa-presence">
+        <input type="checkbox" id="sa-presence">
+        <label for="sa-presence">L'évaluation a été remplie <strong>en présence de l'étudiant</strong>, qui en a pris connaissance.</label>
+      </div>
+      <p class="sa-erreur" id="sa-e4-err" hidden></p>
+    </section>
+
+    <!-- 5 — envoyé -->
+    <section class="sa-ecran" id="sa-e5">
+      <div class="sa-fini">
+        <div class="sa-rond">✓</div>
+        <h2 class="sa-h2">Transmis au tuteur</h2>
+        <p class="sa-aide" id="sa-fini-txt"></p>
+        <button class="sa-btn" id="sa-encore" type="button" style="max-width:20rem;margin:0 auto">Évaluer un autre soin</button>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="sa-pied" id="sa-pied">
+    <button class="sa-btn" id="sa-principal" type="button">Continuer</button>
+    <div class="sa-sous" id="sa-sous"></div>
+  </footer>
+
+</div>
+
+<script src="config.js?v=1"></script>
+<script src="saisie-evaluation.js?v=1"></script>
+</body>
+</html>
