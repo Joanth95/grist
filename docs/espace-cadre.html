@@ -625,6 +625,34 @@
     .gr-barre .gr-etat { font-size: 0.8rem; font-weight: 600; padding: 0.35rem 0.7rem;
       background: var(--info-bg); color: var(--info); }
     .gr-barre .gr-etat.publie { background: var(--succes-bg); color: var(--succes); }
+
+    /* Grilles attendues, dans le dossier de l'étudiant */
+    .ligne-attendu {
+      display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0;
+      border-bottom: 1px solid var(--gris-bordure);
+    }
+    .ligne-attendu:last-child { border-bottom: none; }
+    .ligne-attendu.retiree { opacity: 0.55; }
+    .ligne-attendu.retiree .attendu-nom { text-decoration: line-through; }
+    .attendu-nom { font-weight: 600; font-size: 0.9rem; }
+    .attendu-meta { font-size: 0.78rem; color: var(--texte-doux); }
+    .attendu-droite { margin-left: auto; display: flex; align-items: center; gap: 0.3rem; flex: none; }
+
+    /* Code de saisie du service : fait pour être lu de loin et redicté. */
+    .code-saisie { margin-bottom: 0.5rem; }
+    .code-saisie-valeur {
+      display: inline-block; font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+      font-size: 1.6rem; font-weight: 700; letter-spacing: 0.18em;
+      background: var(--info-bg); color: var(--bleu);
+      padding: 0.5rem 0.9rem; border: 1px solid #c9d4ff;
+    }
+    .eval-ajout {
+      display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
+      margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px dashed var(--gris-bordure);
+    }
+    .eval-ajout input {
+      padding: 0.45rem; border: 1px solid var(--gris-bordure); font: inherit; font-size: 0.88rem;
+    }
   </style>
 </head>
 <body>
@@ -789,6 +817,11 @@
         <div id="tab-mailbienvenue" hidden>
           <p class="section-note">Modèle de mail de bienvenue du service. Il est utilisé par le bouton « ✉ Mail de bienvenue » présent sur le dossier de chaque étudiant.</p>
           <div id="mailbienvenue-content" class="decl-card" style="padding: 1rem 1.25rem;"></div>
+        </div>
+
+        <div id="tab-evaluateurs" hidden>
+          <p class="section-note">Qui peut remplir une grille dans ce service, et avec quel code. Les professionnels n'ont pas de compte : ils choisissent leur nom dans la liste ci-dessous et saisissent le code du service.</p>
+          <div id="evaluateurs-content"></div>
         </div>
 
         <div id="tab-grilles" hidden>

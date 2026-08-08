@@ -17,6 +17,7 @@ const TABS = [
   { id: "codes", label: "Codes horaires" },
   { id: "mailbienvenue", label: "Mail de bienvenue" },
   { id: "grilles", label: "Grilles d'évaluation" },
+  { id: "evaluateurs", label: "Évaluateurs" },
 ];
 
 // Onglets de 1er niveau (groupes) ; chaque groupe déroule ses sous-onglets.
@@ -24,7 +25,7 @@ const TAB_GROUPS = [
   { id: "dashboard", label: "Tableau de bord", tabs: ["dashboard"] },
   { id: "etudiants", label: "Étudiants", tabs: ["dossier", "inscription", "declarations", "evaluation"] },
   { id: "service", label: "Gestion de service", tabs: ["planning", "stats", "satisfaction"] },
-  { id: "parametres", label: "Paramètres", tabs: ["codes", "mailbienvenue", "grilles"] },
+  { id: "parametres", label: "Paramètres", tabs: ["codes", "mailbienvenue", "grilles", "evaluateurs"] },
 ];
 
 // Modèle de mail de bienvenue par défaut (si le service n'en a pas configuré).
@@ -574,6 +575,7 @@ function renderActiveTab() {
   $("tab-codes").hidden = state.activeTab !== "codes";
   $("tab-mailbienvenue").hidden = state.activeTab !== "mailbienvenue";
   $("tab-grilles").hidden = state.activeTab !== "grilles";
+  $("tab-evaluateurs").hidden = state.activeTab !== "evaluateurs";
   if (state.activeTab === "dashboard") renderDashboardTab();
   if (state.activeTab === "declarations") renderDeclarationsTab();
   if (state.activeTab === "dossier") renderDossierTab();
@@ -585,6 +587,7 @@ function renderActiveTab() {
   if (state.activeTab === "codes") renderCodesTab();
   if (state.activeTab === "mailbienvenue") renderMailBienvenueTab();
   if (state.activeTab === "grilles") renderGrillesTab();
+  if (state.activeTab === "evaluateurs") renderEvaluateursTab();
 }
 
 /** Change d'onglet par programmation (clic sur une carte du tableau de bord). */
@@ -1745,6 +1748,12 @@ function renderStageDuService(st) {
   }
   rdv.body.appendChild(renderRdvsList(p, verrou));
   wrap.appendChild(rdv.card);
+
+  /* ---- Grilles d'évaluation attendues sur ce stage ---- */
+  const grillesCard = dossierCard("Grilles d'évaluation attendues");
+  grillesCard.body.appendChild(el("p", "empty", "Chargement…"));
+  wrap.appendChild(grillesCard.card);
+  chargerAttendus(p, grillesCard);
 
   /* ---- Bilan final, commentaires et pièces jointes ---- */
   const docs = dossierCard("Bilan et documents");
@@ -3458,6 +3467,335 @@ function renderMailBienvenueTab() {
 }
 
 /* ================================================================== */
+/* Onglet Évaluateurs : la liste du service et le code de saisie       */
+/* ================================================================== */
+/* Les professionnels n'ont pas de compte : ils se désignent dans cette
+ * liste et entrent le code du service. Le code n'ouvre que la saisie —
+ * aucune lecture — et se renouvelle en un clic quand il a trop circulé. */
+
+const evaluateurs = { data: null, serviceId: null, chargement: false };
+
+function renderEvaluateursTab() {
+  const zone = $("evaluateurs-content");
+  if (!state.selectedServiceId) {
+    zone.innerHTML = "";
+    zone.appendChild(el("p", "empty", "Sélectionnez un service."));
+    return;
+  }
+  // Le cache appartient à un service : changer de service le périme.
+  if (evaluateurs.serviceId !== state.selectedServiceId) evaluateurs.data = null;
+  if (!evaluateurs.data) {
+    zone.innerHTML = "";
+    zone.appendChild(el("p", "empty", "Chargement…"));
+    if (!evaluateurs.chargement) chargerEvaluateurs();
+    return;
+  }
+  zone.innerHTML = "";
+  zone.appendChild(blocCodeSaisie(evaluateurs.data));
+  zone.appendChild(blocListeEvaluateurs(evaluateurs.data));
+}
+
+async function chargerEvaluateurs() {
+  evaluateurs.chargement = true;
+  const serviceId = state.selectedServiceId;
+  try {
+    evaluateurs.data = await api("GET", `/api/cadre/services/${serviceId}/evaluateurs`);
+    evaluateurs.serviceId = serviceId;
+  } catch (err) {
+    evaluateurs.data = null;
+    $("evaluateurs-content").innerHTML = "";
+    $("evaluateurs-content").appendChild(el("p", "empty", "Chargement impossible : " + err.message));
+    return;
+  } finally {
+    evaluateurs.chargement = false;
+  }
+  if (state.activeTab === "evaluateurs") renderEvaluateursTab();
+}
+
+function blocCodeSaisie(data) {
+  const bloc = el("div", "gr-bloc");
+  bloc.appendChild(el("h4", "", "Code de saisie du service"));
+  const corps = el("div", "gr-corps");
+
+  if (data.code) {
+    const affichage = el("div", "code-saisie");
+    affichage.appendChild(el("span", "code-saisie-valeur", data.code));
+    const meta = el("div", "gr-indice",
+      data.codeMisAJourLe ? "Renouvelé le " + frDateCourt(data.codeMisAJourLe) : "");
+    affichage.appendChild(meta);
+    corps.appendChild(affichage);
+  } else {
+    corps.appendChild(el("p", "empty",
+      "Aucun code pour ce service : les professionnels ne peuvent pas encore saisir d'évaluation."));
+  }
+
+  corps.appendChild(el("p", "save-hint",
+    "Ce code ouvre uniquement l'écran de saisie d'une évaluation : il ne donne accès à aucun dossier, "
+    + "planning ou évaluation déjà déposée. Affichez-le au poste de soins, mais "
+    + "ne le communiquez pas aux étudiants du service."));
+
+  const hint = el("p", "save-hint", "");
+  const btn = el("button", "btn " + (data.code ? "btn-secondary" : "btn-primary"),
+    data.code ? "Renouveler le code" : "Générer le code");
+  btn.type = "button";
+  btn.addEventListener("click", async () => {
+    if (data.code && !confirm(
+      "Renouveler le code ?\n\nL'ancien cessera immédiatement de fonctionner : "
+      + "les professionnels devront saisir le nouveau. Les évaluations déjà déposées ne changent pas.")) return;
+    btn.disabled = true;
+    try {
+      await api("POST", `/api/cadre/services/${state.selectedServiceId}/code-evaluation`, {});
+      evaluateurs.data = null;
+      renderEvaluateursTab();
+    } catch (err) {
+      btn.disabled = false;
+      hint.textContent = "Échec : " + err.message;
+    }
+  });
+  const actions = el("div", "");
+  actions.style.marginTop = "0.75rem";
+  actions.appendChild(btn);
+  corps.append(actions, hint);
+
+  bloc.appendChild(corps);
+  return bloc;
+}
+
+function blocListeEvaluateurs(data) {
+  const bloc = el("div", "gr-bloc");
+  bloc.appendChild(el("h4", "", "Professionnels du service"));
+  const corps = el("div", "gr-corps");
+
+  corps.appendChild(el("p", "save-hint",
+    "Ces noms sont proposés au professionnel qui remplit une grille : il choisit le sien dans la liste. "
+    + "Un nom retiré n'est jamais effacé — il reste attaché aux évaluations qu'il a déposées."));
+
+  const actifs = data.professionnels.filter((p) => p.Actif);
+  const inactifs = data.professionnels.filter((p) => !p.Actif);
+
+  if (!actifs.length) {
+    corps.appendChild(el("p", "empty",
+      "Aucun professionnel actif : la liste proposée à la saisie serait vide."));
+  }
+  actifs.forEach((p) => corps.appendChild(ligneEvaluateur(p)));
+
+  if (inactifs.length) {
+    const t = el("p", "doc-bloc-titre", `Retirés de la liste (${inactifs.length})`);
+    t.style.marginTop = "0.9rem";
+    corps.appendChild(t);
+    inactifs.forEach((p) => corps.appendChild(ligneEvaluateur(p)));
+  }
+
+  /* Formulaire d'ajout */
+  const form = el("div", "eval-ajout");
+  const champ = (ph, taille) => {
+    const i = document.createElement("input");
+    i.type = "text"; i.placeholder = ph; i.maxLength = 40;
+    if (taille) i.style.maxWidth = taille;
+    return i;
+  };
+  const prenom = champ("Prénom *", "10rem");
+  const nom = champ("Initiale ou nom", "10rem");
+  const fonction = champ("Fonction (IDE, AS…)", "10rem");
+  const ajouter = el("button", "btn btn-primary btn-small", "Ajouter");
+  ajouter.type = "button";
+  const err = el("span", "save-hint", "");
+  ajouter.addEventListener("click", async () => {
+    err.textContent = "";
+    if (!prenom.value.trim()) { err.textContent = "Le prénom est obligatoire."; return; }
+    ajouter.disabled = true;
+    try {
+      await api("POST", `/api/cadre/services/${state.selectedServiceId}/evaluateurs`,
+        { Prenom: prenom.value, Nom: nom.value, Fonction: fonction.value });
+      evaluateurs.data = null;
+      renderEvaluateursTab();
+    } catch (e) {
+      ajouter.disabled = false;
+      err.textContent = e.message;
+    }
+  });
+  form.append(prenom, nom, fonction, ajouter, err);
+  corps.appendChild(form);
+
+  bloc.appendChild(corps);
+  return bloc;
+}
+
+function ligneEvaluateur(p) {
+  const ligne = el("div", "ligne-attendu" + (p.Actif ? "" : " retiree"));
+  const gauche = el("div", "");
+  gauche.appendChild(el("div", "attendu-nom", [p.Prenom, p.Nom].filter(Boolean).join(" ")));
+  gauche.appendChild(el("div", "attendu-meta", p.Fonction || "—"));
+
+  const droite = el("div", "attendu-droite");
+  const bascule = el("button", "btn-link", p.Actif ? "Retirer" : "Réactiver");
+  bascule.type = "button";
+  bascule.addEventListener("click", async () => {
+    bascule.disabled = true;
+    try {
+      await api("PATCH", `/api/cadre/evaluateurs/${p.id}`, { Actif: !p.Actif });
+      evaluateurs.data = null;
+      renderEvaluateursTab();
+    } catch (err) {
+      bascule.disabled = false;
+      alert("Modification impossible : " + err.message);
+    }
+  });
+  droite.appendChild(bascule);
+
+  ligne.append(gauche, droite);
+  return ligne;
+}
+
+/* ================================================================== */
+/* Grilles attendues sur un stage (carte du dossier étudiant)          */
+/* ================================================================== */
+/* Les grilles systématiques du service sont posées à l'ouverture du stage.
+ * Le cadre ajuste ensuite étudiant par étudiant : une grille retirée l'est
+ * avec son motif, jamais effacée, et ne revient pas toute seule. */
+
+async function chargerAttendus(periode, carte) {
+  try {
+    const data = await api("GET", `/api/cadre/periodes/${periode.id}/attendus`);
+    renderAttendus(periode, carte, data);
+  } catch (err) {
+    carte.body.innerHTML = "";
+    carte.body.appendChild(el("p", "empty", "Chargement impossible : " + err.message));
+  }
+}
+
+function renderAttendus(periode, carte, data) {
+  carte.body.innerHTML = "";
+  carte.actions.innerHTML = "";
+  const actifs = data.attendus.filter((a) => a.Actif);
+  const retires = data.attendus.filter((a) => !a.Actif);
+
+  const titre = carte.card.querySelector(".dossier-card-title");
+  if (titre) {
+    const pill = titre.querySelector(".count-pill");
+    if (pill) pill.remove();
+    titre.appendChild(el("span", "count-pill", String(actifs.length)));
+  }
+
+  /* Grilles systématiques créées après l'ouverture du stage : elles ne
+     descendent pas toutes seules, c'est une action explicite du cadre. */
+  if (data.systematiquesAPoser > 0) {
+    const btn = el("button", "btn btn-secondary btn-small",
+      `Appliquer ${data.systematiquesAPoser} grille(s) systématique(s)`);
+    btn.type = "button";
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        await api("POST", `/api/cadre/periodes/${periode.id}/attendus/systematiques`, {});
+        chargerAttendus(periode, carte);
+      } catch (err) {
+        btn.disabled = false;
+        alert("Échec : " + err.message);
+      }
+    });
+    carte.actions.appendChild(btn);
+  }
+
+  if (data.ajoutables.length) {
+    const sel = document.createElement("select");
+    sel.className = "cadre-tel-input";
+    const vide = document.createElement("option");
+    vide.value = ""; vide.textContent = "+ Ajouter une grille…";
+    sel.appendChild(vide);
+    data.ajoutables.forEach((f) => {
+      const o = document.createElement("option");
+      o.value = String(f.id); o.textContent = f.Nom;
+      sel.appendChild(o);
+    });
+    sel.addEventListener("change", async () => {
+      if (!sel.value) return;
+      const id = Number(sel.value);
+      sel.disabled = true;
+      try {
+        await api("POST", `/api/cadre/periodes/${periode.id}/attendus`, { formulaireId: id });
+        chargerAttendus(periode, carte);
+      } catch (err) {
+        sel.disabled = false; sel.value = "";
+        alert("Ajout impossible : " + err.message);
+      }
+    });
+    carte.actions.appendChild(sel);
+  }
+
+  if (!data.attendus.length) {
+    carte.body.appendChild(el("p", "empty",
+      data.ajoutables.length
+        ? "Aucune grille attendue sur ce stage. Ajoutez-en une ci-dessus."
+        : "Aucune grille publiée dans ce service : créez-en une dans Paramètres → Grilles d'évaluation."));
+    return;
+  }
+
+  actifs.forEach((a) => carte.body.appendChild(ligneAttendu(periode, carte, a)));
+
+  if (retires.length) {
+    const t = el("p", "doc-bloc-titre", `Retirées de ce stage (${retires.length})`);
+    t.style.marginTop = "0.9rem";
+    carte.body.appendChild(t);
+    retires.forEach((a) => carte.body.appendChild(ligneAttendu(periode, carte, a)));
+  }
+}
+
+function ligneAttendu(periode, carte, a) {
+  const ligne = el("div", "ligne-attendu");
+  if (!a.Actif) ligne.classList.add("retiree");
+
+  const gauche = el("div", "");
+  gauche.appendChild(el("div", "attendu-nom", a.Nom));
+  const bits = [a.Origine === "systematique" ? "systématique" : "ajoutée par le cadre"];
+  if (a.Date_limite) bits.push("avant le " + frDateCourt(a.Date_limite));
+  if (!a.Publiee) bits.push("⚠ grille sans version publiée");
+  if (!a.Actif && a.Motif_retrait) bits.push("motif : " + a.Motif_retrait);
+  gauche.appendChild(el("div", "attendu-meta", bits.join(" · ")));
+
+  const droite = el("div", "attendu-droite");
+  const complet = a.Faits >= a.Nb_attendu;
+  droite.appendChild(badge(`${a.Faits} / ${a.Nb_attendu}`, complet ? "ok" : "info"));
+
+  if (a.Actif) {
+    const moins = el("button", "gr-mini", "−");
+    moins.type = "button"; moins.title = "Une observation attendue de moins";
+    moins.disabled = a.Nb_attendu <= 1;
+    moins.addEventListener("click", () => majAttendu(periode, carte, a, { nbAttendu: a.Nb_attendu - 1 }));
+
+    const plus = el("button", "gr-mini", "+");
+    plus.type = "button"; plus.title = "Une observation attendue de plus";
+    plus.disabled = a.Nb_attendu >= 10;
+    plus.addEventListener("click", () => majAttendu(periode, carte, a, { nbAttendu: a.Nb_attendu + 1 }));
+
+    const retirer = el("button", "gr-mini sup", "✕");
+    retirer.type = "button"; retirer.title = "Retirer cette grille du stage";
+    retirer.addEventListener("click", () => {
+      const motif = prompt("Pourquoi retirer cette grille de ce stage ? (conservé dans l'historique)");
+      if (motif === null) return;
+      majAttendu(periode, carte, a, { actif: false, motifRetrait: motif });
+    });
+    droite.append(moins, plus, retirer);
+  } else {
+    const remettre = el("button", "btn-link", "Remettre");
+    remettre.type = "button";
+    remettre.addEventListener("click", () => majAttendu(periode, carte, a, { actif: true }));
+    droite.appendChild(remettre);
+  }
+
+  ligne.append(gauche, droite);
+  return ligne;
+}
+
+async function majAttendu(periode, carte, a, patch) {
+  try {
+    await api("PATCH", `/api/cadre/attendus/${a.id}`, patch);
+    chargerAttendus(periode, carte);
+  } catch (err) {
+    alert("Modification impossible : " + err.message);
+  }
+}
+
+/* ================================================================== */
 /* Onglet Grilles d'évaluation                                         */
 /* ================================================================== */
 /* Deux écrans dans le même onglet : la liste des grilles du service, et
@@ -3483,7 +3821,7 @@ const GRILLE_NIVEAUX = ["ESI L1", "ESI L2", "ESI L3", "M1", "M2", "Aide-Soignant
 const GRILLE_SEUIL_ALERTE = 7;
 
 // État local de l'onglet, hors de `state.data` : rechargé à chaque ouverture.
-const grilles = { liste: null, edition: null, chargement: false };
+const grilles = { liste: null, serviceId: null, edition: null, chargement: false };
 
 function renderGrillesTab() {
   const container = $("grilles-content");
@@ -3494,6 +3832,8 @@ function renderGrillesTab() {
     container.appendChild(el("p", "empty", "Sélectionnez un service."));
     return;
   }
+  // Le cache appartient à un service : changer de service le périme.
+  if (grilles.serviceId !== state.selectedServiceId) grilles.liste = null;
   if (!grilles.liste) {
     container.appendChild(el("p", "empty", "Chargement…"));
     if (!grilles.chargement) chargerGrilles();
@@ -3558,9 +3898,11 @@ function carteGrille(g, estModele) {
 
 async function chargerGrilles() {
   grilles.chargement = true;
+  const serviceId = state.selectedServiceId;
   try {
-    const res = await api("GET", `/api/cadre/formulaires?serviceId=${state.selectedServiceId}`);
+    const res = await api("GET", `/api/cadre/formulaires?serviceId=${serviceId}`);
     grilles.liste = res.formulaires;
+    grilles.serviceId = serviceId;
   } catch (err) {
     grilles.liste = [];
     $("grilles-content").innerHTML = "";

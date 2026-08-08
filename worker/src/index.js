@@ -54,6 +54,18 @@
  *   PATCH  /api/cadre/profil  { Telephone }                   -> modifie son propre numéro de téléphone
  *   PATCH  /api/cadre/services/:id  { codes: [ids] }          -> codes horaires actifs du service
  *                                                                (SERVICES.Codes_horaires ; vide = tous)
+ *   GET    /api/cadre/services/:id/evaluateurs                 -> professionnels du service (sans
+ *                                                                 compte) + code de saisie
+ *   POST   /api/cadre/services/:id/evaluateurs  { Prenom, Nom?, Fonction? } -> ajoute un professionnel
+ *   PATCH  /api/cadre/evaluateurs/:id  { Prenom?, Nom?, Fonction?, Actif? } -> modifie / retire
+ *   POST   /api/cadre/services/:id/code-evaluation             -> (re)génère le code de saisie
+ *   GET    /api/cadre/periodes/:id/attendus                    -> grilles attendues sur ce stage,
+ *                                                                 avancement, et celles à ajouter
+ *   POST   /api/cadre/periodes/:id/attendus  { formulaireId }  -> attribue une grille à cet étudiant
+ *   POST   /api/cadre/periodes/:id/attendus/systematiques      -> pose les grilles systématiques du
+ *                                                                 service sur un stage déjà ouvert
+ *   PATCH  /api/cadre/attendus/:id  { nbAttendu?, actif?, motifRetrait?, dateLimite? }
+ *                                                              -> ajuste ou retire une grille attendue
  *   GET    /api/cadre/formulaires[?serviceId=N]                -> grilles d'évaluation du service
  *                                                                 (+ modèles), état de leurs versions
  *   POST   /api/cadre/formulaires  { serviceId, Nom, modeleId? } -> crée une grille (version 1 en
@@ -164,6 +176,15 @@ const T_POLE = "Pole";
 const T_FORMULAIRE = "FORMULAIRE";
 const T_FORMULAIRE_VERSION = "FORMULAIRE_VERSION";
 const T_FORMULAIRE_ITEM = "FORMULAIRE_ITEM";
+// Ce qu'un étudiant doit valider sur SON stage. Matérialisé à l'ouverture du
+// stage (grilles systématiques du service) puis ajusté au cas par cas : une
+// règle recalculée en permanence interdirait de retirer une grille pour un
+// seul étudiant, et réécrirait rétroactivement les stages déjà commencés.
+const T_FORMULAIRE_ATTENDU = "FORMULAIRE_ATTENDU";
+const T_EVALUATION_SOIN = "EVALUATION_SOIN";
+// Professionnels autorisés à remplir une grille, sans compte : ils se
+// désignent dans cette liste, tenue par le cadre de leur service.
+const T_PROFESSIONNEL = "PROFESSIONNEL_SERVICE";
 
 // Types d'items d'une grille. « section » n'appelle pas de réponse.
 const TYPES_ITEM = ["section", "acquisition", "oui_non", "echelle", "texte"];
@@ -633,6 +654,44 @@ async function route(request, env, ctx) {
     if (request.method === "POST" && path === "/api/cadre/formulaires") {
       return withLog(env, ctx, who, "Création d'une grille d'évaluation", "",
         (info) => creerFormulaire(request, env, cadre, info));
+    }
+    // --- Évaluateurs du service et code de saisie ---
+    const evm = path.match(/^\/api\/cadre\/services\/(\d+)\/evaluateurs$/);
+    if (request.method === "GET" && evm) {
+      return json(await listerEvaluateurs(env, cadre, Number(evm[1])));
+    }
+    if (request.method === "POST" && evm) {
+      return withLog(env, ctx, who, "Ajout d'un évaluateur", "",
+        (info) => ajouterEvaluateur(request, env, cadre, Number(evm[1]), info));
+    }
+    const ecm = path.match(/^\/api\/cadre\/services\/(\d+)\/code-evaluation$/);
+    if (request.method === "POST" && ecm) {
+      return withLog(env, ctx, who, "Renouvellement du code de saisie", "",
+        (info) => regenererCodeEvaluation(env, cadre, Number(ecm[1]), info));
+    }
+    const eum = path.match(/^\/api\/cadre\/evaluateurs\/(\d+)$/);
+    if (request.method === "PATCH" && eum) {
+      return withLog(env, ctx, who, "Modification d'un évaluateur", "",
+        (info) => modifierEvaluateur(request, env, cadre, Number(eum[1]), info));
+    }
+    // --- Grilles attendues sur un stage ---
+    const am = path.match(/^\/api\/cadre\/periodes\/(\d+)\/attendus$/);
+    if (request.method === "GET" && am) {
+      return json(await listerAttendus(env, cadre, Number(am[1])));
+    }
+    if (request.method === "POST" && am) {
+      return withLog(env, ctx, who, "Grille attribuée à un étudiant", "",
+        (info) => ajouterAttendu(request, env, cadre, Number(am[1]), info));
+    }
+    const asm = path.match(/^\/api\/cadre\/periodes\/(\d+)\/attendus\/systematiques$/);
+    if (request.method === "POST" && asm) {
+      return withLog(env, ctx, who, "Application des grilles systématiques", "",
+        (info) => appliquerSystematiques(env, cadre, Number(asm[1]), info));
+    }
+    const aum = path.match(/^\/api\/cadre\/attendus\/(\d+)$/);
+    if (request.method === "PATCH" && aum) {
+      return withLog(env, ctx, who, "Modification d'une grille attendue", "",
+        (info) => modifierAttendu(request, env, cadre, Number(aum[1]), info));
     }
     const fvm = path.match(/^\/api\/cadre\/formulaires\/(\d+)\/version\/(\d+)$/);
     if (request.method === "GET" && fvm) {
@@ -3045,6 +3104,350 @@ async function abandonnerBrouillon(env, cadre, formulaireId, info) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Évaluateurs du service : la liste, et le code de saisie             */
+/* ------------------------------------------------------------------ */
+/* Les professionnels qui remplissent une grille n'ont PAS de compte : le
+ * service a un code de saisie partagé, et chacun se désigne dans une liste
+ * tenue par le cadre. Créer cinquante comptes par service ne se
+ * maintiendrait pas ; une liste de prénoms, si.
+ *
+ * Le code est stocké EN CLAIR, contrairement au PIN d'un cadre : il doit
+ * pouvoir être réaffiché et dicté. C'est acceptable parce qu'il n'ouvre
+ * qu'une porte en écriture — aucune lecture de dossier, de planning ou
+ * d'évaluation déjà déposée — et parce qu'il est rotatif. */
+
+// 32 caractères sans ambiguïté visuelle (ni O/0, ni I/1) : le code finit sur
+// un post-it et se retape sur un téléphone. 32 = 2^5, donc le masque & 31 ne
+// favorise aucun caractère.
+const ALPHABET_CODE_EVAL = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const LONGUEUR_CODE_EVAL = 8;
+
+function genererCodeEvaluation() {
+  let code = "";
+  for (const o of crypto.getRandomValues(new Uint8Array(LONGUEUR_CODE_EVAL))) {
+    code += ALPHABET_CODE_EVAL[o & 31];
+  }
+  return code;
+}
+
+function serviceDuCadre(cadre, serviceId) {
+  if (!cadre.serviceIds.has(serviceId)) throw httpError(403, "Service hors de votre périmètre");
+  return cadre.services.find((s) => s.id === serviceId);
+}
+
+/** Liste des évaluateurs du service + état du code de saisie. */
+async function listerEvaluateurs(env, cadre, serviceId) {
+  serviceDuCadre(cadre, serviceId);
+  const [pros, services] = await Promise.all([
+    gristFilter(env, T_PROFESSIONNEL, { Service: [serviceId] }),
+    gristFilter(env, T_SERVICES, { id: [serviceId] }),
+  ]);
+  const s = services[0] ? services[0].fields : {};
+  return {
+    professionnels: pros.map((p) => ({
+      id: p.id,
+      Prenom: p.fields.Prenom || "",
+      Nom: p.fields.Nom || "",
+      Fonction: p.fields.Fonction || "",
+      Actif: !!p.fields.Actif,
+    })).sort((a, b) => `${a.Prenom}${a.Nom}`.localeCompare(`${b.Prenom}${b.Nom}`, "fr")),
+    code: s.Code_evaluation || "",
+    codeMisAJourLe: s.Code_evaluation_le ? epochToIso(s.Code_evaluation_le) : "",
+  };
+}
+
+/** Le cadre ajoute un professionnel à la liste de son service. */
+async function ajouterEvaluateur(request, env, cadre, serviceId, info) {
+  serviceDuCadre(cadre, serviceId);
+  const body = await request.json().catch(() => ({}));
+  const prenom = cleanText(body.Prenom, 40);
+  if (!prenom) throw httpError(400, "Le prénom est obligatoire");
+  const nom = cleanText(body.Nom, 40);
+  const fonction = cleanText(body.Fonction, 40);
+
+  // Grist n'applique pas UNIQUE : le doublon évident se refuse ici, sinon la
+  // liste déroulante du professionnel devient inutilisable.
+  const existants = await gristFilter(env, T_PROFESSIONNEL, { Service: [serviceId] });
+  const meme = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  if (existants.some((p) => meme(p.fields.Prenom || "", prenom) && meme(p.fields.Nom || "", nom))) {
+    throw httpError(409, "Ce professionnel est déjà dans la liste");
+  }
+
+  const cree = await grist(env, "POST", `/tables/${T_PROFESSIONNEL}/records`, {
+    records: [{ fields: {
+      Service: serviceId, Prenom: prenom, Nom: nom, Fonction: fonction, Actif: true,
+      Ajoute_par: cadreNomComplet(cadre), Ajoute_le: Math.floor(Date.now() / 1000),
+    } }],
+  });
+  if (info) {
+    info.serviceId = serviceId;
+    info.detail = [prenom, nom, fonction && `(${fonction})`].filter(Boolean).join(" ");
+  }
+  return json({ id: cree.records[0].id }, 201);
+}
+
+/** Modifie un évaluateur, ou le désactive (départ du service). Jamais
+ * supprimé : son nom reste attaché aux observations qu'il a déposées. */
+async function modifierEvaluateur(request, env, cadre, proId, info) {
+  const rows = await gristFilter(env, T_PROFESSIONNEL, { id: [proId] });
+  if (!rows.length) throw httpError(404, "Professionnel introuvable");
+  const serviceId = Number(rows[0].fields.Service) || 0;
+  serviceDuCadre(cadre, serviceId);
+
+  const body = await request.json().catch(() => ({}));
+  const fields = {};
+  if (body.Prenom !== undefined) {
+    const p = cleanText(body.Prenom, 40);
+    if (!p) throw httpError(400, "Le prénom est obligatoire");
+    fields.Prenom = p;
+  }
+  if (body.Nom !== undefined) fields.Nom = cleanText(body.Nom, 40);
+  if (body.Fonction !== undefined) fields.Fonction = cleanText(body.Fonction, 40);
+  if (body.Actif !== undefined) fields.Actif = !!body.Actif;
+  if (!Object.keys(fields).length) throw httpError(400, "Rien à modifier");
+
+  await gristUpdate(env, T_PROFESSIONNEL, proId, fields);
+  if (info) {
+    info.serviceId = serviceId;
+    const nom = [fields.Prenom || rows[0].fields.Prenom, fields.Nom || rows[0].fields.Nom]
+      .filter(Boolean).join(" ");
+    info.detail = nom + (body.Actif === false ? " — retiré de la liste"
+      : body.Actif === true ? " — réactivé" : " — modifié");
+  }
+  return json({ ok: true });
+}
+
+/** (Re)génère le code de saisie du service. La rotation est l'unique parade
+ * à un code qui a trop circulé : les observations déjà déposées ne sont pas
+ * affectées, seules les prochaines saisies exigeront le nouveau code. */
+async function regenererCodeEvaluation(env, cadre, serviceId, info) {
+  const service = serviceDuCadre(cadre, serviceId);
+  const avait = !!(service.fields && service.fields.Code_evaluation);
+  const code = genererCodeEvaluation();
+  await gristUpdate(env, T_SERVICES, serviceId, {
+    Code_evaluation: code,
+    Code_evaluation_le: Math.floor(Date.now() / 1000),
+  });
+  if (info) {
+    info.serviceId = serviceId;
+    // Jamais le code lui-même dans le journal.
+    info.detail = avait ? "code de saisie renouvelé" : "code de saisie créé";
+  }
+  return json({ code });
+}
+
+/* ------------------------------------------------------------------ */
+/* Ce que l'étudiant doit valider sur son stage                        */
+/* ------------------------------------------------------------------ */
+
+/** Grilles systématiques applicables à un stage : celles du service, actives,
+ * publiées, et dont le ciblage par niveau correspond (aucun niveau = tous).
+ * Une grille sans version publiée est ignorée : il n'y aurait rien à remplir. */
+async function grillesSystematiquesDuService(env, serviceId, niveau) {
+  const [tous, versions] = await Promise.all([
+    gristFilter(env, T_FORMULAIRE, { Service: [serviceId] }),
+    gristAll(env, T_FORMULAIRE_VERSION),
+  ]);
+  const publiees = new Set(versions
+    .filter((v) => v.fields.Statut === "publie")
+    .map((v) => Number(v.fields.Formulaire)));
+  return tous.filter((f) => {
+    if (!f.fields.Systematique || !f.fields.Actif) return false;
+    if (!publiees.has(f.id)) return false;
+    const cibles = choixListe(f.fields.Niveaux_cibles);
+    return !cibles.length || (niveau && cibles.includes(niveau));
+  });
+}
+
+/** Matérialise les grilles systématiques sur un stage. Idempotent : une grille
+ * déjà attendue (même retirée) n'est jamais reposée — sinon un retrait décidé
+ * par le cadre reviendrait tout seul au prochain passage. */
+async function poserAttendusSystematiques(env, periode, auteur) {
+  const serviceId = Number(periode.fields.Service) || 0;
+  if (!serviceId) return 0;
+  const grilles = await grillesSystematiquesDuService(env, serviceId, periode.fields.Niveau);
+  if (!grilles.length) return 0;
+
+  const deja = new Set((await gristFilter(env, T_FORMULAIRE_ATTENDU, { Periode: [periode.id] }))
+    .map((a) => Number(a.fields.Formulaire)));
+  const aCreer = grilles.filter((f) => !deja.has(f.id));
+  if (!aCreer.length) return 0;
+
+  await grist(env, "POST", `/tables/${T_FORMULAIRE_ATTENDU}/records`, {
+    records: aCreer.map((f) => ({ fields: {
+      Periode: periode.id,
+      Formulaire: f.id,
+      Origine: "systematique",
+      Nb_attendu: Math.max(1, Number(f.fields.Nb_attendu_defaut) || 1),
+      Actif: true,
+      Ajoute_par: auteur || "Ouverture du stage",
+      Ajoute_le: Math.floor(Date.now() / 1000),
+    } })),
+  });
+  return aCreer.length;
+}
+
+/** Observations finalisées par grille pour un stage : ce qui fait avancer le
+ * compteur « 1 / 2 ». Seules les validées comptent (cf. maquette tuteur). */
+async function observationsParFormulaire(env, periodeId) {
+  const [obs, versions] = await Promise.all([
+    gristFilter(env, T_EVALUATION_SOIN, { Periode: [periodeId] }),
+    gristAll(env, T_FORMULAIRE_VERSION),
+  ]);
+  const formulaireDeVersion = new Map(versions.map((v) => [v.id, Number(v.fields.Formulaire)]));
+  const compte = new Map();
+  for (const o of obs) {
+    if (o.fields.Statut !== "validee") continue;
+    const fid = formulaireDeVersion.get(Number(o.fields.Version));
+    if (fid) compte.set(fid, (compte.get(fid) || 0) + 1);
+  }
+  return compte;
+}
+
+/** Grilles attendues sur un stage + celles que le cadre peut encore ajouter. */
+async function listerAttendus(env, cadre, periodeId) {
+  const periode = await ensurePeriodeInScope(env, cadre, periodeId);
+  const serviceId = Number(periode.fields.Service) || 0;
+  const [attendus, formulaires, versions, faits] = await Promise.all([
+    gristFilter(env, T_FORMULAIRE_ATTENDU, { Periode: [periodeId] }),
+    gristFilter(env, T_FORMULAIRE, { Service: [serviceId] }),
+    gristAll(env, T_FORMULAIRE_VERSION),
+    observationsParFormulaire(env, periodeId),
+  ]);
+  const parId = new Map(formulaires.map((f) => [f.id, f]));
+  const publiees = new Set(versions
+    .filter((v) => v.fields.Statut === "publie").map((v) => Number(v.fields.Formulaire)));
+
+  const lignes = attendus.map((a) => {
+    const f = parId.get(Number(a.fields.Formulaire));
+    const nb = Math.max(1, Number(a.fields.Nb_attendu) || 1);
+    return {
+      id: a.id,
+      formulaireId: Number(a.fields.Formulaire),
+      // Une grille d'un autre service (stage déplacé) reste lisible.
+      Nom: f ? f.fields.Nom : "Grille supprimée ou d'un autre service",
+      Origine: a.fields.Origine || "cadre",
+      Nb_attendu: nb,
+      Faits: faits.get(Number(a.fields.Formulaire)) || 0,
+      Date_limite: epochToIso(a.fields.Date_limite) || "",
+      Actif: !!a.fields.Actif,
+      Motif_retrait: a.fields.Motif_retrait || "",
+      Publiee: publiees.has(Number(a.fields.Formulaire)),
+    };
+  }).sort((a, b) => a.Nom.localeCompare(b.Nom, "fr"));
+
+  const dejaPosees = new Set(attendus.map((a) => Number(a.fields.Formulaire)));
+  const ajoutables = formulaires
+    .filter((f) => f.fields.Actif && publiees.has(f.id) && !dejaPosees.has(f.id))
+    .map((f) => ({ id: f.id, Nom: f.fields.Nom,
+      Nb_attendu_defaut: Math.max(1, Number(f.fields.Nb_attendu_defaut) || 1) }))
+    .sort((a, b) => a.Nom.localeCompare(b.Nom, "fr"));
+
+  // Grilles systématiques du service pas encore posées sur CE stage : le stage
+  // a pu être ouvert avant leur création (la liste ne se réécrit pas seule).
+  const systematiques = (await grillesSystematiquesDuService(env, serviceId, periode.fields.Niveau))
+    .filter((f) => !dejaPosees.has(f.id)).length;
+
+  return { attendus: lignes, ajoutables, systematiquesAPoser: systematiques };
+}
+
+/** Le cadre ajoute une grille pour CE stage (origine « cadre »). */
+async function ajouterAttendu(request, env, cadre, periodeId, info) {
+  const periode = await ensurePeriodeInScope(env, cadre, periodeId);
+  const body = await request.json().catch(() => ({}));
+  const formulaireId = Number(body.formulaireId);
+  if (!formulaireId) throw httpError(400, "Grille manquante");
+
+  const rows = await gristFilter(env, T_FORMULAIRE, { id: [formulaireId] });
+  if (!rows.length) throw httpError(404, "Grille introuvable");
+  const grille = rows[0];
+  if (Number(grille.fields.Service) !== Number(periode.fields.Service)) {
+    throw httpError(403, "Cette grille n'appartient pas au service du stage");
+  }
+  const versions = await gristFilter(env, T_FORMULAIRE_VERSION, { Formulaire: [formulaireId] });
+  if (!versions.some((v) => v.fields.Statut === "publie")) {
+    throw httpError(409, "Cette grille n'a pas de version publiée : il n'y aurait rien à remplir");
+  }
+
+  // Grist n'applique pas UNIQUE : le doublon se vérifie ici. Une grille
+  // retirée est réactivée plutôt que dupliquée.
+  const existants = await gristFilter(env, T_FORMULAIRE_ATTENDU,
+    { Periode: [periodeId], Formulaire: [formulaireId] });
+  const nb = Math.min(10, Math.max(1, Number(body.nbAttendu) || Number(grille.fields.Nb_attendu_defaut) || 1));
+
+  if (existants.length) {
+    const a = existants[0];
+    if (a.fields.Actif) throw httpError(409, "Cette grille est déjà attendue sur ce stage");
+    await gristUpdate(env, T_FORMULAIRE_ATTENDU, a.id, { Actif: true, Motif_retrait: "", Nb_attendu: nb });
+    if (info) info.detail = `« ${grille.fields.Nom} » remise dans les attendus`;
+    return json({ id: a.id, reactive: true });
+  }
+
+  const cree = await grist(env, "POST", `/tables/${T_FORMULAIRE_ATTENDU}/records`, {
+    records: [{ fields: {
+      Periode: periodeId, Formulaire: formulaireId, Origine: "cadre",
+      Nb_attendu: nb, Actif: true,
+      Ajoute_par: cadreNomComplet(cadre), Ajoute_le: Math.floor(Date.now() / 1000),
+    } }],
+  });
+  if (info) {
+    info.etudiantId = Number(periode.fields.Anonymat) || undefined;
+    info.serviceId = Number(periode.fields.Service) || undefined;
+    info.detail = `« ${grille.fields.Nom} », ${nb} observation(s) attendue(s)`;
+  }
+  return json({ id: cree.records[0].id }, 201);
+}
+
+/** Modifie ou retire une grille attendue. Le retrait est tracé, jamais
+ * supprimé : on doit pouvoir expliquer pourquoi elle a disparu de la liste. */
+async function modifierAttendu(request, env, cadre, attenduId, info) {
+  const rows = await gristFilter(env, T_FORMULAIRE_ATTENDU, { id: [attenduId] });
+  if (!rows.length) throw httpError(404, "Ligne introuvable");
+  const attendu = rows[0];
+  const periode = await ensurePeriodeInScope(env, cadre, Number(attendu.fields.Periode));
+
+  const body = await request.json().catch(() => ({}));
+  const fields = {};
+  const changements = [];
+  if (body.nbAttendu !== undefined) {
+    const n = Number(body.nbAttendu);
+    if (!Number.isInteger(n) || n < 1 || n > 10) throw httpError(400, "Nombre d'observations invalide (1 à 10)");
+    fields.Nb_attendu = n;
+    changements.push(`${n} observation(s) attendue(s)`);
+  }
+  if (body.dateLimite !== undefined) {
+    fields.Date_limite = body.dateLimite ? exigerDate(body.dateLimite, "Date limite") : null;
+    changements.push(body.dateLimite ? `échéance ${body.dateLimite}` : "échéance retirée");
+  }
+  if (body.actif !== undefined) {
+    fields.Actif = !!body.actif;
+    fields.Motif_retrait = body.actif ? "" : cleanText(body.motifRetrait, 200);
+    changements.push(body.actif ? "remise dans les attendus" : "retirée");
+  }
+  if (!Object.keys(fields).length) throw httpError(400, "Rien à modifier");
+
+  await gristUpdate(env, T_FORMULAIRE_ATTENDU, attenduId, fields);
+  if (info) {
+    info.etudiantId = Number(periode.fields.Anonymat) || undefined;
+    info.serviceId = Number(periode.fields.Service) || undefined;
+    info.detail = changements.join(" · ");
+  }
+  return json({ ok: true });
+}
+
+/** Applique les grilles systématiques du service à un stage déjà ouvert. */
+async function appliquerSystematiques(env, cadre, periodeId, info) {
+  const periode = await ensurePeriodeInScope(env, cadre, periodeId);
+  const posees = await poserAttendusSystematiques(env, periode, cadreNomComplet(cadre));
+  if (info) {
+    info.etudiantId = Number(periode.fields.Anonymat) || undefined;
+    info.serviceId = Number(periode.fields.Service) || undefined;
+    info.detail = posees ? `${posees} grille(s) ajoutée(s)` : "aucune grille à ajouter";
+  }
+  return json({ posees });
+}
+
+/* ------------------------------------------------------------------ */
 /* Espace administrateur : les comptes cadres                          */
 /* ------------------------------------------------------------------ */
 
@@ -4695,7 +5098,19 @@ async function creerPeriodeAvecSemaines(env, { studentRowId, code, serviceId, du
   // Génère une semaine de planning (vide) par semaine de stage,
   // que le service remplira ensuite dans Grist.
   const semainesGenerees = await genererSemaines(env, periodeId, duEpoch, auEpoch);
-  return { periodeId, semainesGenerees };
+
+  // Pose les grilles d'évaluation systématiques du service. Best-effort :
+  // une inscription ne doit jamais échouer parce que l'évaluation des
+  // compétences n'est pas configurée. Le cadre peut les poser après coup.
+  const grillesPosees = await poserAttendusSystematiques(
+    env,
+    { id: periodeId, fields: { Service: serviceId, Niveau: niveau, Anonymat: studentRowId } },
+  ).catch((err) => {
+    console.error("Grilles systématiques non posées:", err && err.message);
+    return 0;
+  });
+
+  return { periodeId, semainesGenerees, grillesPosees };
 }
 
 /**
