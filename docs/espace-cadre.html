@@ -137,6 +137,10 @@
     .pending-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0; border-bottom: 1px solid var(--gris-bordure); }
     .pending-row:last-child { border-bottom: none; }
     .pending-main { flex: 1; }
+    /* Note de service d'un rendez-vous : visuellement à part du reste de la
+       ligne, qui lui est aussi affiché à l'étudiant. */
+    .rdv-note { font-size: 0.85rem; color: var(--texte-doux); margin-top: 0.2rem;
+      border-left: 2px solid var(--gris-bordure); padding-left: 0.5rem; }
     .save-hint { font-size: 0.8rem; color: var(--texte-doux); margin-top: 0.25rem; }
     #codes-service-list { padding: 0.9rem 1rem 1rem; }
     .dual-list { display: flex; gap: 1rem; flex-wrap: wrap; }
@@ -889,7 +893,9 @@
       <label for="rdv-formateur">Formateur <span class="optional">(facultatif)</span></label>
       <input type="text" id="rdv-formateur" maxlength="80" placeholder="Nom du formateur / tuteur">
 
-      <label for="rdv-commentaire">Commentaire <span class="optional">(facultatif)</span></label>
+      <label for="rdv-commentaire">Commentaire <span class="optional">(facultatif)</span>
+        <span class="fr-hint-text">Note de service : elle n'est <strong>pas</strong> visible par l'étudiant.</span>
+      </label>
       <input type="text" id="rdv-commentaire" maxlength="300" placeholder="Précisez si besoin">
 
       <p id="rdv-error" class="error" hidden></p>
@@ -897,6 +903,28 @@
       <div class="dialog-actions">
         <button type="button" class="btn btn-ghost" id="rdv-cancel-btn">Annuler</button>
         <button type="submit" class="btn btn-primary" id="rdv-save-btn">Ajouter</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Note de service sur un rendez-vous existant -->
+  <dialog id="rdv-com-dialog">
+    <form id="rdv-com-form" method="dialog">
+      <h2>Commentaire du rendez-vous</h2>
+      <p class="save-hint" id="rdv-com-quoi"></p>
+
+      <label for="rdv-com-texte">Note de service <span class="optional">(facultatif)</span>
+        <span class="fr-hint-text">Réservée à l'équipe : elle n'apparaît <strong>jamais</strong> dans
+          l'espace de l'étudiant, même sur un rendez-vous pris par lui sur RDV Service Public.
+          Videz le champ pour l'effacer.</span>
+      </label>
+      <textarea id="rdv-com-texte" rows="3" maxlength="300"></textarea>
+
+      <p id="rdv-com-error" class="error" hidden></p>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="rdv-com-cancel-btn">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="rdv-com-save-btn">Enregistrer</button>
       </div>
     </form>
   </dialog>
@@ -926,6 +954,6 @@
   <script src="config.js?v=21"></script>
   <script src="layout.js?v=26"></script>
   <script src="etablissement.js?v=30"></script>
-  <script src="espace-cadre.js?v=47"></script>
+  <script src="espace-cadre.js?v=48"></script>
 </body>
 </html>

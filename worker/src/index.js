@@ -72,6 +72,8 @@
  *   GET    /api/cadre/commentaires/:id/fichier                 -> télécharge sa pièce jointe
  *   DELETE /api/cadre/commentaires/:id                         -> supprime un commentaire
  *   POST   /api/cadre/rdv  { periodeId, Date_rdv, ... }        -> ajoute un rendez-vous formateur/tuteur
+ *   PATCH  /api/cadre/rdv/:id  { Commentaire }                 -> note interne sur un rendez-vous
+ *                                                                 (jamais transmise à l'étudiant)
  *   DELETE /api/cadre/rdv/:id                                  -> supprime un rendez-vous formateur
  *
  * Espace administrateur : réservé aux cadres dont la case UTILISATEURS.
@@ -563,6 +565,10 @@ async function route(request, env, ctx) {
         (info) => creerRdv(request, env, cadre, info));
     }
     const rm = path.match(/^\/api\/cadre\/rdv\/(\d+)$/);
+    if (request.method === "PATCH" && rm) {
+      return withLog(env, ctx, who, "Commentaire d'un RDV formateur", "",
+        (info) => modifierCommentaireRdv(request, env, cadre, Number(rm[1]), info));
+    }
     if (request.method === "DELETE" && rm) {
       return withLog(env, ctx, who, "Suppression d'un RDV formateur", `rdv #${rm[1]}`,
         (info) => supprimerRdv(env, cadre, Number(rm[1]), info));
@@ -1581,10 +1587,10 @@ async function recevoirWebhookRdvSp(request, env, ctx) {
     Date_rdv: dateEpoch,
     Type_de_rendez_vous: typeRdvSp(data),
     Formateur: agentsRdvSp(data),
-    // Même texte dans les deux colonnes : Commentaire pour que l'espace cadre
-    // l'affiche comme pour tout rendez-vous, Rdv_sp_details parce que c'est
-    // celle-là, et elle seule, que lit l'espace étudiant (voir COLONNES_RDV_SP).
-    Commentaire: commentaireRdvSp(data),
+    // Rdv_sp_details, et surtout PAS Commentaire : cette dernière appartient au
+    // cadre, qui y note ce qu'il veut sur le rendez-vous (voir
+    // modifierCommentaireRdv). L'écraser ici ferait disparaître sa note à la
+    // première modification faite dans RDV Service Public.
     Rdv_sp_details: commentaireRdvSp(data),
     Cree_par: "RDV Service Public",
     Rdv_sp_id: identifiant,
@@ -2042,7 +2048,11 @@ async function buildCadrePayload(env, cadre) {
       Date_rdv: epochToIso(r.fields.Date_rdv),
       Type_de_rendez_vous: r.fields.Type_de_rendez_vous || "",
       Formateur: r.fields.Formateur || "",
+      // Commentaire = la note du cadre, jamais transmise à l'étudiant ;
+      // Rdv_sp_details = l'heure et le lieu écrits par le worker pour un
+      // rendez-vous venu de RDV Service Public, que l'étudiant voit lui aussi.
       Commentaire: r.fields.Commentaire || "",
+      Rdv_sp_details: r.fields.Rdv_sp_details || "",
       Cree_par: r.fields.Cree_par || "",
     })),
     // Réponses au questionnaire de satisfaction, limitées aux stages des
@@ -2441,6 +2451,38 @@ async function creerRdv(request, env, cadre, info) {
     info.detail = `${type} le ${jDate(date)}${fields.Formateur ? ` avec ${fields.Formateur}` : ""}`;
   }
   return json({ id: data.records[0].id }, 201);
+}
+
+/**
+ * Le cadre annote un rendez-vous. Le commentaire est une NOTE INTERNE : il
+ * n'est renvoyé ni dans le payload étudiant (voir buildPayload) ni nulle part
+ * ailleurs côté étudiant, et le webhook RDV Service Public ne l'écrase pas.
+ * C'est le seul champ modifiable après coup — la date, le type et le
+ * formateur d'un rendez-vous venu de RDV Service Public appartiennent à RDV
+ * Service Public, et seraient de toute façon réécrits à sa prochaine
+ * notification.
+ */
+async function modifierCommentaireRdv(request, env, cadre, rowId, info) {
+  const rows = await gristFilter(env, T_RDV, { id: [rowId] });
+  if (!rows.length) throw httpError(404, "Rendez-vous introuvable");
+  const periode = await ensurePeriodeInScope(env, cadre, rows[0].fields.Periode);
+  verifierPeriodeNonVerrouillee(periode, "ses rendez-vous ne peuvent plus être modifiés");
+
+  const body = await request.json().catch(() => ({}));
+  if (body.Commentaire === undefined) throw httpError(400, "Aucune modification fournie");
+  const commentaire = cleanText(body.Commentaire, 300);
+
+  await ensureColumns(env, T_RDV, COLONNES_RDV_SP);
+  await gristUpdate(env, T_RDV, rowId, { Commentaire: commentaire });
+
+  if (info) {
+    info.etudiantId = periode.fields.Etudiant;
+    info.serviceId = periode.fields.Service;
+    info.detail = `${rows[0].fields.Type_de_rendez_vous || "rendez-vous"}`
+      + ` du ${jDateEpoch(rows[0].fields.Date_rdv)} : `
+      + (commentaire ? "commentaire enregistré" : "commentaire effacé");
+  }
+  return json({ ok: true });
 }
 
 /** Le cadre supprime un rendez-vous formateur d'un étudiant de son service. */
@@ -3170,6 +3212,7 @@ async function ficheEtudiantAdmin(env, etudiantId) {
         Type_de_rendez_vous: r.fields.Type_de_rendez_vous || "",
         Formateur: r.fields.Formateur || "",
         Commentaire: r.fields.Commentaire || "",
+        Rdv_sp_details: r.fields.Rdv_sp_details || "",
       })),
     // Journal : les 100 lignes les plus récentes concernant cet étudiant
     // (connexions, consultations de son dossier par un cadre ou un admin).

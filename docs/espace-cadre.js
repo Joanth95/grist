@@ -2142,13 +2142,25 @@ function renderRdvsList(p, verrou) {
     const row = el("div", "pending-row");
     const main = el("div", "pending-main");
     main.appendChild(el("div", "sortie-title", r.Type_de_rendez_vous || "Rendez-vous"));
+    // Ligne du haut : ce que l'étudiant voit lui aussi (date, formateur, et
+    // pour un rendez-vous RDV Service Public son heure et son lieu).
     const meta = [frDate(r.Date_rdv)];
     if (r.Formateur) meta.push(r.Formateur);
-    if (r.Commentaire) meta.push(r.Commentaire);
+    if (r.Rdv_sp_details) meta.push(r.Rdv_sp_details);
     main.appendChild(el("div", "sortie-meta", meta.join(" · ")));
+    // La note de service, elle, est signalée comme telle : le cadre doit voir
+    // d'un coup d'œil qu'elle ne sort pas de l'équipe.
+    if (r.Commentaire) {
+      main.appendChild(el("div", "rdv-note", "🔒 Note de service : " + r.Commentaire));
+    }
     row.appendChild(main);
 
     if (!verrou) {
+      const comBtn = el("button", "btn btn-ghost", r.Commentaire ? "Modifier la note" : "Commenter");
+      comBtn.type = "button";
+      comBtn.addEventListener("click", () => openRdvCommentDialog(r));
+      row.appendChild(comBtn);
+
       const delBtn = el("button", "btn btn-ghost", "Supprimer");
       delBtn.type = "button";
       delBtn.addEventListener("click", async () => {
@@ -2326,6 +2338,45 @@ function openRdvDialog(p) {
 }
 
 $("rdv-cancel-btn").addEventListener("click", () => rdvDialog.close());
+
+/* Note de service sur un rendez-vous déjà posé — y compris ceux venus de RDV
+ * Service Public, dont c'est le seul champ modifiable ici : la date, le type et
+ * le formateur appartiennent à RDV Service Public et seraient réécrits à sa
+ * prochaine notification. */
+const rdvComDialog = $("rdv-com-dialog");
+let rdvComId = null;
+
+function openRdvCommentDialog(r) {
+  rdvComId = r.id;
+  $("rdv-com-quoi").textContent =
+    `${r.Type_de_rendez_vous || "Rendez-vous"} du ${frDate(r.Date_rdv)}`
+    + (r.Formateur ? ` avec ${r.Formateur}` : "");
+  $("rdv-com-texte").value = r.Commentaire || "";
+  $("rdv-com-error").hidden = true;
+  rdvComDialog.showModal();
+}
+
+$("rdv-com-cancel-btn").addEventListener("click", () => rdvComDialog.close());
+
+$("rdv-com-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = $("rdv-com-error");
+  errEl.hidden = true;
+  const btn = $("rdv-com-save-btn");
+  btn.disabled = true;
+  try {
+    await api("PATCH", `/api/cadre/rdv/${rdvComId}`, {
+      Commentaire: $("rdv-com-texte").value.trim(),
+    });
+    rdvComDialog.close();
+    await refresh();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 $("rdv-form").addEventListener("submit", async (e) => {
   e.preventDefault();
